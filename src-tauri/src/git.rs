@@ -253,7 +253,7 @@ pub fn commit_file_diff(path: &str, commit_id: &str, file_path: &str) -> Result<
     Ok(output)
 }
 
-fn find_commit(repo: &Repository, commit_id: &str) -> Result<git2::Commit<'_>, String> {
+fn find_commit<'repo>(repo: &'repo Repository, commit_id: &str) -> Result<git2::Commit<'repo>, String> {
     let oid = Oid::from_str(commit_id).map_err(|error| format!("Invalid commit ID: {error}"))?;
     repo.find_commit(oid)
         .map_err(|error| format!("Could not read commit {commit_id}: {error}"))
