@@ -16,6 +16,7 @@ type RepositoryInfo = { root: string; branch: string; state: string };
 type FileChange = { path: string; kind: string; staged: boolean; unstaged: boolean };
 type CommitInfo = { id: string; shortId: string; message: string; author: string; timestamp: number; parents: string[]; branches: string[] };
 type CommitFileChange = { path: string; kind: string };
+const COMMIT_PAGE_SIZE = 50;
 
 function changeDirectoryCommand(shell: ShellKind, path: string): string {
   if (shell === "powershell") {
@@ -299,6 +300,15 @@ function GitChanges({ repoPath, repoInfo, onOpenRepository, onError }: { repoPat
 
 function GitGraph({ repoPath, onError }: { repoPath: string; onError: (message: string) => void }) {
   const [commits, setCommits] = useState<CommitInfo[]>([]);
+  const commitsRef = useRef<CommitInfo[]>([]);
+  const hasMoreRef = useRef(true);
+  const [hasMore, setHasMore] = useState(true);
+  const loadingRef = useRef(false);
+  const requestIdRef = useRef(0);
+  const repoPathRef = useRef(repoPath);
+  const onErrorRef = useRef(onError);
+  repoPathRef.current = repoPath;
+  onErrorRef.current = onError;
   const [selectedCommit, setSelectedCommit] = useState<CommitInfo | null>(null);
   const [commitFiles, setCommitFiles] = useState<CommitFileChange[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -306,16 +316,42 @@ function GitGraph({ repoPath, onError }: { repoPath: string; onError: (message: 
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const load = useCallback(async (append: boolean) => {
-    if (!repoPath || !isTauri() || loading) return;
+    const requestedPath = repoPathRef.current;
+    if (!requestedPath || !isTauri() || loadingRef.current || (append && !hasMoreRef.current)) return;
+    const requestId = ++requestIdRef.current;
+    const existing = append ? commitsRef.current : [];
+    loadingRef.current = true;
     setLoading(true);
     try {
-      const more = await invoke<CommitInfo[]>("git_history", { path: repoPath, skip: append ? commits.length : 0, limit: 50 });
-      setCommits((current) => append ? [...current, ...more] : more);
-
-    } catch (reason) { onError(String(reason)); }
-    finally { setLoading(false); }
-  }, [commits.length, loading, onError, repoPath]);
-  useEffect(() => { setCommits([]); void load(false); }, [repoPath]);
+      const page = await invoke<CommitInfo[]>("git_history", { path: requestedPath, skip: existing.length, limit: COMMIT_PAGE_SIZE + 1 });
+      if (requestId !== requestIdRef.current || repoPathRef.current !== requestedPath) return;
+      const hasNextPage = page.length > COMMIT_PAGE_SIZE;
+      const nextCommits = append
+        ? [...existing, ...page.slice(0, COMMIT_PAGE_SIZE).filter((commit) => !existing.some((loaded) => loaded.id === commit.id))]
+        : page.slice(0, COMMIT_PAGE_SIZE);
+      commitsRef.current = nextCommits;
+      hasMoreRef.current = hasNextPage;
+      setCommits(nextCommits);
+      setHasMore(hasNextPage);
+    } catch (reason) {
+      if (requestId === requestIdRef.current && repoPathRef.current === requestedPath) onErrorRef.current(String(reason));
+    } finally {
+      if (requestId === requestIdRef.current) {
+        loadingRef.current = false;
+        setLoading(false);
+      }
+    }
+  }, []);
+  useEffect(() => {
+    requestIdRef.current += 1;
+    loadingRef.current = false;
+    commitsRef.current = [];
+    hasMoreRef.current = true;
+    setLoading(false);
+    setCommits([]);
+    setHasMore(true);
+    void load(false);
+  }, [repoPath, load]);
 
   const selectCommit = useCallback(async (commit: CommitInfo) => {
     if (!repoPath || !isTauri()) return;
@@ -353,7 +389,7 @@ function GitGraph({ repoPath, onError }: { repoPath: string; onError: (message: 
         {commits.length === 0 && !loading && <div className="change-empty">No commits found.</div>}
       </div>
       {selectedCommit && <section className="commit-details"><div className="diff-heading"><span>{selectedCommit.message}</span><button onClick={() => { setSelectedCommit(null); setCommitFiles([]); setSelectedFile(null); setFileDiff(""); }} aria-label="Close commit details" type="button">×</button></div>{detailLoading ? <div className="change-empty">Loading changed files…</div> : <div className="commit-file-list">{commitFiles.length ? commitFiles.map((file) => <button className={`change-row ${selectedFile === file.path ? "selected" : ""}`} key={file.path} onClick={() => void selectFile(file.path)} type="button"><span className={`change-kind ${file.kind}`}>{file.kind === "deleted" ? "D" : file.kind === "added" ? "A" : file.kind === "renamed" ? "R" : "M"}</span><span className="change-path" title={file.path}>{file.path}</span></button>) : <div className="change-empty">No files changed in this commit.</div>}</div>}{selectedFile && <pre className="commit-file-diff">{fileDiff || "Loading diff…"}</pre>}</section>}
-      {commits.length > 0 && <button className="load-more" onClick={() => void load(true)} disabled={loading} type="button">{loading ? "Loading…" : "Load more commits"}</button>}
+      {commits.length > 0 && hasMore && <button className="load-more" onClick={() => void load(true)} disabled={loading} type="button">{loading ? "Loading…" : "Load more commits"}</button>}
     </>}
     <div className="panel-footnote"><span className="read-only-mark">◉</span> Incremental history loading</div>
   </div>;
