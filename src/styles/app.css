@@ -146,6 +146,47 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .diff-preview-content .diff-line-marker { width: 42px; flex-basis: 42px; padding-right: 13px; }
 .diff-preview-footer { height: 31px; flex: 0 0 31px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-top: 1px solid #292a31; background: #17181d; color: #727580; font-size: 9px; }
 
+.commit-preview-backdrop { position: fixed; z-index: 31; inset: 0; display: grid; place-items: center; padding: 26px; background: #07080bdc; backdrop-filter: blur(5px); }
+.commit-preview-dialog { width: min(1500px, 100%); height: min(920px, 100%); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #383943; border-radius: 12px; background: #131419; box-shadow: 0 28px 100px #000b, 0 0 0 1px #ffffff08; }
+.commit-preview-header { min-height: 132px; flex: 0 0 auto; display: flex; align-items: flex-start; gap: 20px; padding: 20px 24px 16px; border-bottom: 1px solid #2b2c34; background: linear-gradient(180deg, #1b1c22, #17181d); }
+.commit-preview-heading { min-width: 0; flex: 1; }
+.commit-preview-kicker { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; color: #9b9da8; font-size: 10px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.commit-preview-kicker code { padding: 3px 6px; border: 1px solid #393543; border-radius: 4px; background: #211f29; color: #c3b9ef; font: 10px "Cascadia Code", Consolas, monospace; letter-spacing: 0; text-transform: none; }
+.commit-preview-dot { width: 8px; height: 8px; border-radius: 50%; background: #b09fff; box-shadow: 0 0 8px #9b8cff55; }
+.commit-preview-header h2 { overflow: hidden; margin: 0; color: #e7e7ed; font: 650 17px/1.35 Inter, "Segoe UI", sans-serif; text-overflow: ellipsis; }
+.commit-preview-description { max-height: 42px; overflow: auto; margin: 7px 0 0; color: #a0a2ac; font-size: 11px; line-height: 1.5; white-space: pre-wrap; }
+.commit-preview-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 9px 16px; margin-top: 10px; color: #858893; font-size: 10px; }
+.commit-preview-meta code { min-width: 0; overflow: hidden; color: #aaa0d5; font: 10px "Cascadia Code", Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.commit-preview-branches { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.commit-preview-branches .branch-label { margin: 0; }
+.commit-preview-close { width: 32px; height: 32px; flex: 0 0 32px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #9b9da6; font-size: 22px; line-height: 1; }
+.commit-preview-close:hover, .commit-preview-close:focus-visible { border-color: #514250; outline: none; background: #36272d; color: #f1c4cb; }
+.commit-preview-body { flex: 1; min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(230px, 310px) minmax(0, 1fr); overflow: hidden; }
+.commit-preview-files { min-width: 0; min-height: 0; display: flex; flex-direction: column; border-right: 1px solid #2b2c34; background: #17181d; }
+.commit-preview-files-heading { height: 44px; flex: 0 0 44px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid #292a31; }
+.commit-preview-files-heading h3 { margin: 0; color: #c9cad2; font-size: 11px; font-weight: 650; }
+.commit-preview-files-heading span { min-width: 21px; padding: 3px 6px; border-radius: 10px; background: #25232f; color: #b8aaff; font-size: 9px; text-align: center; }
+.commit-preview-file-list { flex: 1; min-height: 0; overflow: auto; padding: 7px; }
+.commit-preview-file { width: 100%; min-height: 38px; display: flex; align-items: center; gap: 8px; padding: 7px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: #bfc0c8; text-align: left; }
+.commit-preview-file:hover { background: #222329; }
+.commit-preview-file.selected { border-color: #45405c; background: #262330; color: #e7e4f2; }
+.commit-preview-file .change-kind { width: 18px; height: 18px; flex: 0 0 18px; display: grid; place-items: center; padding: 0; border-radius: 4px; font-size: 9px; }
+.commit-preview-file-path { min-width: 0; flex: 1; overflow: hidden; font: 10px "Cascadia Code", Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.commit-preview-file-kind { flex: 0 0 auto; color: #747783; font-size: 8px; text-transform: uppercase; }
+.commit-preview-state { flex: 1; min-height: 100px; display: grid; place-items: center; padding: 22px; color: #858792; font-size: 11px; line-height: 1.6; text-align: center; }
+.commit-preview-error { align-content: center; gap: 12px; color: #d2a7ac; overflow-wrap: anywhere; }
+.commit-preview-error button { padding: 6px 9px; border: 1px solid #514250; border-radius: 5px; background: #292129; color: #e2c5ca; font-size: 10px; }
+.commit-preview-error button:hover, .commit-preview-error button:focus-visible { border-color: #9a6671; outline: none; background: #392a31; color: #fff; }
+.commit-preview-diff { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: #101114; }
+.commit-preview-file-heading { min-height: 42px; flex: 0 0 auto; display: flex; align-items: center; gap: 9px; overflow: hidden; padding: 0 16px; border-bottom: 1px solid #292a31; background: #17181d; color: #c6c7ce; font: 10px "Cascadia Code", Consolas, monospace; }
+.commit-preview-file-heading > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-preview-file-heading .change-kind { width: 18px; height: 18px; flex: 0 0 18px; display: grid; place-items: center; padding: 0; border-radius: 4px; font-size: 9px; }
+.commit-preview-diff-content { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden; }
+.commit-preview-diff-content .diff-code { font-size: 12px; line-height: 1.65; padding: 14px 0; }
+.commit-preview-diff-content .diff-line { min-height: 20px; padding-right: 20px; }
+.commit-preview-diff-content .diff-line-marker { width: 42px; flex-basis: 42px; padding-right: 13px; }
+.commit-preview-footer { min-height: 32px; flex: 0 0 32px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 14px; border-top: 1px solid #292a31; background: #17181d; color: #727580; font-size: 9px; }
+@media (max-width: 720px) { .commit-preview-backdrop { padding: 10px; }.commit-preview-dialog { border-radius: 8px; }.commit-preview-header { min-height: 110px; padding: 14px; }.commit-preview-header h2 { font-size: 14px; }.commit-preview-body { grid-template-columns: minmax(150px, 35%) minmax(0, 1fr); }.commit-preview-file-kind { display: none; }.commit-preview-footer span:nth-child(2) { display: none; } }
 .commit-row { min-height: 55px; display: flex; gap: 9px; padding: 7px 10px; }.commit-rail { width: 20px; flex: 0 0 20px; position: relative; display: flex; justify-content: center; }.commit-rail svg { position: absolute; inset: -8px 0; width: 20px; height: calc(100% + 16px); }.commit-line { stroke: #4c4761; stroke-width: 1.5; }.commit-node { z-index: 1; width: 8px; height: 8px; margin-top: 4px; border: 2px solid #b09fff; border-radius: 50%; background: var(--panel); }.commit-info { min-width: 0; flex: 1; }.commit-message { overflow: hidden; color: #d2d2d8; font-size: 10px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }.commit-meta { display: flex; gap: 8px; margin-top: 4px; color: #777984; font-size: 9px; }.commit-meta code { color: #9c91ce; }.commit-meta time { margin-left: auto; white-space: nowrap; }.branch-label { display: inline-block; margin: 4px 4px 0 0; padding: 2px 5px; border: 1px solid #343044; border-radius: 3px; color: #b9aaf2; font-size: 9px; }
 .load-more { margin: 6px 10px 10px; padding: 7px; border: 1px solid #34353c; border-radius: 5px; background: #1b1c21; color: #c3c4cc; font-size: 10px; }.load-more:hover { background: #24252b; }.load-more:disabled { opacity: .6; }
 .agent-launch { padding: 5px 7px; border: 1px solid #34313e; border-radius: 5px; background: #211f29; color: #c7bbee; font-size: 10px; }.agent-launch:hover { background: #302b3a; }

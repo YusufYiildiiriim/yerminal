@@ -661,6 +661,8 @@ function GitGraph({ repoPath, onError }: { repoPath: string; onError: (message: 
   const [hasMore, setHasMore] = useState(true);
   const loadingRef = useRef(false);
   const requestIdRef = useRef(0);
+  const detailRequestRef = useRef(0);
+  const fileDiffRequestRef = useRef(0);
   const repoPathRef = useRef(repoPath);
   const onErrorRef = useRef(onError);
   repoPathRef.current = repoPath;
@@ -671,6 +673,12 @@ function GitGraph({ repoPath, onError }: { repoPath: string; onError: (message: 
   const [fileDiff, setFileDiff] = useState("");
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [fileDiffLoading, setFileDiffLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [fileDiffError, setFileDiffError] = useState<string | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const lastCommitButtonRef = useRef<HTMLButtonElement>(null);
+
   const load = useCallback(async (append: boolean) => {
     const requestedPath = repoPathRef.current;
     if (!requestedPath || !isTauri() || loadingRef.current || (append && !hasMoreRef.current)) return;
@@ -698,6 +706,7 @@ function GitGraph({ repoPath, onError }: { repoPath: string; onError: (message: 
       }
     }
   }, []);
+
   useEffect(() => {
     requestIdRef.current += 1;
     loadingRef.current = false;
@@ -710,47 +719,146 @@ function GitGraph({ repoPath, onError }: { repoPath: string; onError: (message: 
   }, [repoPath, load]);
 
   const selectCommit = useCallback(async (commit: CommitInfo) => {
-    if (!repoPath || !isTauri()) return;
+    const requestedPath = repoPath;
+    if (!requestedPath || !isTauri()) return;
+    const requestId = ++detailRequestRef.current;
+    fileDiffRequestRef.current += 1;
     setSelectedCommit(commit);
     setCommitFiles([]);
     setSelectedFile(null);
     setFileDiff("");
+    setFileDiffLoading(false);
+    setDetailError(null);
+    setFileDiffError(null);
     setDetailLoading(true);
     try {
-      setCommitFiles(await invoke<CommitFileChange[]>("git_commit_files", { path: repoPath, commitId: commit.id }));
-    } catch (reason) { onError(String(reason)); }
-    finally { setDetailLoading(false); }
+      const files = await invoke<CommitFileChange[]>("git_commit_files", { path: requestedPath, commitId: commit.id });
+      if (requestId !== detailRequestRef.current || repoPathRef.current !== requestedPath) return;
+      setCommitFiles(files);
+    } catch (reason) {
+      if (requestId === detailRequestRef.current && repoPathRef.current === requestedPath) { setDetailError(String(reason)); onError(String(reason)); }
+    } finally {
+      if (requestId === detailRequestRef.current && repoPathRef.current === requestedPath) setDetailLoading(false);
+    }
   }, [onError, repoPath]);
 
   const selectFile = useCallback(async (filePath: string) => {
-    if (!repoPath || !selectedCommit || !isTauri()) return;
+    const requestedPath = repoPath;
+    const commit = selectedCommit;
+    if (!requestedPath || !commit || !isTauri()) return;
+    const requestId = ++fileDiffRequestRef.current;
+    const requestedCommitId = commit.id;
     setSelectedFile(filePath);
     setFileDiff("");
+    setFileDiffError(null);
+    setFileDiffLoading(true);
     try {
-      setFileDiff(await invoke<string>("git_commit_file_diff", { path: repoPath, commitId: selectedCommit.id, filePath }));
-    } catch (reason) { onError(String(reason)); }
+      const diff = await invoke<string>("git_commit_file_diff", { path: requestedPath, commitId: requestedCommitId, filePath });
+      if (requestId !== fileDiffRequestRef.current || repoPathRef.current !== requestedPath) return;
+      setFileDiff(diff);
+    } catch (reason) {
+      if (requestId === fileDiffRequestRef.current && repoPathRef.current === requestedPath) { setFileDiffError(String(reason)); onError(String(reason)); }
+    } finally {
+      if (requestId === fileDiffRequestRef.current && repoPathRef.current === requestedPath) setFileDiffLoading(false);
+    }
   }, [onError, repoPath, selectedCommit]);
 
-  useEffect(() => {
+  const closeCommitDetails = useCallback(() => {
+    detailRequestRef.current += 1;
+    fileDiffRequestRef.current += 1;
     setSelectedCommit(null);
     setCommitFiles([]);
     setSelectedFile(null);
     setFileDiff("");
+    setDetailLoading(false);
+    setFileDiffLoading(false);
+    setDetailError(null);
+    setFileDiffError(null);
+  }, []);
+
+  const commitMessageParts = selectedCommit?.message.split(/\r?\n/) ?? [];
+  const commitSubject = commitMessageParts[0] ?? "";
+  const commitDescription = commitMessageParts.slice(1).join("\n").trim();
+
+  useEffect(() => {
+    detailRequestRef.current += 1;
+    fileDiffRequestRef.current += 1;
+    setSelectedCommit(null);
+    setCommitFiles([]);
+    setSelectedFile(null);
+    setFileDiff("");
+    setDetailLoading(false);
+    setFileDiffLoading(false);
   }, [repoPath]);
+
+  useEffect(() => {
+    if (!selectedCommit) return;
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeCommitDetails();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      lastCommitButtonRef.current?.focus();
+    };
+  }, [closeCommitDetails, selectedCommit]);
 
   return <div className="tool-view">
     <header className="tool-header"><div><h1>Git Graph</h1><p>{repoPath ? `${commits.length} commits loaded` : "Repository commit history"}</p></div><button className="icon-button refresh-button" aria-label="Refresh history" onClick={() => void load(false)} type="button">↻</button></header>
     {!repoPath ? <div className="empty-repository graph-empty"><div className="graph-preview"><span /><span /><span /></div><h2>History unavailable</h2><p>Open a Git repository to browse its commit graph.</p></div> : <>
-      <div className="commit-list">{commits.map((commit) => <button className={`commit-row ${selectedCommit?.id === commit.id ? "selected" : ""}`} key={commit.id} onClick={() => void selectCommit(commit)} type="button" aria-pressed={selectedCommit?.id === commit.id}><span className="commit-rail"><svg aria-hidden="true"><line x1="10" y1="0" x2="10" y2="100%" className="commit-line" /></svg><span className="commit-node" /></span><span className="commit-info"><span className="commit-message" title={commit.message}>{commit.message}</span><span className="commit-meta"><code>{commit.shortId}</code><span>{commit.author}</span><time>{new Date(commit.timestamp * 1000).toLocaleDateString()}</time></span>{commit.branches.map((branch) => <span className="branch-label" key={branch}>{branch}</span>)}</span></button>)}
+      <div className="commit-list">{commits.map((commit) => <button className={`commit-row ${selectedCommit?.id === commit.id ? "selected" : ""}`} key={commit.id} onClick={(event) => { lastCommitButtonRef.current = event.currentTarget; void selectCommit(commit); }} type="button" aria-pressed={selectedCommit?.id === commit.id}><span className="commit-rail"><svg aria-hidden="true"><line x1="10" y1="0" x2="10" y2="100%" className="commit-line" /></svg><span className="commit-node" /></span><span className="commit-info"><span className="commit-message" title={commit.message}>{commit.message}</span><span className="commit-meta"><code>{commit.shortId}</code><span>{commit.author}</span><time>{new Date(commit.timestamp * 1000).toLocaleDateString()}</time></span>{commit.branches.map((branch) => <span className="branch-label" key={branch}>{branch}</span>)}</span></button>)}
         {commits.length === 0 && !loading && <div className="change-empty">No commits found.</div>}
       </div>
-      {selectedCommit && <section className="commit-details"><div className="diff-heading"><span>{selectedCommit.message}</span><button onClick={() => { setSelectedCommit(null); setCommitFiles([]); setSelectedFile(null); setFileDiff(""); }} aria-label="Close commit details" type="button">×</button></div>{detailLoading ? <div className="change-empty">Loading changed files…</div> : <div className="commit-file-list">{commitFiles.length ? commitFiles.map((file) => <button className={`change-row ${selectedFile === file.path ? "selected" : ""}`} key={file.path} onClick={() => void selectFile(file.path)} type="button"><span className={`change-kind ${file.kind}`}>{file.kind === "deleted" ? "D" : file.kind === "added" ? "A" : file.kind === "renamed" ? "R" : "M"}</span><span className="change-path" title={file.path}>{file.path}</span></button>) : <div className="change-empty">No files changed in this commit.</div>}</div>}{selectedFile && <pre className="commit-file-diff">{fileDiff || "Loading diff…"}</pre>}</section>}
       {commits.length > 0 && hasMore && <button className="load-more" onClick={() => void load(true)} disabled={loading} type="button">{loading ? "Loading…" : "Load more commits"}</button>}
     </>}
     <div className="panel-footnote"><span className="read-only-mark">◉</span> Incremental history loading</div>
+    {selectedCommit && createPortal(
+      <div className="commit-preview-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeCommitDetails(); }}>
+        <section className="commit-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="commit-preview-title" aria-describedby="commit-preview-summary" onKeyDown={(event) => {
+          if (event.key !== "Tab") return;
+          const focusable = event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex="0"]');
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        }}>
+          <header className="commit-preview-header">
+            <div className="commit-preview-heading">
+              <div className="commit-preview-kicker"><span className="commit-preview-dot" />Commit <code>{selectedCommit.shortId}</code></div>
+              <h2 id="commit-preview-title" title={commitSubject}>{commitSubject}</h2>
+              {commitDescription ? <p className="commit-preview-description" id="commit-preview-summary">{commitDescription}</p> : <p className="commit-preview-description" id="commit-preview-summary">Changes introduced by this commit.</p>}
+
+              <div className="commit-preview-meta"><span>{selectedCommit.author}</span><span>{new Date(selectedCommit.timestamp * 1000).toLocaleString()}</span><code title={selectedCommit.id}>{selectedCommit.id}</code></div>
+              {selectedCommit.branches.length > 0 && <div className="commit-preview-branches" aria-label="Branches">{selectedCommit.branches.map((branch) => <span className="branch-label" key={branch}>{branch}</span>)}</div>}
+            </div>
+            <button ref={closeButtonRef} className="commit-preview-close" onClick={closeCommitDetails} aria-label="Close commit details" title="Close details (Esc)" type="button">×</button>
+          </header>
+          <div className="commit-preview-body">
+            <aside className="commit-preview-files" aria-label="Changed files">
+              <div className="commit-preview-files-heading"><h3>Changed files</h3><span>{detailLoading ? "…" : commitFiles.length}</span></div>
+              <div className="commit-preview-file-list">
+                {detailLoading ? <div className="commit-preview-state" role="status">Loading changed files…</div> : detailError ? <div className="commit-preview-state commit-preview-error" role="alert"><span>{detailError}</span><button type="button" onClick={() => void selectCommit(selectedCommit)}>Retry loading files</button></div> : commitFiles.length === 0 ? <div className="commit-preview-state">No files changed in this commit.</div> : commitFiles.map((file) => <button className={`commit-preview-file ${selectedFile === file.path ? "selected" : ""}`} key={file.path} onClick={() => void selectFile(file.path)} type="button" aria-pressed={selectedFile === file.path} title={file.path}>
+                  <span className={`change-kind ${file.kind}`}>{file.kind === "deleted" ? "D" : file.kind === "added" ? "A" : file.kind === "renamed" ? "R" : "M"}</span><span className="commit-preview-file-path">{file.path}</span><span className="commit-preview-file-kind">{file.kind}</span>
+                </button>)}
+              </div>
+            </aside>
+            <section className="commit-preview-diff" aria-label="Selected file diff">
+              <div className="commit-preview-file-heading">
+                {selectedFile ? <><span className={`change-kind ${commitFiles.find((file) => file.path === selectedFile)?.kind ?? "modified"}`}>{commitFiles.find((file) => file.path === selectedFile)?.kind === "deleted" ? "D" : commitFiles.find((file) => file.path === selectedFile)?.kind === "added" ? "A" : commitFiles.find((file) => file.path === selectedFile)?.kind === "renamed" ? "R" : "M"}</span><span title={selectedFile}>{selectedFile}</span></> : <span>Select a file to inspect its changes</span>}
+              </div>
+              <div className="commit-preview-diff-content">
+                {detailLoading ? <div className="commit-preview-state" role="status">Loading commit details…</div> : !selectedFile ? <div className="commit-preview-state">Choose a changed file from the list to view its patch.</div> : fileDiffLoading ? <div className="commit-preview-state" role="status">Loading diff…</div> : fileDiffError ? <div className="commit-preview-state commit-preview-error" role="alert"><span>{fileDiffError}</span><button type="button" onClick={() => void selectFile(selectedFile)}>Retry loading diff</button></div> : <DiffViewer diff={fileDiff} emptyMessage="No diff available for this file in the selected commit." />}
+              </div>
+            </section>
+          </div>
+          <footer className="commit-preview-footer"><span>{detailLoading ? "Loading files…" : `${commitFiles.length} changed ${commitFiles.length === 1 ? "file" : "files"}`}</span><span>{fileDiffLoading ? "Loading patch…" : fileDiff ? `${fileDiff.split(/\r?\n/).length} lines` : "Read-only commit details"}</span><span>Press Esc to close</span></footer>
+        </section>
+      </div>,
+      document.body,
+    )}
   </div>;
 }
-
 type LayoutRect = { x: number; y: number; width: number; height: number };
 type LayoutDividerInfo = { id: string; direction: "horizontal" | "vertical"; ratio: number; rect: LayoutRect };
 type LayoutGeometry = { panes: Map<string, LayoutRect>; dividers: LayoutDividerInfo[] };
