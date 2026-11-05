@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Minimal capabilities for the yerminal workspace window.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:allow-open"]
 }

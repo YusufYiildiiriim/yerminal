@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import "./styles/app.css";
 
@@ -117,8 +118,14 @@ function App() {
   }, []);
 
   const openRepository = useCallback(async () => {
-    const path = window.prompt("Repository folder path", repoPath)?.trim();
-    if (!path) return;
+    const selection = await open({
+      directory: true,
+      multiple: false,
+      title: "Open Working Tree",
+      defaultPath: repoPath || undefined,
+    });
+    if (typeof selection !== "string") return;
+    const path = selection;
     try {
       const info = await invoke<RepositoryInfo>("git_repository_info", { path });
       setRepoPath(path);
