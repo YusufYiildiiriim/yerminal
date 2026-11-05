@@ -1,10 +1,12 @@
 pub mod git;
 pub mod terminal;
+pub mod workspace_fs;
 
 use git::{CommitFileChange, CommitInfo, FileChange, RepositoryInfo};
 use std::sync::Mutex;
 use tauri::{Manager, State};
 use terminal::{AgentProfileInfo, SessionManager, ShellKind, TerminalInfo};
+use workspace_fs::WorkspaceEntry;
 
 #[tauri::command]
 fn create_terminal(
@@ -116,6 +118,15 @@ fn git_commit_file_diff(
     git::commit_file_diff(&path, &commit_id, &file_path)
 }
 
+#[tauri::command]
+fn list_workspace_directory(root: String, path: String) -> Result<Vec<WorkspaceEntry>, String> {
+    workspace_fs::list_directory(&root, &path)
+}
+
+#[tauri::command]
+fn read_workspace_text_file(root: String, path: String) -> Result<String, String> {
+    workspace_fs::read_text_file(&root, &path)
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -133,7 +144,9 @@ pub fn run() {
             git_diff,
             git_history,
             git_commit_files,
-            git_commit_file_diff
+            git_commit_file_diff,
+            list_workspace_directory,
+            read_workspace_text_file
         ])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {

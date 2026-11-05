@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -35,6 +35,9 @@ type RepositoryInfo = { root: string; branch: string; state: string };
 type FileChange = { path: string; kind: string; staged: boolean; unstaged: boolean };
 type CommitInfo = { id: string; shortId: string; message: string; author: string; timestamp: number; parents: string[]; branches: string[] };
 type CommitFileChange = { path: string; kind: string };
+type WorkspaceEntry = { name: string; path: string; isDir: boolean; size: number | null; extension: string | null };
+type WorkspaceFilePreview = { root: string; name: string; path: string; size: number; content: string | null; error: string | null };
+const WORKSPACE_FILE_PREVIEW_LIMIT = 1024 * 1024;
 const COMMIT_PAGE_SIZE = 50;
 type PersistedWorkspace = { folders: string[]; activePath: string };
 type TerminalWorkspace = { id: string; name: string; rootPath: string; folderPaths: string[]; terminalIds: string[]; activeTerminalId: string | null; layout: LayoutNode | null };
@@ -548,7 +551,7 @@ function App() {
 
       <PanelGroup direction="horizontal" className="workspace">
         <Panel defaultSize={27} minSize={18} maxSize={46} className="tools-panel">
-          <section className="tool-content">{activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} /> : activeTool === "graph" ? <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} /> : <WorkspacePanel folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} />}</section>
+          <section className="tool-content">{activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} /> : activeTool === "graph" ? <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} /> : <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} />}</section>
           <nav className="tool-tabs" aria-label="Developer tools">
             {tools.map((tool) => <button key={tool.id} className={`tool-tab ${activeTool === tool.id ? "selected" : ""}`} onClick={() => setActiveTool(tool.id)} type="button"><span className="tool-icon">{tool.icon}</span>{tool.label}</button>)}
           </nav>
@@ -585,25 +588,229 @@ function App() {
 }
 
 function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove }: { folders: string[]; activePath: string; onAdd: () => void; onActivate: (path: string) => void; onRemove: (path: string) => void }) {
+  const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
+  const [entriesByPath, setEntriesByPath] = useState<Record<string, WorkspaceEntry[]>>({});
+  const [loadingPaths, setLoadingPaths] = useState<Record<string, boolean>>({});
+  const [errorsByPath, setErrorsByPath] = useState<Record<string, string>>({});
+  const loadedPathsRef = useRef(new Set<string>());
+  const pendingPathsRef = useRef(new Set<string>());
+  const treeGenerationRef = useRef(0);
+  const previewRequestRef = useRef(0);
+  const [filePreview, setFilePreview] = useState<WorkspaceFilePreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const previewCloseRef = useRef<HTMLButtonElement>(null);
+  const lastFocusedFileRef = useRef<HTMLButtonElement>(null);
+
+  const loadDirectory = useCallback(async (root: string, path: string) => {
+    if (!isTauri()) {
+      setErrorsByPath((current) => ({ ...current, [path]: "File browsing is available in the desktop app." }));
+      return;
+    }
+    if (loadedPathsRef.current.has(path) || pendingPathsRef.current.has(path)) return;
+    const generation = treeGenerationRef.current;
+    pendingPathsRef.current.add(path);
+    setLoadingPaths((current) => ({ ...current, [path]: true }));
+    setErrorsByPath((current) => {
+      const next = { ...current };
+      delete next[path];
+      return next;
+    });
+    try {
+      const entries = await invoke<WorkspaceEntry[]>("list_workspace_directory", { root, path });
+      if (generation !== treeGenerationRef.current) return;
+      setEntriesByPath((current) => ({ ...current, [path]: entries }));
+      loadedPathsRef.current.add(path);
+    } catch (reason) {
+      if (generation === treeGenerationRef.current) setErrorsByPath((current) => ({ ...current, [path]: String(reason) }));
+    } finally {
+      pendingPathsRef.current.delete(path);
+      if (generation === treeGenerationRef.current) setLoadingPaths((current) => ({ ...current, [path]: false }));
+    }
+  }, []);
+
+  useEffect(() => {
+    treeGenerationRef.current += 1;
+    loadedPathsRef.current.clear();
+    pendingPathsRef.current.clear();
+    setExpandedPaths({});
+    setEntriesByPath({});
+    setLoadingPaths({});
+    setErrorsByPath({});
+  }, [folders]);
+
+  useEffect(() => {
+    if (!activePath || !folders.includes(activePath)) return;
+    setExpandedPaths((current) => ({ ...current, [activePath]: true }));
+    void loadDirectory(activePath, activePath);
+  }, [activePath, folders, loadDirectory]);
+
+  const toggleDirectory = useCallback((root: string, path: string) => {
+    const expand = !expandedPaths[path];
+    setExpandedPaths((current) => ({ ...current, [path]: expand }));
+    if (expand) void loadDirectory(root, path);
+  }, [expandedPaths, loadDirectory]);
+
+  const closeFilePreview = useCallback(() => {
+    previewRequestRef.current += 1;
+    setPreviewLoading(false);
+    setFilePreview(null);
+    lastFocusedFileRef.current?.focus();
+  }, []);
+
+  const openFilePreview = useCallback(async (root: string, entry: WorkspaceEntry, button: HTMLButtonElement) => {
+    lastFocusedFileRef.current = button;
+    const requestId = ++previewRequestRef.current;
+    const preview: WorkspaceFilePreview = { root, name: entry.name, path: entry.path, size: entry.size ?? 0, content: null, error: null };
+    setFilePreview(preview);
+    if ((entry.size ?? 0) > WORKSPACE_FILE_PREVIEW_LIMIT) {
+      setPreviewLoading(false);
+      setFilePreview({ ...preview, error: "This file exceeds the 1 MiB preview limit." });
+      return;
+    }
+    if (!isTauri()) {
+      setPreviewLoading(false);
+      setFilePreview({ ...preview, error: "File preview is available in the desktop app." });
+      return;
+    }
+    setPreviewLoading(true);
+    try {
+      const content = await invoke<string>("read_workspace_text_file", { root, path: entry.path });
+      if (requestId === previewRequestRef.current) setFilePreview({ ...preview, content });
+    } catch (reason) {
+      if (requestId !== previewRequestRef.current) return;
+      const message = String(reason);
+      const normalized = message.toLowerCase();
+      const error = normalized.includes("binary")
+        ? "Binary file preview is unavailable."
+        : normalized.includes("utf-8")
+          ? "This file isn't UTF-8 text and can't be previewed."
+          : normalized.includes("too large")
+            ? "This file exceeds the 1 MiB preview limit."
+            : message;
+      setFilePreview({ ...preview, error });
+    } finally {
+      if (requestId === previewRequestRef.current) setPreviewLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!filePreview) return;
+    previewCloseRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeFilePreview();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      lastFocusedFileRef.current?.focus();
+    };
+  }, [Boolean(filePreview), closeFilePreview]);
+
+  const renderEntries = (entries: WorkspaceEntry[], root: string, depth: number): ReactElement[] => entries.map((entry) => {
+    const expanded = Boolean(expandedPaths[entry.path]);
+    const children = entriesByPath[entry.path] ?? [];
+    return <WorkspaceTreeNode
+      key={entry.path}
+      entry={entry}
+      root={root}
+      depth={depth}
+      expanded={expanded}
+      children={children}
+      loading={Boolean(loadingPaths[entry.path])}
+      error={errorsByPath[entry.path] ?? null}
+      onToggle={() => toggleDirectory(root, entry.path)}
+      onRetry={() => void loadDirectory(root, entry.path)}
+      onOpen={(button) => void openFilePreview(root, entry, button)}
+      renderChildren={(childEntries, childDepth) => renderEntries(childEntries, root, childDepth)}
+    />;
+  });
+
   return <div className="tool-view workspace-view">
-    <header className="tool-header"><div><h1>Workspace</h1><p>{folders.length} {folders.length === 1 ? "folder" : "folders"} included</p></div><button className="icon-button refresh-button" aria-label="Add workspace folders" title="Add folders" onClick={onAdd} type="button">＋</button></header>
-    <div className="workspace-folder-list">
-      {folders.length === 0 ? <div className="workspace-empty"><div className="empty-icon">▣</div><h2>No workspace folders</h2><p>Add one or more folders to use them as your workspace roots.</p><button className="primary-button" onClick={onAdd} type="button">Add Folder</button></div> : folders.map((folder) => {
+    <header className="tool-header workspace-explorer-header"><div><h1>Explorer</h1><p>{folders.length} {folders.length === 1 ? "folder" : "folders"} in this workspace</p></div><button className="icon-button refresh-button" aria-label="Add folders to this workspace" title="Add folders" onClick={onAdd} type="button">＋</button></header>
+    <div className="workspace-explorer-tree" role="tree" aria-label="Workspace files">
+      {folders.length === 0 ? <div className="workspace-empty"><div className="empty-icon">▣</div><h2>No folders in this workspace</h2><p>Add folders here to browse their files. Each workspace keeps its own folders.</p><button className="primary-button" onClick={onAdd} type="button">Add Folder</button></div> : folders.map((folder) => {
         const name = folder.split(/[\\/]/).filter(Boolean).pop() ?? folder;
         const selected = folder === activePath;
-        return <div className={`workspace-folder ${selected ? "selected" : ""}`} key={folder}>
-          <button className="workspace-folder-select" onClick={() => onActivate(folder)} type="button" aria-pressed={selected} title={folder}>
-            <span className="workspace-folder-icon">{selected ? "▣" : "▢"}</span>
-            <span className="workspace-folder-label"><strong>{name}</strong><small>{folder}</small></span>
-          </button>
-          <button className="workspace-folder-remove" aria-label={`Remove ${name} from workspace`} title="Remove from workspace" onClick={() => onRemove(folder)} type="button">×</button>
-        </div>;
+        const expanded = Boolean(expandedPaths[folder]);
+        const entries = entriesByPath[folder] ?? [];
+        return <section className={`workspace-root ${selected ? "selected" : ""}`} key={folder}>
+          <div className="workspace-root-row" role="treeitem" aria-level={1} aria-expanded={expanded}>
+            <button className="workspace-tree-toggle" aria-label={`${expanded ? "Collapse" : "Expand"} ${name}`} aria-expanded={expanded} onClick={() => toggleDirectory(folder, folder)} type="button">{expanded ? "⌄" : "›"}</button>
+            <button className="workspace-folder-select" onClick={() => onActivate(folder)} type="button" aria-pressed={selected} title={folder}>
+              <span className="workspace-folder-icon" aria-hidden="true">▣</span>
+              <span className="workspace-folder-label"><strong>{name}</strong><small>{folder}</small></span>
+            </button>
+            <button className="workspace-folder-remove" aria-label={`Remove ${name} from this workspace`} title="Remove folder" onClick={() => onRemove(folder)} type="button">×</button>
+          </div>
+          {expanded && <div className="workspace-tree-children" role="group">
+            {loadingPaths[folder] && <div className="workspace-tree-message">Loading folder…</div>}
+            {errorsByPath[folder] && <div className="workspace-tree-error"><span>{errorsByPath[folder]}</span><button onClick={() => void loadDirectory(folder, folder)} type="button">Retry</button></div>}
+            {!loadingPaths[folder] && !errorsByPath[folder] && entries.length === 0 && loadedPathsRef.current.has(folder) && <div className="workspace-tree-message">This folder is empty.</div>}
+            {renderEntries(entries, folder, 1)}
+          </div>}
+        </section>;
       })}
     </div>
-    <div className="panel-footnote"><span className="read-only-mark">⌂</span> Workspace folders are saved on this device</div>
+    <div className="panel-footnote workspace-explorer-footnote"><span className="read-only-mark">⌂</span> Read-only file explorer</div>
+    {filePreview && createPortal(
+      <div className="diff-preview-backdrop workspace-file-preview-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeFilePreview(); }}>
+        <section className="diff-preview-dialog workspace-file-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="workspace-file-title" aria-describedby="workspace-file-description" onKeyDown={(event) => {
+          if (event.key !== "Tab") return;
+          const focusable = event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex="0"]');
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        }}>
+          <header className="diff-preview-header workspace-file-preview-header">
+            <div className="diff-preview-file-icon">{filePreview.name.split(".").pop()?.slice(0, 3).toUpperCase() || "FILE"}</div>
+            <div className="diff-preview-heading"><h2 id="workspace-file-title" title={filePreview.name}>{filePreview.name}</h2><p id="workspace-file-description"><span>{filePreview.root}</span><span className="diff-preview-separator">/</span><span>{filePreview.path}</span></p></div>
+            <div className="diff-preview-header-actions"><span className="diff-preview-badge">Read only</span><button ref={previewCloseRef} className="diff-preview-close" onClick={closeFilePreview} aria-label="Close file preview" title="Close preview (Esc)" type="button">×</button></div>
+          </header>
+          <div className="workspace-file-preview-content">
+            {previewLoading ? <div className="diff-preview-loading">Loading file…</div> : filePreview.error ? <div className="workspace-file-preview-message"><span className="workspace-file-preview-warning">!</span><h3>Preview unavailable</h3><p>{filePreview.error}</p></div> : filePreview.content !== null && <pre tabIndex={0} aria-label={`Contents of ${filePreview.name}`}><code>{filePreview.content}</code></pre>}
+          </div>
+          <footer className="diff-preview-footer"><span>{previewLoading ? "Loading…" : filePreview.content !== null ? `${filePreview.content.split(/\r?\n/).length} lines · ${filePreview.size.toLocaleString()} bytes` : "Text preview · 1 MiB max"}</span><span>Press Esc to close</span></footer>
+        </section>
+      </div>, document.body,
+    )}
   </div>;
 }
 
+function WorkspaceTreeNode({ entry, root, depth, expanded, children, loading, error, onToggle, onRetry, onOpen, renderChildren }: {
+  entry: WorkspaceEntry;
+  root: string;
+  depth: number;
+  expanded: boolean;
+  children: WorkspaceEntry[];
+  loading: boolean;
+  error: string | null;
+  onToggle: () => void;
+  onRetry: () => void;
+  onOpen: (button: HTMLButtonElement) => void;
+  renderChildren: (entries: WorkspaceEntry[], depth: number) => ReactElement[];
+}) {
+  const extension = entry.extension ?? entry.name.split(".").pop() ?? "file";
+  const fileBadge = entry.isDir ? "▣" : extension.slice(0, 2).toUpperCase();
+  return <div className="workspace-tree-node" role="treeitem" aria-level={depth + 1} aria-expanded={entry.isDir ? expanded : undefined}>
+    <div className={`workspace-tree-row ${entry.isDir ? "directory" : "file"}`} style={{ paddingLeft: (depth + 1) * 12 }}>
+      {entry.isDir ? <button className="workspace-tree-toggle" aria-label={`${expanded ? "Collapse" : "Expand"} ${entry.name}`} aria-expanded={expanded} onClick={onToggle} type="button">{expanded ? "⌄" : "›"}</button> : <span className="workspace-tree-toggle-spacer" />}
+      {entry.isDir ? <button className="workspace-tree-entry" onClick={onToggle} title={entry.path} type="button"><span className="workspace-tree-file-icon folder" aria-hidden="true">{fileBadge}</span><span className="workspace-tree-name">{entry.name}</span></button> : <button className="workspace-tree-entry" onClick={(event) => onOpen(event.currentTarget)} title={entry.path} type="button"><span className={`workspace-tree-file-icon ext-${extension.replace(/[^a-z0-9]/gi, "").toLowerCase()}`} aria-hidden="true">{fileBadge || "F"}</span><span className="workspace-tree-name">{entry.name}</span><span className="workspace-tree-size">{entry.size === null ? "" : formatFileSize(entry.size)}</span></button>}
+    </div>
+    {entry.isDir && expanded && <div className="workspace-tree-children" role="group">
+      {loading && <div className="workspace-tree-message" style={{ paddingLeft: 25 + depth * 12 }}>Loading folder…</div>}
+      {error && <div className="workspace-tree-error" style={{ paddingLeft: 25 + depth * 12 }}><span>{error}</span><button onClick={onRetry} type="button">Retry</button></div>}
+      {!loading && !error && children.length === 0 && <div className="workspace-tree-message" style={{ paddingLeft: 25 + depth * 12 }}>This folder is empty.</div>}
+      {renderChildren(children, depth + 1)}
+    </div>}
+  </div>;
+}
+
+function formatFileSize(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
 function GitChanges({ repoPath, repoInfo, onOpenRepository, onError }: { repoPath: string; repoInfo: RepositoryInfo | null; onOpenRepository: () => void; onError: (message: string) => void }) {
   const [changes, setChanges] = useState<FileChange[]>([]);
   const [selected, setSelected] = useState<FileChange | null>(null);
