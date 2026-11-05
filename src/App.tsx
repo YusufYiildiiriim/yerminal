@@ -37,8 +37,12 @@ type CommitInfo = { id: string; shortId: string; message: string; author: string
 type CommitFileChange = { path: string; kind: string };
 const COMMIT_PAGE_SIZE = 50;
 type PersistedWorkspace = { folders: string[]; activePath: string };
+type TerminalWorkspace = { id: string; name: string; rootPath: string; terminalIds: string[]; activeTerminalId: string | null; layout: LayoutNode | null };
+type TerminalWorkspaceState = { workspaces: TerminalWorkspace[]; activeId: string };
+type PersistedTerminalWorkspace = { id: string; name: string; rootPath: string };
 
 const WORKSPACE_STORAGE_KEY = "yerminal.workspace";
+const TERMINAL_WORKSPACES_STORAGE_KEY = "yerminal.terminal-workspaces";
 
 function readWorkspace(): PersistedWorkspace {
   try {
@@ -69,6 +73,41 @@ function mergeWorkspaceFolders(current: string[], additions: string[]): string[]
   })];
 }
 
+function readTerminalWorkspaceState(): TerminalWorkspaceState {
+  try {
+    const value = localStorage.getItem(TERMINAL_WORKSPACES_STORAGE_KEY);
+    const parsed: unknown = value ? JSON.parse(value) : null;
+    if (parsed && typeof parsed === "object") {
+      const record = parsed as Record<string, unknown>;
+      const workspaces: TerminalWorkspace[] = [];
+      const seenIds = new Set<string>();
+      const rows: unknown[] = Array.isArray(record.workspaces) ? record.workspaces : [];
+      for (const row of rows) {
+        if (!row || typeof row !== "object") continue;
+        const workspace = row as Record<string, unknown>;
+        const id = typeof workspace.id === "string" ? workspace.id.trim() : "";
+        const name = typeof workspace.name === "string" ? workspace.name.trim() : "";
+        const rootPath = typeof workspace.rootPath === "string" ? workspace.rootPath : "";
+        if (!id || !name || seenIds.has(id)) continue;
+        seenIds.add(id);
+        workspaces.push({ id, name, rootPath, terminalIds: [], activeTerminalId: null, layout: null });
+      }
+      if (workspaces.length > 0) {
+        const activeId = typeof record.activeId === "string" && workspaces.some((workspace) => workspace.id === record.activeId)
+          ? record.activeId
+          : workspaces[0].id;
+        return { workspaces, activeId };
+      }
+    }
+  } catch {
+    // Invalid or unavailable local storage falls back to the legacy workspace root.
+  }
+  const id = crypto.randomUUID();
+  return {
+    workspaces: [{ id, name: "Workspace 1", rootPath: readWorkspace().activePath, terminalIds: [], activeTerminalId: null, layout: null }],
+    activeId: id,
+  };
+}
 function changeDirectoryCommand(shell: ShellKind, path: string): string {
   if (shell === "powershell") {
     const escapedPath = path.replace(/'/g, "''");
@@ -86,19 +125,30 @@ const tools: { id: ToolId; label: string; icon: string }[] = [
 
 function App() {
   const [activeTool, setActiveTool] = useState<ToolId>("changes");
-  const [workspaceFolders, setWorkspaceFolders] = useState<string[]>(() => readWorkspace().folders);
-  const [repoPath, setRepoPath] = useState(() => readWorkspace().activePath);
+  const [terminalWorkspaceState, setTerminalWorkspaceState] = useState<TerminalWorkspaceState>(() => readTerminalWorkspaceState());
+  const [workspaceFolders, setWorkspaceFolders] = useState<string[]>(() => mergeWorkspaceFolders(readWorkspace().folders, terminalWorkspaceState.workspaces.map((workspace) => workspace.rootPath).filter(Boolean)));
   const [repoInfo, setRepoInfo] = useState<RepositoryInfo | null>(null);
   const [agentProfiles, setAgentProfiles] = useState<AgentProfile[]>([]);
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
-  const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
-  const [layout, setLayout] = useState<LayoutNode | null>(null);
   const [editingTerminalId, setEditingTerminalId] = useState<string | null>(null);
   const [terminalNameDraft, setTerminalNameDraft] = useState("");
   const terminalNameInputRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const initializedRef = useRef(false);
+  const initializedWorkspaceIdsRef = useRef(new Set<string>());
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeTerminalWorkspace = terminalWorkspaceState.workspaces.find((workspace) => workspace.id === terminalWorkspaceState.activeId) ?? terminalWorkspaceState.workspaces[0];
+  const activeWorkspaceTerminalIds = activeTerminalWorkspace?.terminalIds ?? [];
+  const activeWorkspaceTerminals = terminals.filter((terminal) => activeWorkspaceTerminalIds.includes(terminal.id));
+  const repoPath = activeTerminalWorkspace?.rootPath ?? "";
+  const activeTerminalId = activeTerminalWorkspace?.activeTerminalId ?? null;
+  const layout = activeTerminalWorkspace?.layout ?? null;
+
+  const updateTerminalWorkspace = useCallback((workspaceId: string, update: (workspace: TerminalWorkspace) => TerminalWorkspace) => {
+    setTerminalWorkspaceState((current) => ({
+      ...current,
+      workspaces: current.workspaces.map((workspace) => workspace.id === workspaceId ? update(workspace) : workspace),
+    }));
+  }, []);
 
   const dismissToast = useCallback(() => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
@@ -121,13 +171,24 @@ function App() {
   }, [repoPath, showToast, workspaceFolders]);
 
   useEffect(() => {
+    try {
+      localStorage.setItem(TERMINAL_WORKSPACES_STORAGE_KEY, JSON.stringify({
+        workspaces: terminalWorkspaceState.workspaces.map(({ id, name, rootPath }) => ({ id, name, rootPath } satisfies PersistedTerminalWorkspace)),
+        activeId: terminalWorkspaceState.activeId,
+      }));
+    } catch (reason) {
+      showToast(`Could not save terminal workspaces: ${String(reason)}`);
+    }
+  }, [showToast, terminalWorkspaceState]);
+
+  useEffect(() => {
     if (!repoPath || !isTauri()) { setRepoInfo(null); return; }
     let cancelled = false;
     void invoke<RepositoryInfo>("git_repository_info", { path: repoPath })
       .then((info) => { if (!cancelled) setRepoInfo(info); })
       .catch(() => { if (!cancelled) setRepoInfo(null); });
     return () => { cancelled = true; };
-  }, [repoPath]);
+  }, [activeTerminalWorkspace?.id, repoPath]);
 
   useEffect(() => () => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
@@ -151,26 +212,31 @@ function App() {
       const id = crypto.randomUUID();
       const terminal: TerminalSession = {
         id,
-        name: terminals.length === 0 ? (shell === "powershell" ? "PowerShell" : shell) : `Terminal ${terminals.length + 1}`,
+        name: activeWorkspaceTerminalIds.length === 0 ? (shell === "powershell" ? "PowerShell" : shell) : `Terminal ${activeWorkspaceTerminalIds.length + 1}`,
         shell,
         shellLabel: shell === "powershell" ? "PowerShell" : shell,
         workingDirectory: repoPath || null,
       };
       setTerminals((current) => [...current, terminal]);
-      setActiveTerminalId(id);
-      if (showInTabs) setLayout(null);
+      if (activeTerminalWorkspace) updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => ({
+        ...workspace,
+        terminalIds: [...workspace.terminalIds, id],
+        activeTerminalId: id,
+        layout: showInTabs ? null : workspace.layout,
+      }));
       return terminal;
     } catch (reason) {
       showToast(String(reason));
       return null;
     }
-  }, [dismissToast, repoPath, showToast, terminals.length]);
+  }, [activeTerminalWorkspace, activeWorkspaceTerminalIds.length, dismissToast, repoPath, showToast, updateTerminalWorkspace]);
 
   useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
-    if (terminals.length === 0) void createTerminal();
-  }, [createTerminal, terminals.length]);
+    const workspaceId = activeTerminalWorkspace?.id;
+    if (!workspaceId || activeWorkspaceTerminalIds.length > 0 || initializedWorkspaceIdsRef.current.has(workspaceId)) return;
+    initializedWorkspaceIdsRef.current.add(workspaceId);
+    void createTerminal();
+  }, [activeTerminalWorkspace?.id, activeWorkspaceTerminalIds.length, createTerminal]);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -182,28 +248,44 @@ function App() {
       try { await invoke("close_terminal", { sessionId: id }); }
       catch (reason) { showToast(String(reason)); }
     }
-    const next = terminals.filter((terminal) => terminal.id !== id);
-    setTerminals(next);
+    setTerminals((current) => current.filter((terminal) => terminal.id !== id));
     setEditingTerminalId((current) => current === id ? null : current);
-    if (activeTerminalId === id) setActiveTerminalId(next[0]?.id ?? null);
-    setLayout((current) => current ? removeTerminal(current, id) : null);
-  }, [activeTerminalId, showToast, terminals]);
+    setTerminalWorkspaceState((current) => ({
+      ...current,
+      workspaces: current.workspaces.map((workspace) => {
+        if (!workspace.terminalIds.includes(id)) return workspace;
+        const terminalIds = workspace.terminalIds.filter((sessionId) => sessionId !== id);
+        return {
+          ...workspace,
+          terminalIds,
+          activeTerminalId: workspace.activeTerminalId === id ? terminalIds[0] ?? null : workspace.activeTerminalId,
+          layout: workspace.layout ? removeTerminal(workspace.layout, id) : null,
+        };
+      }),
+    }));
+  }, [showToast]);
 
   const handleTerminalExit = useCallback((id: string) => {
     setTerminals((current) => current.map((terminal) => terminal.id === id ? { ...terminal, shellLabel: `${terminal.shellLabel} · exited` } : terminal));
   }, []);
 
-  const focusTerminal = useCallback((id: string) => setActiveTerminalId(id), []);
+  const focusTerminal = useCallback((id: string) => {
+    const owner = terminalWorkspaceState.workspaces.find((workspace) => workspace.terminalIds.includes(id));
+    if (owner) updateTerminalWorkspace(owner.id, (workspace) => ({ ...workspace, activeTerminalId: id }));
+  }, [terminalWorkspaceState.workspaces, updateTerminalWorkspace]);
 
   const splitActiveTerminal = useCallback(async (direction: "horizontal" | "vertical") => {
-    if (!activeTerminalId) return;
+    const workspace = activeTerminalWorkspace;
+    const activeId = workspace?.activeTerminalId;
+    if (!workspace || !activeId) return;
     const created = await createTerminal(false);
     if (!created) return;
-    setLayout((current) => {
-      const root = current ?? buildTerminalLayout(terminals.map((terminal) => terminal.id));
-      return splitTerminal(root, activeTerminalId, created.id, direction);
+    updateTerminalWorkspace(workspace.id, (current) => {
+      const existingIds = current.terminalIds.filter((id) => id !== created.id);
+      const root = current.layout ?? buildTerminalLayout(existingIds);
+      return { ...current, layout: splitTerminal(root, activeId, created.id, direction) };
     });
-  }, [activeTerminalId, createTerminal, terminals]);
+  }, [activeTerminalWorkspace, createTerminal, updateTerminalWorkspace]);
 
   const addTerminalToWorkspace = useCallback(async () => {
     if (!activeTerminalId) {
@@ -214,15 +296,24 @@ function App() {
   }, [activeTerminalId, createTerminal, splitActiveTerminal]);
 
   const moveTerminal = useCallback((sourceId: string, targetId: string) => {
-    if (sourceId === targetId) return;
-    setLayout((current) => current ? swapTerminalPositions(current, sourceId, targetId) : null);
-    setActiveTerminalId(sourceId);
-  }, []);
+    if (sourceId === targetId || !activeTerminalWorkspace) return;
+    updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => ({
+      ...workspace,
+      layout: workspace.layout ? swapTerminalPositions(workspace.layout, sourceId, targetId) : null,
+      activeTerminalId: sourceId,
+    }));
+  }, [activeTerminalWorkspace, updateTerminalWorkspace]);
 
   const resizeLayoutSplit = useCallback((splitId: string, ratio: number) => {
-    setLayout((current) => current ? updateSplitRatio(current, splitId, ratio) : null);
-  }, []);
+    if (!activeTerminalWorkspace) return;
+    updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => ({
+      ...workspace,
+      layout: workspace.layout ? updateSplitRatio(workspace.layout, splitId, ratio) : null,
+    }));
+  }, [activeTerminalWorkspace, updateTerminalWorkspace]);
+
   const createAgentTerminal = useCallback((profile: AgentProfile) => {
+    if (!activeTerminalWorkspace) return;
     const id = crypto.randomUUID();
     const terminal: TerminalSession = {
       id,
@@ -233,10 +324,14 @@ function App() {
       workingDirectory: repoPath || null,
     };
     setTerminals((current) => [...current, terminal]);
-    setActiveTerminalId(id);
-    setLayout(null);
+    updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => ({
+      ...workspace,
+      terminalIds: [...workspace.terminalIds, id],
+      activeTerminalId: id,
+      layout: null,
+    }));
     dismissToast();
-  }, [dismissToast, repoPath]);
+  }, [activeTerminalWorkspace, dismissToast, repoPath, updateTerminalWorkspace]);
 
   const beginRenameTerminal = useCallback((terminal: TerminalSession) => {
     setEditingTerminalId(terminal.id);
@@ -252,18 +347,73 @@ function App() {
 
   const cancelTerminalRename = useCallback(() => setEditingTerminalId(null), []);
 
-  const activateWorkspaceFolder = useCallback(async (path: string) => {
-    setRepoPath(path);
+  const activateWorkspace = useCallback((id: string) => {
+    if (!terminalWorkspaceState.workspaces.some((workspace) => workspace.id === id)) return;
+    setEditingTerminalId(null);
+    setTerminalWorkspaceState((current) => ({ ...current, activeId: id }));
     setRepoInfo(null);
-    if (!path) return;
-    if (isTauri()) {
-      const results = await Promise.allSettled(terminals.map((terminal) =>
-        invoke("write_terminal", { sessionId: terminal.id, data: changeDirectoryCommand(terminal.shell, path) }),
-      ));
-      const failed = results.find((result) => result.status === "rejected");
-      if (failed?.status === "rejected") showToast(`Could not change terminal working directory: ${String(failed.reason)}`);
+  }, [terminalWorkspaceState.workspaces]);
+
+  const activateWorkspaceFolder = useCallback(async (path: string) => {
+    if (!activeTerminalWorkspace) return;
+    updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => ({ ...workspace, rootPath: path }));
+    setRepoInfo(null);
+    if (!path || !isTauri()) return;
+    const activeIds = new Set(activeTerminalWorkspace.terminalIds);
+    const workspaceTerminals = terminals.filter((terminal) => activeIds.has(terminal.id));
+    const results = await Promise.allSettled(workspaceTerminals.map((terminal) =>
+      invoke("write_terminal", { sessionId: terminal.id, data: changeDirectoryCommand(terminal.shell, path) }),
+    ));
+    const failed = results.find((result) => result.status === "rejected");
+    if (failed?.status === "rejected") showToast(`Could not change terminal working directory: ${String(failed.reason)}`);
+  }, [activeTerminalWorkspace, showToast, terminals, updateTerminalWorkspace]);
+  const createWorkspace = useCallback(() => {
+    const ordinal = terminalWorkspaceState.workspaces.length + 1;
+    const name = window.prompt("Workspace name", `Workspace ${ordinal}`)?.trim();
+    if (!name) return;
+    if (terminalWorkspaceState.workspaces.some((workspace) => workspace.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      showToast("Choose a unique workspace name.");
+      return;
     }
-  }, [showToast, terminals]);
+    const workspace: TerminalWorkspace = {
+      id: crypto.randomUUID(),
+      name,
+      rootPath: repoPath,
+      terminalIds: [],
+      activeTerminalId: null,
+      layout: null,
+    };
+    setTerminalWorkspaceState((current) => ({ workspaces: [...current.workspaces, workspace], activeId: workspace.id }));
+    setRepoInfo(null);
+  }, [repoPath, showToast, terminalWorkspaceState.workspaces]);
+
+  const renameWorkspace = useCallback(() => {
+    if (!activeTerminalWorkspace) return;
+    const name = window.prompt("Workspace name", activeTerminalWorkspace.name)?.trim();
+    if (!name) return;
+    if (terminalWorkspaceState.workspaces.some((workspace) => workspace.id !== activeTerminalWorkspace.id && workspace.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      showToast("Choose a unique workspace name.");
+      return;
+    }
+    updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => ({ ...workspace, name }));
+  }, [activeTerminalWorkspace, showToast, terminalWorkspaceState.workspaces, updateTerminalWorkspace]);
+
+  const deleteWorkspace = useCallback(async () => {
+    const target = activeTerminalWorkspace;
+    if (!target || terminalWorkspaceState.workspaces.length <= 1) return;
+    if (!window.confirm(`Delete workspace "${target.name}" and close its terminals?`)) return;
+    const remaining = terminalWorkspaceState.workspaces.filter((workspace) => workspace.id !== target.id);
+    const closeResults = await Promise.allSettled(target.terminalIds.map((id) => isTauri() ? invoke("close_terminal", { sessionId: id }) : Promise.resolve()));
+    const failed = closeResults.find((result) => result.status === "rejected");
+    if (failed?.status === "rejected") showToast(`Could not close a workspace terminal: ${String(failed.reason)}`);
+    setTerminals((current) => current.filter((terminal) => !target.terminalIds.includes(terminal.id)));
+    setEditingTerminalId(null);
+    setTerminalWorkspaceState((current) => {
+      const workspaces = current.workspaces.filter((workspace) => workspace.id !== target.id);
+      return { workspaces, activeId: current.activeId === target.id ? workspaces[0]?.id ?? "" : current.activeId };
+    });
+    setRepoInfo(null);
+  }, [activeTerminalWorkspace, showToast, terminalWorkspaceState.workspaces]);
 
   const addWorkspaceFolders = useCallback(async () => {
     if (!isTauri()) {
@@ -285,10 +435,24 @@ function App() {
 
   const removeWorkspaceFolder = useCallback((path: string) => {
     const next = workspaceFolders.filter((folder) => folder !== path);
+    const fallback = next[next.length - 1] ?? "";
+    const affected = terminalWorkspaceState.workspaces.filter((workspace) => workspace.rootPath === path);
     setWorkspaceFolders(next);
-    if (repoPath === path) void activateWorkspaceFolder(next[next.length - 1] ?? "");
-  }, [activateWorkspaceFolder, repoPath, workspaceFolders]);
-
+    setTerminalWorkspaceState((current) => ({
+      ...current,
+      workspaces: current.workspaces.map((workspace) => workspace.rootPath === path ? { ...workspace, rootPath: fallback } : workspace),
+    }));
+    if (repoPath === path) setRepoInfo(null);
+    if (fallback && isTauri()) {
+      const affectedIds = new Set(affected.flatMap((workspace) => workspace.terminalIds));
+      void Promise.allSettled(terminals.filter((terminal) => affectedIds.has(terminal.id)).map((terminal) =>
+        invoke("write_terminal", { sessionId: terminal.id, data: changeDirectoryCommand(terminal.shell, fallback) }),
+      )).then((results) => {
+        const failed = results.find((result) => result.status === "rejected");
+        if (failed?.status === "rejected") showToast(`Could not change terminal working directory: ${String(failed.reason)}`);
+      });
+    }
+  }, [repoPath, showToast, terminalWorkspaceState.workspaces, terminals, workspaceFolders]);
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       const target = event.target;
@@ -301,17 +465,17 @@ function App() {
       else if (event.shiftKey && key === "v") { event.preventDefault(); void splitActiveTerminal("vertical"); }
       else if (event.shiftKey && key === "g") { event.preventDefault(); setActiveTool("changes"); }
       else if (event.shiftKey && key === "b") { event.preventDefault(); setActiveTool("graph"); }
-      else if (key === "tab" && terminals.length > 1) {
+      else if (key === "tab" && activeWorkspaceTerminals.length > 1) {
         event.preventDefault();
-        const index = terminals.findIndex((terminal) => terminal.id === activeTerminalId);
+        const index = activeWorkspaceTerminals.findIndex((terminal) => terminal.id === activeTerminalId);
         const direction = event.shiftKey ? -1 : 1;
-        const next = (index + direction + terminals.length) % terminals.length;
-        setActiveTerminalId(terminals[next].id);
+        const next = (index + direction + activeWorkspaceTerminals.length) % activeWorkspaceTerminals.length;
+        focusTerminal(activeWorkspaceTerminals[next].id);
       }
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [activeTerminalId, closeTerminal, createTerminal, splitActiveTerminal, terminals]);
+  }, [activeTerminalId, activeWorkspaceTerminals, closeTerminal, createTerminal, focusTerminal, splitActiveTerminal]);
 
   const activeTerminal = useMemo(
     () => terminals.find((terminal) => terminal.id === activeTerminalId),
@@ -339,21 +503,42 @@ function App() {
         <PanelResizeHandle className="resize-handle" aria-label="Resize developer tools" />
         <Panel minSize={35} className="terminal-panel">
           <div className="terminal-toolbar">
-            <div className="terminal-tabs" role={layout ? undefined : "group"} aria-label={layout ? "Terminal workspace actions" : "Terminal sessions"}>
-              {!layout && terminals.map((terminal) => <div key={terminal.id} className={`terminal-tab-item ${terminal.id === activeTerminalId ? "selected" : ""}`} role="presentation">
-                {editingTerminalId === terminal.id ? <TerminalNameEditor terminalName={terminal.name} value={terminalNameDraft} inputRef={terminalNameInputRef} compact onChange={setTerminalNameDraft} onSave={saveTerminalName} onCancel={cancelTerminalRename} /> : <>
-                  <button className={`terminal-tab ${terminal.id === activeTerminalId ? "selected" : ""}`} onClick={() => setActiveTerminalId(terminal.id)} onDoubleClick={() => beginRenameTerminal(terminal)} onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); void closeTerminal(terminal.id); } }} type="button" aria-pressed={terminal.id === activeTerminalId} aria-label={`${terminal.name}. Double-click to rename.`} title={terminal.name}><span className="terminal-dot" /><span className="terminal-tab-name">{terminal.name}</span></button>
-                  <button className="terminal-tab-rename" type="button" aria-label={`Rename ${terminal.name}`} title="Rename terminal" onClick={() => beginRenameTerminal(terminal)}>✎</button>
-                  {terminals.length > 1 && <button className="tab-close" type="button" aria-label={`Close ${terminal.name}`} title={`Close ${terminal.name}`} onClick={() => void closeTerminal(terminal.id)}>×</button>}
-                </>}
-              </div>)}
-              <button className="icon-button new-terminal" aria-label="Add terminal to workspace" title="Add terminal pane" onClick={() => void addTerminalToWorkspace()} type="button">＋</button>
+            <div className="terminal-workspace-toolbar">
+              <div className="workspace-switcher">
+                <span className="workspace-switcher-icon" aria-hidden="true">▣</span>
+                <select className="workspace-name-select" aria-label="Active terminal workspace" value={activeTerminalWorkspace?.id ?? ""} onChange={(event) => activateWorkspace(event.currentTarget.value)}>
+                  {terminalWorkspaceState.workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+                </select>
+                <button className="workspace-action" type="button" aria-label="Create workspace" title="Create workspace" onClick={createWorkspace}>＋</button>
+                <button className="workspace-action" type="button" aria-label="Rename workspace" title="Rename workspace" onClick={renameWorkspace} disabled={!activeTerminalWorkspace}>✎</button>
+                <button className="workspace-action delete" type="button" aria-label="Delete workspace" title={terminalWorkspaceState.workspaces.length <= 1 ? "Keep at least one workspace" : "Delete workspace"} onClick={() => void deleteWorkspace()} disabled={terminalWorkspaceState.workspaces.length <= 1}>×</button>
+              </div>
+              <label className="workspace-root-picker" title={repoPath || "Set a project folder for this workspace"}>
+                <span className="workspace-root-label">Folder</span>
+                <select aria-label="Workspace project folder" value={repoPath} onChange={(event) => void activateWorkspaceFolder(event.currentTarget.value)}>
+                  <option value="">No folder</option>
+                  {workspaceFolders.map((folder) => <option key={folder} value={folder}>{folder.split(/[\\/]/).filter(Boolean).pop() ?? folder}</option>)}
+                </select>
+                <button className="workspace-action add-folder" type="button" aria-label="Add folders to workspace" title="Add folders" onClick={() => void addWorkspaceFolders()}>＋</button>
+              </label>
             </div>
-            <div className="toolbar-actions"><button className="toolbar-button" type="button" aria-label="Split horizontally" title="Split side by side" onClick={() => void splitActiveTerminal("horizontal")} disabled={!activeTerminal}>▤</button><button className="toolbar-button" type="button" aria-label="Split vertically" title="Split top and bottom" onClick={() => void splitActiveTerminal("vertical")} disabled={!activeTerminal}>▥</button>{agentProfiles.map((profile) => <button className="agent-launch" key={profile.id} type="button" title={`Launch ${profile.name}`} onClick={() => createAgentTerminal(profile)}>{profile.id === "claude" ? "Claude" : profile.id === "codex" ? "Codex" : profile.name}</button>)}<span className="toolbar-divider" /><button className="toolbar-button" type="button" aria-label="Terminal options" disabled>···</button></div>
+            <div className="terminal-session-toolbar">
+              <div className="terminal-tabs" role={layout ? undefined : "tablist"} aria-label={layout ? "Terminal workspace actions" : "Terminal sessions"}>
+                {!layout && activeWorkspaceTerminals.map((terminal) => <div key={terminal.id} className={`terminal-tab-item ${terminal.id === activeTerminalId ? "selected" : ""}`} role="presentation">
+                  {editingTerminalId === terminal.id ? <TerminalNameEditor terminalName={terminal.name} value={terminalNameDraft} inputRef={terminalNameInputRef} compact onChange={setTerminalNameDraft} onSave={saveTerminalName} onCancel={cancelTerminalRename} /> : <>
+                    <button className={`terminal-tab ${terminal.id === activeTerminalId ? "selected" : ""}`} onClick={() => focusTerminal(terminal.id)} onDoubleClick={() => beginRenameTerminal(terminal)} onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); void closeTerminal(terminal.id); } }} type="button" role="tab" aria-selected={terminal.id === activeTerminalId} aria-label={`${terminal.name}. Double-click to rename.`} title={terminal.name}><span className="terminal-dot" /><span className="terminal-tab-name">{terminal.name}</span></button>
+                    <button className="terminal-tab-rename" type="button" aria-label={`Rename ${terminal.name}`} title="Rename terminal" onClick={() => beginRenameTerminal(terminal)}>✎</button>
+                    {activeWorkspaceTerminals.length > 1 && <button className="tab-close" type="button" aria-label={`Close ${terminal.name}`} title={`Close ${terminal.name}`} onClick={() => void closeTerminal(terminal.id)}>×</button>}
+                  </>}
+                </div>)}
+                <button className="icon-button new-terminal" aria-label="Add terminal to workspace" title="Add terminal pane" onClick={() => void addTerminalToWorkspace()} type="button">＋</button>
+              </div>
+              <div className="toolbar-actions"><button className="toolbar-button" type="button" aria-label="Split horizontally" title="Split side by side" onClick={() => void splitActiveTerminal("horizontal")} disabled={!activeTerminal}>▤</button><button className="toolbar-button" type="button" aria-label="Split vertically" title="Split top and bottom" onClick={() => void splitActiveTerminal("vertical")} disabled={!activeTerminal}>▥</button>{agentProfiles.map((profile) => <button className="agent-launch" key={profile.id} type="button" title={`Launch ${profile.name}`} onClick={() => createAgentTerminal(profile)}>{profile.id === "claude" ? "Claude" : profile.id === "codex" ? "Codex" : profile.name}</button>)}<span className="toolbar-divider" /><button className="toolbar-button" type="button" aria-label="Terminal options" disabled>···</button></div>
+            </div>
           </div>
           <section className="terminal-surface" aria-label="Terminal workspace">
             <TerminalWorkspaceLayout layout={layout} terminals={terminals} activeTerminalId={activeTerminalId} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} terminalNameInputRef={terminalNameInputRef} onRename={beginRenameTerminal} onNameChange={setTerminalNameDraft} onNameSave={saveTerminalName} onNameCancel={cancelTerminalRename} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
-            {terminals.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Welcome to <span>yerminal</span></div><p>Create a terminal to begin.</p><button className="primary-button" onClick={() => void createTerminal()} type="button">New Terminal</button></div>}
+            {activeWorkspaceTerminals.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Welcome to <span>yerminal</span></div><p>Create a terminal to begin.</p><button className="primary-button" onClick={() => void createTerminal()} type="button">New Terminal</button></div>}
 
             <div className="terminal-status"><span className="status-indicator" />{activeTerminal?.shellLabel ?? "No terminal"}<span className="status-separator">·</span>{activeTerminal ? "Running" : "Ready"}</div>
           </section>
