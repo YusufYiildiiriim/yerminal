@@ -402,7 +402,7 @@ function App() {
     const target = activeTerminalWorkspace;
     if (!target || terminalWorkspaceState.workspaces.length <= 1) return;
     if (!window.confirm(`Delete workspace "${target.name}" and close its terminals?`)) return;
-    const remaining = terminalWorkspaceState.workspaces.filter((workspace) => workspace.id !== target.id);
+
     const closeResults = await Promise.allSettled(target.terminalIds.map((id) => isTauri() ? invoke("close_terminal", { sessionId: id }) : Promise.resolve()));
     const failed = closeResults.find((result) => result.status === "rejected");
     if (failed?.status === "rejected") showToast(`Could not close a workspace terminal: ${String(failed.reason)}`);
