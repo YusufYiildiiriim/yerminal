@@ -1,0 +1,11 @@
+[[agents]]
+id = "claude"
+name = "Claude Code"
+command = "claude"
+args = []
+
+[[agents]]
+id = "codex"
+name = "Codex CLI"
+command = "codex"
+args = []

@@ -3,7 +3,7 @@ pub mod git;
 
 use std::sync::Mutex;
 use tauri::{Manager, State};
-use terminal::{SessionManager, ShellKind, TerminalInfo};
+use terminal::{SessionManager, ShellKind, TerminalInfo, AgentProfileInfo};
 use git::{CommitInfo, FileChange, RepositoryInfo};
 
 #[tauri::command]
@@ -28,6 +28,14 @@ fn close_terminal(manager: State<'_, Mutex<SessionManager>>, session_id: String)
 }
 
 #[tauri::command]
+fn list_agent_profiles() -> Result<Vec<AgentProfileInfo>, String> { terminal::agent_profile_list() }
+
+#[tauri::command]
+fn create_agent_terminal(app: tauri::AppHandle, manager: State<'_, Mutex<SessionManager>>, session_id: String, profile_id: String, working_directory: Option<String>, cols: u16, rows: u16) -> Result<TerminalInfo, String> {
+    manager.lock().map_err(|_| "Terminal manager is unavailable".to_owned())?.create_agent(app, session_id, &profile_id, working_directory, cols, rows)
+}
+
+#[tauri::command]
 fn git_repository_info(path: String) -> Result<RepositoryInfo, String> { git::repository_info(&path) }
 
 #[tauri::command]
@@ -43,7 +51,7 @@ fn git_history(path: String, skip: usize, limit: usize) -> Result<Vec<CommitInfo
 pub fn run() {
     tauri::Builder::default()
         .manage(Mutex::new(SessionManager::default()))
-        .invoke_handler(tauri::generate_handler![create_terminal, write_terminal, resize_terminal, close_terminal, git_repository_info, git_status, git_diff, git_history])
+        .invoke_handler(tauri::generate_handler![create_terminal, create_agent_terminal, list_agent_profiles, write_terminal, resize_terminal, close_terminal, git_repository_info, git_status, git_diff, git_history])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
                 if let Some(manager) = window.app_handle().try_state::<Mutex<SessionManager>>() {

@@ -7,7 +7,8 @@ const TerminalPane = lazy(() => import("./features/terminal/TerminalPane"));
 
 type ToolId = "changes" | "graph";
 type ShellKind = "powershell" | "bash" | "zsh";
-type TerminalSession = { id: string; name: string; shell: ShellKind; shellLabel: string };
+type TerminalSession = { id: string; name: string; shell: ShellKind; shellLabel: string; profileId?: string; workingDirectory: string | null };
+type AgentProfile = { id: string; name: string };
 type LayoutNode = { type: "terminal"; sessionId: string } | { type: "split"; id: string; direction: "horizontal" | "vertical"; children: [LayoutNode, LayoutNode] };
 type RepositoryInfo = { root: string; branch: string; state: string };
 type FileChange = { path: string; kind: string; staged: boolean; unstaged: boolean };
@@ -22,6 +23,7 @@ function App() {
   const [activeTool, setActiveTool] = useState<ToolId>("changes");
   const [repoPath, setRepoPath] = useState("");
   const [repoInfo, setRepoInfo] = useState<RepositoryInfo | null>(null);
+  const [agentProfiles, setAgentProfiles] = useState<AgentProfile[]>([]);
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
   const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutNode | null>(null);
@@ -42,6 +44,7 @@ function App() {
         name: terminals.length === 0 ? (shell === "powershell" ? "PowerShell" : shell) : `Terminal ${terminals.length + 1}`,
         shell,
         shellLabel: shell === "powershell" ? "PowerShell" : shell,
+        workingDirectory: repoPath || null,
       };
       setTerminals((current) => [...current, terminal]);
       setActiveTerminalId(id);
@@ -51,13 +54,18 @@ function App() {
       setError(String(reason));
       return null;
     }
-  }, [terminals.length]);
+  }, [repoPath, terminals.length]);
 
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
     if (terminals.length === 0 && !error) void createTerminal();
   }, [createTerminal, error, terminals.length]);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    void invoke<AgentProfile[]>("list_agent_profiles").then(setAgentProfiles).catch((reason: unknown) => setError(String(reason)));
+  }, []);
 
   const closeTerminal = useCallback(async (id: string) => {
     if (isTauri()) {
@@ -86,6 +94,22 @@ function App() {
     });
   }, [activeTerminalId, createTerminal]);
 
+  const createAgentTerminal = useCallback((profile: AgentProfile) => {
+    const id = crypto.randomUUID();
+    const terminal: TerminalSession = {
+      id,
+      name: profile.name,
+      shell: navigator.userAgent.includes("Windows") ? "powershell" : "bash",
+      shellLabel: profile.name,
+      profileId: profile.id,
+      workingDirectory: repoPath || null,
+    };
+    setTerminals((current) => [...current, terminal]);
+    setActiveTerminalId(id);
+    setLayout(null);
+    setError(null);
+  }, [repoPath]);
+
   const renameTerminal = useCallback((terminal: TerminalSession) => {
     const name = window.prompt("Terminal name", terminal.name)?.trim();
     if (!name) return;
@@ -105,6 +129,30 @@ function App() {
       setError(String(reason));
     }
   }, [repoPath]);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable)) return;
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      if (event.shiftKey && key === "t") { event.preventDefault(); void createTerminal(); }
+      else if (event.shiftKey && key === "w" && activeTerminalId) { event.preventDefault(); void closeTerminal(activeTerminalId); }
+      else if (event.shiftKey && key === "h") { event.preventDefault(); void splitActiveTerminal("horizontal"); }
+      else if (event.shiftKey && key === "v") { event.preventDefault(); void splitActiveTerminal("vertical"); }
+      else if (event.shiftKey && key === "g") { event.preventDefault(); setActiveTool("changes"); }
+      else if (event.shiftKey && key === "b") { event.preventDefault(); setActiveTool("graph"); }
+      else if (key === "tab" && terminals.length > 1) {
+        event.preventDefault();
+        const index = terminals.findIndex((terminal) => terminal.id === activeTerminalId);
+        const direction = event.shiftKey ? -1 : 1;
+        const next = (index + direction + terminals.length) % terminals.length;
+        setActiveTerminalId(terminals[next].id);
+      }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [activeTerminalId, closeTerminal, createTerminal, splitActiveTerminal, terminals]);
 
   const activeTerminal = useMemo(
     () => terminals.find((terminal) => terminal.id === activeTerminalId),
@@ -140,17 +188,17 @@ function App() {
               {terminals.map((terminal) => <button key={terminal.id} className={`terminal-tab ${terminal.id === activeTerminalId ? "selected" : ""}`} onClick={() => setActiveTerminalId(terminal.id)} onDoubleClick={() => renameTerminal(terminal)} type="button" role="tab" aria-selected={terminal.id === activeTerminalId}><span className="terminal-dot" />{terminal.name}{terminals.length > 1 && <span className="tab-close" role="button" aria-label={`Close ${terminal.name}`} onClick={(event) => { event.stopPropagation(); void closeTerminal(terminal.id); }}>×</span>}</button>)}
               <button className="icon-button new-terminal" aria-label="New terminal" onClick={() => void createTerminal()} type="button">＋</button>
             </div>
-            <div className="toolbar-actions"><button className="toolbar-button" type="button" aria-label="Split horizontally" title="Split side by side" onClick={() => void splitActiveTerminal("horizontal")} disabled={!activeTerminal}>▤</button><button className="toolbar-button" type="button" aria-label="Split vertically" title="Split top and bottom" onClick={() => void splitActiveTerminal("vertical")} disabled={!activeTerminal}>▥</button><span className="toolbar-divider" /><button className="toolbar-button" type="button" aria-label="Terminal options" disabled>···</button></div>
+            <div className="toolbar-actions"><button className="toolbar-button" type="button" aria-label="Split horizontally" title="Split side by side" onClick={() => void splitActiveTerminal("horizontal")} disabled={!activeTerminal}>▤</button><button className="toolbar-button" type="button" aria-label="Split vertically" title="Split top and bottom" onClick={() => void splitActiveTerminal("vertical")} disabled={!activeTerminal}>▥</button>{agentProfiles.map((profile) => <button className="agent-launch" key={profile.id} type="button" title={`Launch ${profile.name}`} onClick={() => createAgentTerminal(profile)}>{profile.id === "claude" ? "Claude" : profile.id === "codex" ? "Codex" : profile.name}</button>)}<span className="toolbar-divider" /><button className="toolbar-button" type="button" aria-label="Terminal options" disabled>···</button></div>
           </div>
           <section className="terminal-surface" aria-label="Terminal workspace">
             {layout
               ? <TerminalLayout node={layout} terminals={terminals} activeTerminalId={activeTerminalId} onFocus={focusTerminal} onExit={handleTerminalExit} />
-              : terminals.map((terminal) => <Suspense key={terminal.id} fallback={<div className="terminal-placeholder">Loading terminal…</div>}><TerminalPane sessionId={terminal.id} shell={terminal.shell} active={terminal.id === activeTerminalId} visible={terminal.id === activeTerminalId} onFocus={focusTerminal} onExit={handleTerminalExit} /></Suspense>)}
+              : terminals.map((terminal) => <Suspense key={terminal.id} fallback={<div className="terminal-placeholder">Loading terminal…</div>}><TerminalPane sessionId={terminal.id} shell={terminal.shell} profileId={terminal.profileId} workingDirectory={terminal.workingDirectory} active={terminal.id === activeTerminalId} visible={terminal.id === activeTerminalId} onFocus={focusTerminal} onExit={handleTerminalExit} /></Suspense>)}
             {terminals.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Welcome to <span>yerminal</span></div><p>{error ?? "Create a terminal to begin."}</p><button className="primary-button" onClick={() => void createTerminal()} type="button">New Terminal</button></div>}
             {error && terminals.length > 0 && <div className="terminal-error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError(null)} type="button">×</button></div>}
             <div className="terminal-status"><span className="status-indicator" />{activeTerminal?.shellLabel ?? "No terminal"}<span className="status-separator">·</span>{activeTerminal ? "Running" : "Ready"}</div>
           </section>
-          <footer className="statusbar"><span><span className="status-indicator" />No folder opened</span><span>UTF-8</span><span>Windows</span></footer>
+          <footer className="statusbar"><span><span className="status-indicator" />{repoInfo ? `${repoInfo.branch} · ${repoInfo.state}` : "No folder opened"}</span><span>UTF-8</span><span>{navigator.userAgent.includes("Windows") ? "Windows" : navigator.platform}</span></footer>
         </Panel>
       </PanelGroup>
     </main>
@@ -230,7 +278,7 @@ function TerminalLayout({ node, terminals, activeTerminalId, onFocus, onExit }: 
   if (node.type === "terminal") {
     const terminal = terminals.find((item) => item.id === node.sessionId);
     if (!terminal) return null;
-    return <Suspense fallback={<div className="terminal-placeholder">Loading terminal…</div>}><TerminalPane sessionId={terminal.id} shell={terminal.shell} active={terminal.id === activeTerminalId} visible onFocus={onFocus} onExit={onExit} /></Suspense>;
+    return <Suspense fallback={<div className="terminal-placeholder">Loading terminal…</div>}><TerminalPane sessionId={terminal.id} shell={terminal.shell} profileId={terminal.profileId} workingDirectory={terminal.workingDirectory} active={terminal.id === activeTerminalId} visible onFocus={onFocus} onExit={onExit} /></Suspense>;
   }
 
   return (

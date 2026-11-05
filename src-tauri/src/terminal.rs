@@ -7,7 +7,7 @@ use std::{
 };
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize, PtySystem};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
 #[derive(Clone, Copy, serde::Deserialize)]
@@ -23,6 +23,27 @@ pub struct TerminalInfo {
     pub id: String,
     pub shell: String,
     pub working_directory: String,
+}
+
+#[derive(Clone, Deserialize)]
+pub struct AgentProfile {
+    pub id: String,
+    pub name: String,
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct AgentConfig {
+    agents: Vec<AgentProfile>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentProfileInfo {
+    pub id: String,
+    pub name: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -53,20 +74,51 @@ impl SessionManager {
         cols: u16,
         rows: u16,
     ) -> Result<TerminalInfo, String> {
+        let cwd = resolve_working_directory(working_directory)?;
+        let executable = resolve_shell(shell)?;
+        self.spawn_process(app, id, executable, Vec::new(), shell.label().to_owned(), cwd, cols, rows)
+    }
+
+    pub fn create_agent(
+        &mut self,
+        app: AppHandle,
+        id: String,
+        profile_id: &str,
+        working_directory: Option<String>,
+        cols: u16,
+        rows: u16,
+    ) -> Result<TerminalInfo, String> {
+        let profile = agent_profiles()?.into_iter().find(|profile| profile.id == profile_id)
+            .ok_or_else(|| format!("Unknown agent profile: {profile_id}"))?;
+        let cwd = resolve_working_directory(working_directory)?;
+        let executable = resolve_program(&profile.command)?;
+        self.spawn_process(app, id, executable, profile.args, profile.name, cwd, cols, rows)
+    }
+
+    fn spawn_process(
+        &mut self,
+        app: AppHandle,
+        id: String,
+        executable: String,
+        args: Vec<String>,
+        label: String,
+        cwd: PathBuf,
+        cols: u16,
+        rows: u16,
+    ) -> Result<TerminalInfo, String> {
         if id.is_empty() || id.len() > 64 || !id.chars().all(|character| character.is_ascii_alphanumeric() || character == '-') {
             return Err("Invalid terminal session identifier".to_owned());
         }
         if self.sessions.contains_key(&id) {
             return Err("Terminal session identifier already exists".to_owned());
         }
-        let cwd = resolve_working_directory(working_directory)?;
-        let executable = resolve_shell(shell)?;
         let pty = native_pty_system();
         let pair = pty
             .openpty(PtySize { rows: rows.clamp(2, 300), cols: cols.clamp(2, 500), pixel_width: 0, pixel_height: 0 })
             .map_err(|error| format!("Could not create terminal: {error}"))?;
 
         let mut command = CommandBuilder::new(&executable);
+        command.args(args);
         command.cwd(&cwd);
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");
@@ -91,7 +143,7 @@ impl SessionManager {
 
         Ok(TerminalInfo {
             id,
-            shell: shell.label().to_owned(),
+            shell: label,
             working_directory: cwd.to_string_lossy().into_owned(),
         })
     }
@@ -133,6 +185,16 @@ impl SessionManager {
     }
 }
 
+pub fn agent_profiles() -> Result<Vec<AgentProfile>, String> {
+    toml::from_str::<AgentConfig>(include_str!("../agents.toml"))
+        .map(|config| config.agents)
+        .map_err(|error| format!("Could not load agent profiles: {error}"))
+}
+
+pub fn agent_profile_list() -> Result<Vec<AgentProfileInfo>, String> {
+    agent_profiles().map(|profiles| profiles.into_iter().map(|profile| AgentProfileInfo { id: profile.id, name: profile.name }).collect())
+}
+
 impl ShellKind {
     fn label(self) -> &'static str {
         match self { Self::Powershell => "PowerShell", Self::Bash => "Bash", Self::Zsh => "Zsh" }
@@ -163,16 +225,28 @@ fn resolve_shell(shell: ShellKind) -> Result<String, String> {
         ShellKind::Bash => vec!["bash".into()],
         ShellKind::Zsh => vec!["zsh".into()],
     };
-    candidates.into_iter().find(|candidate| executable_on_path(candidate))
+    candidates.into_iter().find_map(|candidate| resolve_program(&candidate).ok())
         .ok_or_else(|| format!("{} is not installed or not available on PATH", shell.label()))
 }
 
-fn executable_on_path(executable: &str) -> bool {
-    if executable.contains(std::path::MAIN_SEPARATOR) {
-        return PathBuf::from(executable).is_file();
+fn resolve_program(program: &str) -> Result<String, String> {
+    let path = PathBuf::from(program);
+    if path.is_absolute() || program.contains(std::path::MAIN_SEPARATOR) {
+        return path.is_file().then(|| path.to_string_lossy().into_owned())
+            .ok_or_else(|| format!("Configured executable was not found: {program}"));
     }
-    std::env::var_os("PATH").into_iter().flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
-        .any(|directory| directory.join(executable).is_file())
+    if let Some(paths) = std::env::var_os("PATH") {
+        for directory in std::env::split_paths(&paths) {
+            let candidate = directory.join(program);
+            if candidate.is_file() { return Ok(candidate.to_string_lossy().into_owned()); }
+            #[cfg(target_os = "windows")]
+            for extension in ["exe", "cmd", "bat"] {
+                let candidate = directory.join(format!("{program}.{extension}"));
+                if candidate.is_file() { return Ok(candidate.to_string_lossy().into_owned()); }
+            }
+        }
+    }
+    Err(format!("Configured executable was not found on PATH: {program}"))
 }
 
 fn spawn_output_reader(app: AppHandle, session_id: String, mut reader: Box<dyn Read + Send>) -> Result<(), String> {

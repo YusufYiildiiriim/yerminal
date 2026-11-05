@@ -7,9 +7,9 @@ import "@xterm/xterm/css/xterm.css";
 
 type TerminalOutput = { sessionId: string; data: string };
 type ShellKind = "powershell" | "bash" | "zsh";
-type TerminalPaneProps = { sessionId: string; shell: ShellKind; active: boolean; visible: boolean; onFocus: (sessionId: string) => void; onExit: (sessionId: string) => void };
+type TerminalPaneProps = { sessionId: string; shell: ShellKind; profileId?: string; workingDirectory: string | null; active: boolean; visible: boolean; onFocus: (sessionId: string) => void; onExit: (sessionId: string) => void };
 
-export function TerminalPane({ sessionId, shell, active, visible, onFocus, onExit }: TerminalPaneProps) {
+export function TerminalPane({ sessionId, shell, profileId, workingDirectory, active, visible, onFocus, onExit }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -87,13 +87,11 @@ export function TerminalPane({ sessionId, shell, active, visible, onFocus, onExi
         return;
       }
       try {
-        await invoke("create_terminal", {
-          sessionId,
-          shell,
-          workingDirectory: null,
-          cols: Math.max(2, terminal.cols),
-          rows: Math.max(2, terminal.rows),
-        });
+        if (profileId) {
+          await invoke("create_agent_terminal", { sessionId, profileId, workingDirectory, cols: Math.max(2, terminal.cols), rows: Math.max(2, terminal.rows) });
+        } else {
+          await invoke("create_terminal", { sessionId, shell, workingDirectory, cols: Math.max(2, terminal.cols), rows: Math.max(2, terminal.rows) });
+        }
       } catch (error) {
         terminal.writeln(`\r\n[terminal start error: ${String(error)}]`);
         onExit(sessionId);
@@ -128,7 +126,7 @@ export function TerminalPane({ sessionId, shell, active, visible, onFocus, onExi
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [sessionId, shell, onExit, onFocus]);
+  }, [sessionId, shell, profileId, workingDirectory, onExit, onFocus]);
 
   useEffect(() => {
     if (!visible || !terminalRef.current || !fitRef.current) return;
