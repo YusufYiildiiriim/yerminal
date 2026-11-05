@@ -9,6 +9,9 @@ type ToolId = "changes" | "graph";
 type ShellKind = "powershell" | "bash" | "zsh";
 type TerminalSession = { id: string; name: string; shell: ShellKind; shellLabel: string };
 type LayoutNode = { type: "terminal"; sessionId: string } | { type: "split"; id: string; direction: "horizontal" | "vertical"; children: [LayoutNode, LayoutNode] };
+type RepositoryInfo = { root: string; branch: string; state: string };
+type FileChange = { path: string; kind: string; staged: boolean; unstaged: boolean };
+type CommitInfo = { id: string; shortId: string; message: string; author: string; timestamp: number; parents: string[]; branches: string[] };
 
 const tools: { id: ToolId; label: string; icon: string }[] = [
   { id: "changes", label: "Git Changes", icon: "◫" },
@@ -17,6 +20,8 @@ const tools: { id: ToolId; label: string; icon: string }[] = [
 
 function App() {
   const [activeTool, setActiveTool] = useState<ToolId>("changes");
+  const [repoPath, setRepoPath] = useState("");
+  const [repoInfo, setRepoInfo] = useState<RepositoryInfo | null>(null);
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
   const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutNode | null>(null);
@@ -87,6 +92,20 @@ function App() {
     setTerminals((current) => current.map((item) => item.id === terminal.id ? { ...item, name } : item));
   }, []);
 
+  const openRepository = useCallback(async () => {
+    const path = window.prompt("Repository folder path", repoPath)?.trim();
+    if (!path) return;
+    try {
+      const info = await invoke<RepositoryInfo>("git_repository_info", { path });
+      setRepoPath(path);
+      setRepoInfo(info);
+      setError(null);
+    } catch (reason) {
+      setRepoInfo(null);
+      setError(String(reason));
+    }
+  }, [repoPath]);
+
   const activeTerminal = useMemo(
     () => terminals.find((terminal) => terminal.id === activeTerminalId),
     [activeTerminalId, terminals],
@@ -98,7 +117,7 @@ function App() {
         <div className="brand-mark">y</div>
         <span className="brand-name">yerminal</span>
         <span className="title-divider" />
-        <button className="repo-select" type="button"><span className="repo-glyph">⌂</span> Open a folder <span className="chevron">⌄</span></button>
+        <button className="repo-select" type="button" onClick={() => void openRepository()}><span className="repo-glyph">⌂</span> {repoInfo ? `${repoInfo.root} · ${repoInfo.branch}` : "Open a folder"} <span className="chevron">⌄</span></button>
         <div className="titlebar-spacer" />
         <span className="window-caption">Agent Workspace</span>
         <button className="icon-button window-control" aria-label="Minimize" type="button">−</button>
@@ -108,7 +127,7 @@ function App() {
 
       <PanelGroup direction="horizontal" className="workspace">
         <Panel defaultSize={27} minSize={18} maxSize={46} className="tools-panel">
-          <section className="tool-content">{activeTool === "changes" ? <GitChanges /> : <GitGraph />}</section>
+          <section className="tool-content">{activeTool === "changes" ? <GitChanges repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void openRepository()} /> : <GitGraph repoPath={repoPath} />}</section>
           <nav className="tool-tabs" aria-label="Developer tools">
             {tools.map((tool) => <button key={tool.id} className={`tool-tab ${activeTool === tool.id ? "selected" : ""}`} onClick={() => setActiveTool(tool.id)} type="button"><span className="tool-icon">{tool.icon}</span>{tool.label}</button>)}
             <button className="tool-tab add-tool" aria-label="Add tool" type="button">＋</button>
@@ -138,12 +157,65 @@ function App() {
   );
 }
 
-function GitChanges() {
-  return <div className="tool-view"><header className="tool-header"><div><h1>Git Changes</h1><p>Review your working tree</p></div><button className="icon-button refresh-button" aria-label="Refresh changes" type="button">↻</button></header><div className="empty-repository"><div className="empty-icon">⌂</div><h2>No repository opened</h2><p>Open a folder to view its changes.</p><button className="primary-button" type="button">Open Folder</button></div><div className="panel-footnote"><span className="read-only-mark">◉</span> Read-only Git tools</div></div>;
+function GitChanges({ repoPath, repoInfo, onOpenRepository }: { repoPath: string; repoInfo: RepositoryInfo | null; onOpenRepository: () => void }) {
+  const [changes, setChanges] = useState<FileChange[]>([]);
+  const [selected, setSelected] = useState<FileChange | null>(null);
+  const [selectedStaged, setSelectedStaged] = useState(false);
+  const [diff, setDiff] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!repoPath || !isTauri()) return;
+    try { setChanges(await invoke<FileChange[]>("git_status", { path: repoPath })); setError(null); }
+    catch (reason) { setError(String(reason)); }
+  }, [repoPath]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { setSelected(null); setSelectedStaged(false); }, [repoPath]);
+  useEffect(() => {
+    if (!selected || !repoPath || !isTauri()) { setDiff(""); return; }
+    void invoke<string>("git_diff", { path: repoPath, filePath: selected.path, staged: selectedStaged })
+      .then(setDiff).catch((reason: unknown) => setError(String(reason)));
+  }, [repoPath, selected, selectedStaged]);
+
+  return <div className="tool-view">
+    <header className="tool-header"><div><h1>Git Changes</h1><p>{repoInfo ? `${repoInfo.branch} · ${changes.length} changed` : "Review your working tree"}</p></div><button className="icon-button refresh-button" aria-label="Refresh changes" onClick={() => void refresh()} type="button">↻</button></header>
+    {!repoInfo ? <div className="empty-repository"><div className="empty-icon">⌂</div><h2>No repository opened</h2><p>Open a folder to view its changes.</p><button className="primary-button" onClick={onOpenRepository} type="button">Open Folder</button></div> : <>
+      {error && <div className="git-error" role="alert">{error}</div>}
+      <div className="change-list">{changes.length === 0 ? <div className="change-empty">Working tree clean</div> : changes.map((change) => <button key={change.path} className={`change-row ${selected?.path === change.path ? "selected" : ""}`} onClick={() => { setSelected(change); setSelectedStaged(change.staged && !change.unstaged); }} type="button"><span className={`change-kind ${change.kind}`}>{change.kind === "modified" ? "M" : change.kind === "deleted" ? "D" : change.kind === "untracked" ? "?" : change.kind === "renamed" ? "R" : "A"}</span><span className="change-path" title={change.path}>{change.path}</span>{change.staged && <span className="change-badge">S</span>}{change.unstaged && <span className="change-badge unstaged">U</span>}</button>)}</div>
+      {selected && <section className="diff-view"><div className="diff-heading"><span>{selected.path}</span>{selected.staged && selected.unstaged && <div className="diff-sides"><button className={selectedStaged ? "active" : ""} onClick={() => setSelectedStaged(true)} type="button">Index</button><button className={!selectedStaged ? "active" : ""} onClick={() => setSelectedStaged(false)} type="button">Working Tree</button></div>}<button onClick={() => setSelected(null)} aria-label="Close diff" type="button">×</button></div><pre>{diff || "No diff available for this selection."}</pre></section>}
+    </>}
+    <div className="panel-footnote"><span className="read-only-mark">◉</span> Read-only Git tools</div>
+  </div>;
 }
 
-function GitGraph() {
-  return <div className="tool-view"><header className="tool-header"><div><h1>Git Graph</h1><p>Repository commit history</p></div><button className="icon-button refresh-button" aria-label="Refresh history" type="button">↻</button></header><div className="empty-repository graph-empty"><div className="graph-preview"><span /><span /><span /></div><h2>History unavailable</h2><p>Open a Git repository to browse its commit graph.</p></div><div className="panel-footnote"><span className="read-only-mark">◉</span> Incremental history loading</div></div>;
+function GitGraph({ repoPath }: { repoPath: string }) {
+  const [commits, setCommits] = useState<CommitInfo[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const load = useCallback(async (append: boolean) => {
+    if (!repoPath || !isTauri() || loading) return;
+    setLoading(true);
+    try {
+      const more = await invoke<CommitInfo[]>("git_history", { path: repoPath, skip: append ? commits.length : 0, limit: 50 });
+      setCommits((current) => append ? [...current, ...more] : more);
+      setError(null);
+    } catch (reason) { setError(String(reason)); }
+    finally { setLoading(false); }
+  }, [commits.length, loading, repoPath]);
+  useEffect(() => { setCommits([]); void load(false); }, [repoPath]);
+
+  return <div className="tool-view">
+    <header className="tool-header"><div><h1>Git Graph</h1><p>{repoPath ? `${commits.length} commits loaded` : "Repository commit history"}</p></div><button className="icon-button refresh-button" aria-label="Refresh history" onClick={() => void load(false)} type="button">↻</button></header>
+    {!repoPath ? <div className="empty-repository graph-empty"><div className="graph-preview"><span /><span /><span /></div><h2>History unavailable</h2><p>Open a Git repository to browse its commit graph.</p></div> : <>
+      {error && <div className="git-error" role="alert">{error}</div>}
+      <div className="commit-list">{commits.map((commit) => <div className="commit-row" key={commit.id}><div className="commit-rail"><svg aria-hidden="true"><line x1="10" y1="0" x2="10" y2="100%" className="commit-line" /></svg><span className="commit-node" /></div><div className="commit-info"><div className="commit-message" title={commit.message}>{commit.message}</div><div className="commit-meta"><code>{commit.shortId}</code><span>{commit.author}</span><time>{new Date(commit.timestamp * 1000).toLocaleDateString()}</time></div>{commit.branches.map((branch) => <span className="branch-label" key={branch}>{branch}</span>)}</div></div>)}
+        {commits.length === 0 && !loading && <div className="change-empty">No commits found.</div>}
+      </div>
+      {commits.length > 0 && <button className="load-more" onClick={() => void load(true)} disabled={loading} type="button">{loading ? "Loading…" : "Load more commits"}</button>}
+    </>}
+    <div className="panel-footnote"><span className="read-only-mark">◉</span> Incremental history loading</div>
+  </div>;
 }
 
 type TerminalLayoutProps = {
