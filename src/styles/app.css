@@ -88,3 +88,20 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .change-list::-webkit-scrollbar-track, .commit-list::-webkit-scrollbar-track, .diff-view pre::-webkit-scrollbar-track { background: #15161a; }
 .change-list::-webkit-scrollbar-thumb, .commit-list::-webkit-scrollbar-thumb, .diff-view pre::-webkit-scrollbar-thumb { border: 2px solid #15161a; border-radius: 8px; background: #45434f; }
 .change-list::-webkit-scrollbar-thumb:hover, .commit-list::-webkit-scrollbar-thumb:hover, .diff-view pre::-webkit-scrollbar-thumb:hover { background: #625c72; }
+
+.diff-code { flex: 1; min-height: 0; overflow: auto; padding: 8px 0; background: #101114; color: #c3c5cb; font: 10px/1.6 "Cascadia Code", Consolas, monospace; white-space: pre; outline: none; }
+.diff-line { display: flex; min-height: 16px; padding-right: 12px; }
+.diff-line code { font: inherit; }
+.diff-line-marker { width: 24px; flex: 0 0 24px; padding-right: 8px; color: #646772; text-align: right; user-select: none; }
+.diff-line.added { background: #14251d; color: #a8dbb8; }
+.diff-line.added .diff-line-marker { color: #7ec99a; }
+.diff-line.removed { background: #2b191d; color: #e2a2a8; }
+.diff-line.removed .diff-line-marker { color: #e17b84; }
+.diff-line.hunk { margin: 3px 0; padding: 2px 0; background: #211e2d; color: #b7a9e9; }
+.diff-line.meta { color: #858995; }
+.diff-empty { flex: 1; display: grid; place-items: center; padding: 20px; color: #858792; font-size: 11px; }
+.diff-code { scrollbar-color: #45434f #15161a; scrollbar-width: thin; }
+.diff-code::-webkit-scrollbar { width: 8px; height: 8px; }
+.diff-code::-webkit-scrollbar-track { background: #15161a; }
+.diff-code::-webkit-scrollbar-thumb { border: 2px solid #15161a; border-radius: 8px; background: #45434f; }
+.diff-code::-webkit-scrollbar-thumb:hover { background: #625c72; }
