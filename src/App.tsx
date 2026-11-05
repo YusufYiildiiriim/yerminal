@@ -319,10 +319,9 @@ function GitGraph({ repoPath, onError }: { repoPath: string; onError: (message: 
     setDetailLoading(true);
     try {
       setCommitFiles(await invoke<CommitFileChange[]>("git_commit_files", { path: repoPath, commitId: commit.id }));
-      setError(null);
-    } catch (reason) { setError(String(reason)); }
+    } catch (reason) { onError(String(reason)); }
     finally { setDetailLoading(false); }
-  }, [repoPath]);
+  }, [onError, repoPath]);
 
   const selectFile = useCallback(async (filePath: string) => {
     if (!repoPath || !selectedCommit || !isTauri()) return;
@@ -330,9 +329,8 @@ function GitGraph({ repoPath, onError }: { repoPath: string; onError: (message: 
     setFileDiff("");
     try {
       setFileDiff(await invoke<string>("git_commit_file_diff", { path: repoPath, commitId: selectedCommit.id, filePath }));
-      setError(null);
-    } catch (reason) { setError(String(reason)); }
-  }, [repoPath, selectedCommit]);
+    } catch (reason) { onError(String(reason)); }
+  }, [onError, repoPath, selectedCommit]);
 
   useEffect(() => {
     setSelectedCommit(null);
@@ -344,7 +342,6 @@ function GitGraph({ repoPath, onError }: { repoPath: string; onError: (message: 
   return <div className="tool-view">
     <header className="tool-header"><div><h1>Git Graph</h1><p>{repoPath ? `${commits.length} commits loaded` : "Repository commit history"}</p></div><button className="icon-button refresh-button" aria-label="Refresh history" onClick={() => void load(false)} type="button">↻</button></header>
     {!repoPath ? <div className="empty-repository graph-empty"><div className="graph-preview"><span /><span /><span /></div><h2>History unavailable</h2><p>Open a Git repository to browse its commit graph.</p></div> : <>
-      {error && <div className="git-error" role="alert">{error}</div>}
       <div className="commit-list">{commits.map((commit) => <button className={`commit-row ${selectedCommit?.id === commit.id ? "selected" : ""}`} key={commit.id} onClick={() => void selectCommit(commit)} type="button" aria-pressed={selectedCommit?.id === commit.id}><span className="commit-rail"><svg aria-hidden="true"><line x1="10" y1="0" x2="10" y2="100%" className="commit-line" /></svg><span className="commit-node" /></span><span className="commit-info"><span className="commit-message" title={commit.message}>{commit.message}</span><span className="commit-meta"><code>{commit.shortId}</code><span>{commit.author}</span><time>{new Date(commit.timestamp * 1000).toLocaleDateString()}</time></span>{commit.branches.map((branch) => <span className="branch-label" key={branch}>{branch}</span>)}</span></button>)}
         {commits.length === 0 && !loading && <div className="change-empty">No commits found.</div>}
       </div>
