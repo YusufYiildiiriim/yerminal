@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { DiffViewer } from "./features/git/DiffViewer";
@@ -11,7 +11,7 @@ type ToolId = "changes" | "graph";
 type ShellKind = "powershell" | "bash" | "zsh";
 type TerminalSession = { id: string; name: string; shell: ShellKind; shellLabel: string; profileId?: string; workingDirectory: string | null };
 type AgentProfile = { id: string; name: string };
-type LayoutNode = { type: "terminal"; sessionId: string } | { type: "split"; id: string; direction: "horizontal" | "vertical"; children: [LayoutNode, LayoutNode] };
+type LayoutNode = { type: "terminal"; sessionId: string } | { type: "split"; id: string; direction: "horizontal" | "vertical"; ratio: number; children: [LayoutNode, LayoutNode] };
 type RepositoryInfo = { root: string; branch: string; state: string };
 type FileChange = { path: string; kind: string; staged: boolean; unstaged: boolean };
 type CommitInfo = { id: string; shortId: string; message: string; author: string; timestamp: number; parents: string[]; branches: string[] };
@@ -121,10 +121,10 @@ function App() {
     const created = await createTerminal(false);
     if (!created) return;
     setLayout((current) => {
-      const root = current ?? { type: "terminal" as const, sessionId: activeTerminalId };
+      const root = current ?? buildTerminalLayout(terminals.map((terminal) => terminal.id));
       return splitTerminal(root, activeTerminalId, created.id, direction);
     });
-  }, [activeTerminalId, createTerminal]);
+  }, [activeTerminalId, createTerminal, terminals]);
 
   const addTerminalToWorkspace = useCallback(async () => {
     if (!activeTerminalId) {
@@ -134,6 +134,15 @@ function App() {
     await splitActiveTerminal("horizontal");
   }, [activeTerminalId, createTerminal, splitActiveTerminal]);
 
+  const moveTerminal = useCallback((sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+    setLayout((current) => current ? swapTerminalPositions(current, sourceId, targetId) : null);
+    setActiveTerminalId(sourceId);
+  }, []);
+
+  const resizeLayoutSplit = useCallback((splitId: string, ratio: number) => {
+    setLayout((current) => current ? updateSplitRatio(current, splitId, ratio) : null);
+  }, []);
   const createAgentTerminal = useCallback((profile: AgentProfile) => {
     const id = crypto.randomUUID();
     const terminal: TerminalSession = {
@@ -244,9 +253,7 @@ function App() {
             <div className="toolbar-actions"><button className="toolbar-button" type="button" aria-label="Split horizontally" title="Split side by side" onClick={() => void splitActiveTerminal("horizontal")} disabled={!activeTerminal}>▤</button><button className="toolbar-button" type="button" aria-label="Split vertically" title="Split top and bottom" onClick={() => void splitActiveTerminal("vertical")} disabled={!activeTerminal}>▥</button>{agentProfiles.map((profile) => <button className="agent-launch" key={profile.id} type="button" title={`Launch ${profile.name}`} onClick={() => createAgentTerminal(profile)}>{profile.id === "claude" ? "Claude" : profile.id === "codex" ? "Codex" : profile.name}</button>)}<span className="toolbar-divider" /><button className="toolbar-button" type="button" aria-label="Terminal options" disabled>···</button></div>
           </div>
           <section className="terminal-surface" aria-label="Terminal workspace">
-            {layout
-              ? <TerminalLayout node={layout} terminals={terminals} activeTerminalId={activeTerminalId} onFocus={focusTerminal} onExit={handleTerminalExit} />
-              : terminals.map((terminal) => <Suspense key={terminal.id} fallback={<div className="terminal-placeholder">Loading terminal…</div>}><TerminalPane sessionId={terminal.id} shell={terminal.shell} profileId={terminal.profileId} workingDirectory={terminal.workingDirectory} active={terminal.id === activeTerminalId} visible={terminal.id === activeTerminalId} onFocus={focusTerminal} onExit={handleTerminalExit} /></Suspense>)}
+            <TerminalWorkspaceLayout layout={layout} terminals={terminals} activeTerminalId={activeTerminalId} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
             {terminals.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Welcome to <span>yerminal</span></div><p>Create a terminal to begin.</p><button className="primary-button" onClick={() => void createTerminal()} type="button">New Terminal</button></div>}
 
             <div className="terminal-status"><span className="status-indicator" />{activeTerminal?.shellLabel ?? "No terminal"}<span className="status-separator">·</span>{activeTerminal ? "Running" : "Ready"}</div>
@@ -352,34 +359,136 @@ function GitGraph({ repoPath, onError }: { repoPath: string; onError: (message: 
   </div>;
 }
 
-type TerminalLayoutProps = {
-  node: LayoutNode;
+type LayoutRect = { x: number; y: number; width: number; height: number };
+type LayoutDividerInfo = { id: string; direction: "horizontal" | "vertical"; ratio: number; rect: LayoutRect };
+type LayoutGeometry = { panes: Map<string, LayoutRect>; dividers: LayoutDividerInfo[] };
+type TerminalWorkspaceLayoutProps = {
+  layout: LayoutNode | null;
   terminals: TerminalSession[];
   activeTerminalId: string | null;
   onFocus: (sessionId: string) => void;
   onExit: (sessionId: string) => void;
+  onClose: (sessionId: string) => void;
+  onMove: (sourceId: string, targetId: string) => void;
+  onResize: (splitId: string, ratio: number) => void;
 };
 
-function TerminalLayout({ node, terminals, activeTerminalId, onFocus, onExit }: TerminalLayoutProps) {
-  if (node.type === "terminal") {
-    const terminal = terminals.find((item) => item.id === node.sessionId);
-    if (!terminal) return null;
-    return <Suspense fallback={<div className="terminal-placeholder">Loading terminal…</div>}><TerminalPane sessionId={terminal.id} shell={terminal.shell} profileId={terminal.profileId} workingDirectory={terminal.workingDirectory} active={terminal.id === activeTerminalId} visible onFocus={onFocus} onExit={onExit} /></Suspense>;
-  }
+function TerminalWorkspaceLayout({ layout, terminals, activeTerminalId, onFocus, onExit, onClose, onMove, onResize }: TerminalWorkspaceLayoutProps) {
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const geometry = useMemo(() => {
+    if (layout) return getLayoutGeometry(layout);
+    const panes = new Map<string, LayoutRect>();
+    if (activeTerminalId) panes.set(activeTerminalId, { x: 0, y: 0, width: 100, height: 100 });
+    return { panes, dividers: [] };
+  }, [activeTerminalId, layout]);
 
-  return (
-    <PanelGroup direction={node.direction} className="terminal-split">
-      <Panel defaultSize={50} minSize={15} className="terminal-split-panel"><TerminalLayout node={node.children[0]} terminals={terminals} activeTerminalId={activeTerminalId} onFocus={onFocus} onExit={onExit} /></Panel>
-      <PanelResizeHandle className={node.direction === "horizontal" ? "split-handle horizontal" : "split-handle vertical"} aria-label="Resize terminal panes" />
-      <Panel defaultSize={50} minSize={15} className="terminal-split-panel"><TerminalLayout node={node.children[1]} terminals={terminals} activeTerminalId={activeTerminalId} onFocus={onFocus} onExit={onExit} /></Panel>
-    </PanelGroup>
-  );
+  return <div className="terminal-layout-surface" ref={surfaceRef}>
+    {terminals.map((terminal) => {
+      const rect = geometry.panes.get(terminal.id);
+      const style: CSSProperties = rect
+        ? { left: `${rect.x}%`, top: `${rect.y}%`, width: `${rect.width}%`, height: `${rect.height}%` }
+        : { display: "none" };
+      return <div
+        key={terminal.id}
+        className={`terminal-pane-frame ${rect && layout ? "layout-pane" : ""}`}
+        style={style}
+        onDragOver={(event) => {
+          if (!layout || !event.dataTransfer.types.includes("text/plain")) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+        }}
+        onDragEnter={(event) => {
+          if (!layout || !event.dataTransfer.types.includes("text/plain")) return;
+          event.preventDefault();
+          event.currentTarget.dataset.dragOver = "true";
+        }}
+        onDragLeave={(event) => {
+          const nextTarget = event.relatedTarget;
+          if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) delete event.currentTarget.dataset.dragOver;
+        }}
+        onDrop={(event) => {
+          const sourceId = event.dataTransfer.getData("text/plain");
+          if (!sourceId || sourceId === terminal.id || !layout) return;
+          event.preventDefault();
+          delete event.currentTarget.dataset.dragOver;
+          onMove(sourceId, terminal.id);
+        }}
+      >
+        {layout && rect && <header className="terminal-pane-header">
+          <button
+            className="pane-drag-handle"
+            type="button"
+            draggable
+            aria-label={`Drag ${terminal.name} to swap pane positions`}
+            title="Drag onto another pane to swap positions"
+            onMouseDown={() => onFocus(terminal.id)}
+            onDragStart={(event) => {
+              event.dataTransfer.setData("text/plain", terminal.id);
+              event.dataTransfer.effectAllowed = "move";
+            }}
+          >⠿</button>
+          <span className="terminal-pane-title" title={terminal.name}>{terminal.name}</span>
+          <button className="pane-close" type="button" aria-label={`Close ${terminal.name}`} onClick={() => onClose(terminal.id)}>×</button>
+        </header>}
+        <div className="terminal-pane-body">
+          <Suspense key={terminal.id} fallback={<div className="terminal-placeholder">Loading terminal…</div>}>
+            <TerminalPane sessionId={terminal.id} shell={terminal.shell} profileId={terminal.profileId} workingDirectory={terminal.workingDirectory} active={terminal.id === activeTerminalId} visible={Boolean(rect)} onFocus={onFocus} onExit={onExit} />
+          </Suspense>
+        </div>
+      </div>;
+    })}
+    {geometry.dividers.map((divider) => <LayoutDivider key={divider.id} divider={divider} surfaceRef={surfaceRef} onResize={onResize} />)}
+  </div>;
 }
 
+function LayoutDivider({ divider, surfaceRef, onResize }: { divider: LayoutDividerInfo; surfaceRef: React.RefObject<HTMLDivElement | null>; onResize: (splitId: string, ratio: number) => void }) {
+  const style: CSSProperties = divider.direction === "horizontal"
+    ? { left: `calc(${divider.rect.x + divider.rect.width * divider.ratio}% - 3px)`, top: `${divider.rect.y}%`, width: 6, height: `${divider.rect.height}%` }
+    : { left: `${divider.rect.x}%`, top: `calc(${divider.rect.y + divider.rect.height * divider.ratio}% - 3px)`, width: `${divider.rect.width}%`, height: 6 };
+
+  const updateRatio = (event: React.PointerEvent<HTMLDivElement>) => {
+    const surface = surfaceRef.current;
+    if (!surface || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    const bounds = surface.getBoundingClientRect();
+    const ratio = divider.direction === "horizontal"
+      ? ((event.clientX - bounds.left) / bounds.width * 100 - divider.rect.x) / divider.rect.width
+      : ((event.clientY - bounds.top) / bounds.height * 100 - divider.rect.y) / divider.rect.height;
+    onResize(divider.id, Math.max(0.15, Math.min(0.85, ratio)));
+  };
+
+  return <div
+    className={`layout-divider ${divider.direction}`}
+    style={style}
+    role="separator"
+    aria-orientation={divider.direction === "horizontal" ? "vertical" : "horizontal"}
+    aria-label="Resize terminal panes"
+    onPointerDown={(event) => {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      updateRatio(event);
+    }}
+    onPointerMove={updateRatio}
+    onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}
+    onPointerCancel={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}
+  />;
+}
+function buildTerminalLayout(sessionIds: string[], depth = 0): LayoutNode {
+  if (sessionIds.length === 0) throw new Error("A terminal layout requires at least one session.");
+  if (sessionIds.length === 1) return { type: "terminal", sessionId: sessionIds[0] };
+  const middle = Math.ceil(sessionIds.length / 2);
+  const direction = depth % 2 === 0 ? "horizontal" : "vertical";
+  return {
+    type: "split",
+    id: crypto.randomUUID(),
+    direction,
+    ratio: middle / sessionIds.length,
+    children: [buildTerminalLayout(sessionIds.slice(0, middle), depth + 1), buildTerminalLayout(sessionIds.slice(middle), depth + 1)],
+  };
+}
 function splitTerminal(node: LayoutNode, sessionId: string, newSessionId: string, direction: "horizontal" | "vertical"): LayoutNode {
   if (node.type === "terminal") {
     if (node.sessionId !== sessionId) return node;
-    return { type: "split", id: crypto.randomUUID(), direction, children: [node, { type: "terminal", sessionId: newSessionId }] };
+    return { type: "split", id: crypto.randomUUID(), direction, ratio: 0.5, children: [node, { type: "terminal", sessionId: newSessionId }] };
   }
   return {
     ...node,
@@ -399,5 +508,42 @@ function removeTerminal(node: LayoutNode, sessionId: string): LayoutNode | null 
   return { ...node, children: [first, second] };
 }
 
+function swapTerminalPositions(node: LayoutNode, sourceId: string, targetId: string): LayoutNode {
+  if (node.type === "terminal") {
+    if (node.sessionId === sourceId) return { ...node, sessionId: targetId };
+    if (node.sessionId === targetId) return { ...node, sessionId: sourceId };
+    return node;
+  }
+  return { ...node, children: [swapTerminalPositions(node.children[0], sourceId, targetId), swapTerminalPositions(node.children[1], sourceId, targetId)] };
+}
+
+function updateSplitRatio(node: LayoutNode, splitId: string, ratio: number): LayoutNode {
+  if (node.type === "terminal") return node;
+  if (node.id === splitId) return { ...node, ratio };
+  return { ...node, children: [updateSplitRatio(node.children[0], splitId, ratio), updateSplitRatio(node.children[1], splitId, ratio)] };
+}
+
+function getLayoutGeometry(root: LayoutNode): LayoutGeometry {
+  const panes = new Map<string, LayoutRect>();
+  const dividers: LayoutDividerInfo[] = [];
+  const visit = (node: LayoutNode, rect: LayoutRect) => {
+    if (node.type === "terminal") {
+      panes.set(node.sessionId, rect);
+      return;
+    }
+    dividers.push({ id: node.id, direction: node.direction, ratio: node.ratio, rect });
+    if (node.direction === "horizontal") {
+      const firstWidth = rect.width * node.ratio;
+      visit(node.children[0], { ...rect, width: firstWidth });
+      visit(node.children[1], { ...rect, x: rect.x + firstWidth, width: rect.width - firstWidth });
+    } else {
+      const firstHeight = rect.height * node.ratio;
+      visit(node.children[0], { ...rect, height: firstHeight });
+      visit(node.children[1], { ...rect, y: rect.y + firstHeight, height: rect.height - firstHeight });
+    }
+  };
+  visit(root, { x: 0, y: 0, width: 100, height: 100 });
+  return { panes, dividers };
+}
 export default App;
 

@@ -56,6 +56,22 @@ button { color: inherit; font: inherit; cursor: pointer; }
 
 
 .toolbar-button:disabled { opacity: .35; cursor: default; }
+.terminal-layout-surface { position: absolute; inset: 0; overflow: hidden; }
+.terminal-pane-frame { position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: #101114; }
+.terminal-pane-frame.layout-pane { border: 1px solid #292a30; }
+.terminal-pane-frame[data-drag-over="true"] { z-index: 4; outline: 2px solid var(--accent); outline-offset: -2px; }
+.terminal-pane-header { height: 29px; flex: 0 0 29px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-bottom: 1px solid #292a30; background: #17181d; user-select: none; }
+.pane-drag-handle, .pane-close { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #92949e; }
+.pane-drag-handle { cursor: grab; font-size: 15px; }
+.pane-drag-handle:active { cursor: grabbing; }
+.pane-drag-handle:hover, .pane-close:hover { background: #2a2b32; color: #f0f0f3; }
+.terminal-pane-title { min-width: 0; flex: 1; overflow: hidden; color: #bfc0c8; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.pane-close { font-size: 15px; }
+.terminal-pane-body { position: relative; flex: 1; min-width: 0; min-height: 0; }
+.layout-divider { position: absolute; z-index: 5; touch-action: none; background: #2c2d34; transition: background .12s; }
+.layout-divider.horizontal { cursor: col-resize; }
+.layout-divider.vertical { cursor: row-resize; }
+.layout-divider:hover, .layout-divider:active { background: var(--accent); }
 .terminal-split { width: 100%; height: 100%; position: relative; }
 .terminal-split-panel { position: relative; min-width: 0; min-height: 0; }
 .split-handle { z-index: 2; background: #292a30; transition: background .15s; }
