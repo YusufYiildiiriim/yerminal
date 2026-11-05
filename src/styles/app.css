@@ -26,9 +26,9 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .repo-select { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #c9cad0; font-size: 12px; }
 .repo-select:hover, .toolbar-button:hover, .icon-button:hover { background: #23242a; border-color: #34363e; }
 .repo-glyph { color: var(--accent); font-size: 14px; }.chevron { color: var(--muted); margin-left: 5px; }
-.titlebar-spacer { flex: 1; }.window-caption { color: #727580; font-size: 11px; margin-right: 20px; }
+.titlebar-spacer { flex: 1; }.window-caption { color: #727580; font-size: 11px; }
 .icon-button, .toolbar-button { border: 1px solid transparent; border-radius: 5px; background: transparent; color: #90929c; display: grid; place-items: center; }
-.window-control { width: 30px; height: 28px; font-size: 15px; }.close-control:hover { background: #6e343d; color: white; }
+
 .workspace { flex: 1; min-height: 0; }
 .tools-panel { background: var(--panel); display: flex; flex-direction: column; min-width: 0; }
 .tool-content { flex: 1; min-height: 0; overflow: hidden; }.tool-view { height: 100%; display: flex; flex-direction: column; }

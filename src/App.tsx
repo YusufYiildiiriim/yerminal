@@ -202,9 +202,6 @@ function App() {
         <button className="repo-select" type="button" onClick={() => void openRepository()}><span className="repo-glyph">⌂</span> {repoInfo ? `${repoInfo.root} · ${repoInfo.branch}` : "Open a folder"} <span className="chevron">⌄</span></button>
         <div className="titlebar-spacer" />
         <span className="window-caption">Agent Workspace</span>
-        <button className="icon-button window-control" aria-label="Minimize" type="button">−</button>
-        <button className="icon-button window-control" aria-label="Maximize" type="button">□</button>
-        <button className="icon-button window-control close-control" aria-label="Close" type="button">×</button>
       </header>
 
       <PanelGroup direction="horizontal" className="workspace">
