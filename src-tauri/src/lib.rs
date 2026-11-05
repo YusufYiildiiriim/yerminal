@@ -1,7 +1,7 @@
 pub mod git;
 pub mod terminal;
 
-use git::{CommitInfo, FileChange, RepositoryInfo};
+use git::{CommitFileChange, CommitInfo, FileChange, RepositoryInfo};
 use std::sync::Mutex;
 use tauri::{Manager, State};
 use terminal::{AgentProfileInfo, SessionManager, ShellKind, TerminalInfo};
@@ -102,6 +102,20 @@ fn git_history(path: String, skip: usize, limit: usize) -> Result<Vec<CommitInfo
     git::history(&path, skip, limit)
 }
 
+#[tauri::command]
+fn git_commit_files(path: String, commit_id: String) -> Result<Vec<CommitFileChange>, String> {
+    git::commit_files(&path, &commit_id)
+}
+
+#[tauri::command]
+fn git_commit_file_diff(
+    path: String,
+    commit_id: String,
+    file_path: String,
+) -> Result<String, String> {
+    git::commit_file_diff(&path, &commit_id, &file_path)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -117,7 +131,9 @@ pub fn run() {
             git_repository_info,
             git_status,
             git_diff,
-            git_history
+            git_history,
+            git_commit_files,
+            git_commit_file_diff
         ])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {

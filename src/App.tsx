@@ -15,6 +15,7 @@ type LayoutNode = { type: "terminal"; sessionId: string } | { type: "split"; id:
 type RepositoryInfo = { root: string; branch: string; state: string };
 type FileChange = { path: string; kind: string; staged: boolean; unstaged: boolean };
 type CommitInfo = { id: string; shortId: string; message: string; author: string; timestamp: number; parents: string[]; branches: string[] };
+type CommitFileChange = { path: string; kind: string };
 
 function changeDirectoryCommand(shell: ShellKind, path: string): string {
   if (shell === "powershell") {
@@ -271,8 +272,13 @@ function GitChanges({ repoPath, repoInfo, onOpenRepository }: { repoPath: string
 
 function GitGraph({ repoPath }: { repoPath: string }) {
   const [commits, setCommits] = useState<CommitInfo[]>([]);
+  const [selectedCommit, setSelectedCommit] = useState<CommitInfo | null>(null);
+  const [commitFiles, setCommitFiles] = useState<CommitFileChange[]>([]);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [fileDiff, setFileDiff] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const load = useCallback(async (append: boolean) => {
     if (!repoPath || !isTauri() || loading) return;
     setLoading(true);
@@ -285,13 +291,45 @@ function GitGraph({ repoPath }: { repoPath: string }) {
   }, [commits.length, loading, repoPath]);
   useEffect(() => { setCommits([]); void load(false); }, [repoPath]);
 
+  const selectCommit = useCallback(async (commit: CommitInfo) => {
+    if (!repoPath || !isTauri()) return;
+    setSelectedCommit(commit);
+    setCommitFiles([]);
+    setSelectedFile(null);
+    setFileDiff("");
+    setDetailLoading(true);
+    try {
+      setCommitFiles(await invoke<CommitFileChange[]>("git_commit_files", { path: repoPath, commitId: commit.id }));
+      setError(null);
+    } catch (reason) { setError(String(reason)); }
+    finally { setDetailLoading(false); }
+  }, [repoPath]);
+
+  const selectFile = useCallback(async (filePath: string) => {
+    if (!repoPath || !selectedCommit || !isTauri()) return;
+    setSelectedFile(filePath);
+    setFileDiff("");
+    try {
+      setFileDiff(await invoke<string>("git_commit_file_diff", { path: repoPath, commitId: selectedCommit.id, filePath }));
+      setError(null);
+    } catch (reason) { setError(String(reason)); }
+  }, [repoPath, selectedCommit]);
+
+  useEffect(() => {
+    setSelectedCommit(null);
+    setCommitFiles([]);
+    setSelectedFile(null);
+    setFileDiff("");
+  }, [repoPath]);
+
   return <div className="tool-view">
     <header className="tool-header"><div><h1>Git Graph</h1><p>{repoPath ? `${commits.length} commits loaded` : "Repository commit history"}</p></div><button className="icon-button refresh-button" aria-label="Refresh history" onClick={() => void load(false)} type="button">↻</button></header>
     {!repoPath ? <div className="empty-repository graph-empty"><div className="graph-preview"><span /><span /><span /></div><h2>History unavailable</h2><p>Open a Git repository to browse its commit graph.</p></div> : <>
       {error && <div className="git-error" role="alert">{error}</div>}
-      <div className="commit-list">{commits.map((commit) => <div className="commit-row" key={commit.id}><div className="commit-rail"><svg aria-hidden="true"><line x1="10" y1="0" x2="10" y2="100%" className="commit-line" /></svg><span className="commit-node" /></div><div className="commit-info"><div className="commit-message" title={commit.message}>{commit.message}</div><div className="commit-meta"><code>{commit.shortId}</code><span>{commit.author}</span><time>{new Date(commit.timestamp * 1000).toLocaleDateString()}</time></div>{commit.branches.map((branch) => <span className="branch-label" key={branch}>{branch}</span>)}</div></div>)}
+      <div className="commit-list">{commits.map((commit) => <button className={`commit-row ${selectedCommit?.id === commit.id ? "selected" : ""}`} key={commit.id} onClick={() => void selectCommit(commit)} type="button" aria-pressed={selectedCommit?.id === commit.id}><span className="commit-rail"><svg aria-hidden="true"><line x1="10" y1="0" x2="10" y2="100%" className="commit-line" /></svg><span className="commit-node" /></span><span className="commit-info"><span className="commit-message" title={commit.message}>{commit.message}</span><span className="commit-meta"><code>{commit.shortId}</code><span>{commit.author}</span><time>{new Date(commit.timestamp * 1000).toLocaleDateString()}</time></span>{commit.branches.map((branch) => <span className="branch-label" key={branch}>{branch}</span>)}</span></button>)}
         {commits.length === 0 && !loading && <div className="change-empty">No commits found.</div>}
       </div>
+      {selectedCommit && <section className="commit-details"><div className="diff-heading"><span>{selectedCommit.message}</span><button onClick={() => { setSelectedCommit(null); setCommitFiles([]); setSelectedFile(null); setFileDiff(""); }} aria-label="Close commit details" type="button">×</button></div>{detailLoading ? <div className="change-empty">Loading changed files…</div> : <div className="commit-file-list">{commitFiles.length ? commitFiles.map((file) => <button className={`change-row ${selectedFile === file.path ? "selected" : ""}`} key={file.path} onClick={() => void selectFile(file.path)} type="button"><span className={`change-kind ${file.kind}`}>{file.kind === "deleted" ? "D" : file.kind === "added" ? "A" : file.kind === "renamed" ? "R" : "M"}</span><span className="change-path" title={file.path}>{file.path}</span></button>) : <div className="change-empty">No files changed in this commit.</div>}</div>}{selectedFile && <pre className="commit-file-diff">{fileDiff || "Loading diff…"}</pre>}</section>}
       {commits.length > 0 && <button className="load-more" onClick={() => void load(true)} disabled={loading} type="button">{loading ? "Loading…" : "Load more commits"}</button>}
     </>}
     <div className="panel-footnote"><span className="read-only-mark">◉</span> Incremental history loading</div>

@@ -1,5 +1,6 @@
 use git2::{
-    BranchType, DiffFormat, DiffOptions, Repository, RepositoryState, Status, StatusOptions,
+    BranchType, Delta, DiffFormat, DiffOptions, Oid, Repository, RepositoryState, Status,
+    StatusOptions,
 };
 use serde::Serialize;
 use std::path::Path;
@@ -31,6 +32,13 @@ pub struct CommitInfo {
     pub timestamp: i64,
     pub parents: Vec<String>,
     pub branches: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitFileChange {
+    pub path: String,
+    pub kind: String,
 }
 
 fn open_repository(path: &str) -> Result<Repository, String> {
@@ -198,6 +206,90 @@ pub fn history(path: &str, skip: usize, limit: usize) -> Result<Vec<CommitInfo>,
         });
     }
     Ok(commits)
+}
+
+pub fn commit_files(path: &str, commit_id: &str) -> Result<Vec<CommitFileChange>, String> {
+    let repo = open_repository(path)?;
+    let commit = find_commit(&repo, commit_id)?;
+    let diff = commit_diff(&repo, &commit, None)?;
+    let mut files = diff
+        .deltas()
+        .filter_map(|delta| {
+            let path = delta
+                .new_file()
+                .path()
+                .or_else(|| delta.old_file().path())?;
+            let kind = match delta.status() {
+                Delta::Added => "added",
+                Delta::Deleted => "deleted",
+                Delta::Renamed => "renamed",
+                Delta::Copied => "copied",
+                Delta::Typechange => "typechanged",
+                _ => "modified",
+            };
+            Some(CommitFileChange {
+                path: path.to_string_lossy().into_owned(),
+                kind: kind.to_owned(),
+            })
+        })
+        .collect::<Vec<_>>();
+    files.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok(files)
+}
+
+pub fn commit_file_diff(path: &str, commit_id: &str, file_path: &str) -> Result<String, String> {
+    if !is_repo_relative_path(file_path) {
+        return Err("Invalid repository-relative file path".to_owned());
+    }
+    let repo = open_repository(path)?;
+    let commit = find_commit(&repo, commit_id)?;
+    let diff = commit_diff(&repo, &commit, Some(file_path))?;
+    let mut output = String::new();
+    diff.print(DiffFormat::Patch, |_, _, line| {
+        output.push_str(&String::from_utf8_lossy(line.content()));
+        true
+    })
+    .map_err(|error| format!("Could not read commit diff: {error}"))?;
+    Ok(output)
+}
+
+fn find_commit(repo: &Repository, commit_id: &str) -> Result<git2::Commit<'_>, String> {
+    let oid = Oid::from_str(commit_id).map_err(|error| format!("Invalid commit ID: {error}"))?;
+    repo.find_commit(oid)
+        .map_err(|error| format!("Could not read commit {commit_id}: {error}"))
+}
+
+fn commit_diff<'repo>(
+    repo: &'repo Repository,
+    commit: &git2::Commit<'repo>,
+    file_path: Option<&str>,
+) -> Result<git2::Diff<'repo>, String> {
+    let commit_tree = commit
+        .tree()
+        .map_err(|error| format!("Could not read commit tree: {error}"))?;
+    let parent_tree = if commit.parent_count() == 0 {
+        None
+    } else {
+        Some(
+            commit
+                .parent(0)
+                .and_then(|parent| parent.tree())
+                .map_err(|error| format!("Could not read parent commit tree: {error}"))?,
+        )
+    };
+    let mut options = DiffOptions::new();
+    options.context_lines(3);
+    if let Some(file_path) = file_path {
+        options.pathspec(file_path);
+    }
+    repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&commit_tree), Some(&mut options))
+        .map_err(|error| format!("Could not create commit diff: {error}"))
+}
+
+fn is_repo_relative_path(file_path: &str) -> bool {
+    !file_path.is_empty()
+        && !Path::new(file_path).is_absolute()
+        && !file_path.split(['/', '\\']).any(|part| part == "..")
 }
 
 fn branch_labels(repo: &Repository) -> std::collections::HashMap<String, Vec<String>> {
