@@ -15,6 +15,15 @@ type RepositoryInfo = { root: string; branch: string; state: string };
 type FileChange = { path: string; kind: string; staged: boolean; unstaged: boolean };
 type CommitInfo = { id: string; shortId: string; message: string; author: string; timestamp: number; parents: string[]; branches: string[] };
 
+function changeDirectoryCommand(shell: ShellKind, path: string): string {
+  if (shell === "powershell") {
+    const escapedPath = path.replace(/'/g, "''");
+    return `Set-Location -LiteralPath '${escapedPath}'\r`;
+  }
+  const escapedPath = path.replace(/'/g, "'\\''");
+  return `cd -- '${escapedPath}'\n`;
+}
+
 const tools: { id: ToolId; label: string; icon: string }[] = [
   { id: "changes", label: "Git Changes", icon: "◫" },
   { id: "graph", label: "Git Graph", icon: "⌘" },
@@ -139,11 +148,21 @@ function App() {
       setRepoPath(path);
       setRepoInfo(info);
       setError(null);
+      if (isTauri()) {
+        const results = await Promise.allSettled(terminals.map((terminal) =>
+          invoke("write_terminal", {
+            sessionId: terminal.id,
+            data: changeDirectoryCommand(terminal.shell, path),
+          }),
+        ));
+        const failed = results.find((result) => result.status === "rejected");
+        if (failed?.status === "rejected") setError(`Could not change terminal working directory: ${String(failed.reason)}`);
+      }
     } catch (reason) {
       setRepoInfo(null);
       setError(String(reason));
     }
-  }, [repoPath]);
+  }, [repoPath, terminals]);
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
