@@ -37,9 +37,9 @@ type CommitInfo = { id: string; shortId: string; message: string; author: string
 type CommitFileChange = { path: string; kind: string };
 const COMMIT_PAGE_SIZE = 50;
 type PersistedWorkspace = { folders: string[]; activePath: string };
-type TerminalWorkspace = { id: string; name: string; rootPath: string; terminalIds: string[]; activeTerminalId: string | null; layout: LayoutNode | null };
+type TerminalWorkspace = { id: string; name: string; rootPath: string; folderPaths: string[]; terminalIds: string[]; activeTerminalId: string | null; layout: LayoutNode | null };
 type TerminalWorkspaceState = { workspaces: TerminalWorkspace[]; activeId: string };
-type PersistedTerminalWorkspace = { id: string; name: string; rootPath: string };
+type PersistedTerminalWorkspace = { id: string; name: string; rootPath: string; folderPaths: string[] };
 
 const WORKSPACE_STORAGE_KEY = "yerminal.workspace";
 const TERMINAL_WORKSPACES_STORAGE_KEY = "yerminal.terminal-workspaces";
@@ -49,9 +49,7 @@ function readWorkspace(): PersistedWorkspace {
     const value = localStorage.getItem(WORKSPACE_STORAGE_KEY);
     if (!value) return { folders: [], activePath: "" };
     const parsed = JSON.parse(value) as Partial<PersistedWorkspace>;
-    const folders = Array.isArray(parsed.folders)
-      ? [...new Set(parsed.folders.filter((folder): folder is string => typeof folder === "string" && folder.length > 0))]
-      : [];
+    const folders = normalizeWorkspaceFolders(parsed.folders);
     return { folders, activePath: typeof parsed.activePath === "string" && folders.includes(parsed.activePath) ? parsed.activePath : folders[0] ?? "" };
   } catch {
     return { folders: [], activePath: "" };
@@ -73,13 +71,19 @@ function mergeWorkspaceFolders(current: string[], additions: string[]): string[]
   })];
 }
 
+function normalizeWorkspaceFolders(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return mergeWorkspaceFolders([], value.filter((folder): folder is string => typeof folder === "string" && folder.length > 0));
+}
 function readTerminalWorkspaceState(): TerminalWorkspaceState {
+  const legacyWorkspace = readWorkspace();
   try {
     const value = localStorage.getItem(TERMINAL_WORKSPACES_STORAGE_KEY);
     const parsed: unknown = value ? JSON.parse(value) : null;
     if (parsed && typeof parsed === "object") {
       const record = parsed as Record<string, unknown>;
       const workspaces: TerminalWorkspace[] = [];
+      const folderStateIds = new Set<string>();
       const seenIds = new Set<string>();
       const rows: unknown[] = Array.isArray(record.workspaces) ? record.workspaces : [];
       for (const row of rows) {
@@ -87,24 +91,53 @@ function readTerminalWorkspaceState(): TerminalWorkspaceState {
         const workspace = row as Record<string, unknown>;
         const id = typeof workspace.id === "string" ? workspace.id.trim() : "";
         const name = typeof workspace.name === "string" ? workspace.name.trim() : "";
-        const rootPath = typeof workspace.rootPath === "string" ? workspace.rootPath : "";
+        const savedRootPath = typeof workspace.rootPath === "string" ? workspace.rootPath : "";
+        const hasFolderState = Array.isArray(workspace.folderPaths);
+        const folderPaths = hasFolderState ? normalizeWorkspaceFolders(workspace.folderPaths) : [];
         if (!id || !name || seenIds.has(id)) continue;
         seenIds.add(id);
-        workspaces.push({ id, name, rootPath, terminalIds: [], activeTerminalId: null, layout: null });
+        if (hasFolderState) folderStateIds.add(id);
+        workspaces.push({
+          id,
+          name,
+          rootPath: hasFolderState && savedRootPath && !folderPaths.includes(savedRootPath) ? "" : savedRootPath,
+          folderPaths,
+          terminalIds: [],
+          activeTerminalId: null,
+          layout: null,
+        });
       }
       if (workspaces.length > 0) {
         const activeId = typeof record.activeId === "string" && workspaces.some((workspace) => workspace.id === record.activeId)
           ? record.activeId
           : workspaces[0].id;
-        return { workspaces, activeId };
+        const migratedWorkspaces = workspaces.map((workspace) => {
+          if (folderStateIds.has(workspace.id)) return workspace;
+          if (workspace.id === activeId) {
+            const folderPaths = mergeWorkspaceFolders(legacyWorkspace.folders, workspace.rootPath ? [workspace.rootPath] : []);
+            const rootPath = legacyWorkspace.activePath && folderPaths.includes(legacyWorkspace.activePath)
+              ? legacyWorkspace.activePath
+              : workspace.rootPath && folderPaths.includes(workspace.rootPath)
+                ? workspace.rootPath
+                : folderPaths[0] ?? "";
+            return { ...workspace, folderPaths, rootPath };
+          }
+          const folderPaths = workspace.rootPath ? [workspace.rootPath] : [];
+          return { ...workspace, folderPaths, rootPath: folderPaths[0] ?? "" };
+        });
+        return { workspaces: migratedWorkspaces, activeId };
       }
     }
   } catch {
     // Invalid or unavailable local storage falls back to the legacy workspace root.
   }
   const id = crypto.randomUUID();
+  const folderPaths = legacyWorkspace.folders;
+  const rootPath = legacyWorkspace.activePath && folderPaths.includes(legacyWorkspace.activePath)
+    ? legacyWorkspace.activePath
+    : folderPaths[0] ?? "";
   return {
-    workspaces: [{ id, name: "Workspace 1", rootPath: readWorkspace().activePath, terminalIds: [], activeTerminalId: null, layout: null }],
+    workspaces: [{ id, name: "Workspace 1", rootPath, folderPaths, terminalIds: [], activeTerminalId: null, layout: null }],
     activeId: id,
   };
 }
@@ -126,7 +159,7 @@ const tools: { id: ToolId; label: string; icon: string }[] = [
 function App() {
   const [activeTool, setActiveTool] = useState<ToolId>("changes");
   const [terminalWorkspaceState, setTerminalWorkspaceState] = useState<TerminalWorkspaceState>(() => readTerminalWorkspaceState());
-  const [workspaceFolders, setWorkspaceFolders] = useState<string[]>(() => mergeWorkspaceFolders(readWorkspace().folders, terminalWorkspaceState.workspaces.map((workspace) => workspace.rootPath).filter(Boolean)));
+
   const [repoInfo, setRepoInfo] = useState<RepositoryInfo | null>(null);
   const [agentProfiles, setAgentProfiles] = useState<AgentProfile[]>([]);
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
@@ -137,6 +170,7 @@ function App() {
   const initializedWorkspaceIdsRef = useRef(new Set<string>());
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeTerminalWorkspace = terminalWorkspaceState.workspaces.find((workspace) => workspace.id === terminalWorkspaceState.activeId) ?? terminalWorkspaceState.workspaces[0];
+  const workspaceFolders = activeTerminalWorkspace?.folderPaths ?? [];
   const activeWorkspaceTerminalIds = activeTerminalWorkspace?.terminalIds ?? [];
   const activeWorkspaceTerminals = terminals.filter((terminal) => activeWorkspaceTerminalIds.includes(terminal.id));
   const repoPath = activeTerminalWorkspace?.rootPath ?? "";
@@ -166,14 +200,9 @@ function App() {
   }, []);
 
   useEffect(() => {
-    try { localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify({ folders: workspaceFolders, activePath: repoPath })); }
-    catch (reason) { showToast(`Could not save workspace: ${String(reason)}`); }
-  }, [repoPath, showToast, workspaceFolders]);
-
-  useEffect(() => {
     try {
       localStorage.setItem(TERMINAL_WORKSPACES_STORAGE_KEY, JSON.stringify({
-        workspaces: terminalWorkspaceState.workspaces.map(({ id, name, rootPath }) => ({ id, name, rootPath } satisfies PersistedTerminalWorkspace)),
+        workspaces: terminalWorkspaceState.workspaces.map(({ id, name, rootPath, folderPaths }) => ({ id, name, rootPath, folderPaths } satisfies PersistedTerminalWorkspace)),
         activeId: terminalWorkspaceState.activeId,
       }));
     } catch (reason) {
@@ -354,12 +383,16 @@ function App() {
     setRepoInfo(null);
   }, [terminalWorkspaceState.workspaces]);
 
-  const activateWorkspaceFolder = useCallback(async (path: string) => {
-    if (!activeTerminalWorkspace) return;
-    updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => ({ ...workspace, rootPath: path }));
+  const activateWorkspaceFolder = useCallback(async (path: string, additions: string[] = []) => {
+    const workspace = activeTerminalWorkspace;
+    if (!workspace) return;
+    updateTerminalWorkspace(workspace.id, (current) => {
+      const folderPaths = mergeWorkspaceFolders(current.folderPaths, [...additions, ...(path ? [path] : [])]);
+      return { ...current, folderPaths, rootPath: path && folderPaths.includes(path) ? path : "" };
+    });
     setRepoInfo(null);
     if (!path || !isTauri()) return;
-    const activeIds = new Set(activeTerminalWorkspace.terminalIds);
+    const activeIds = new Set(workspace.terminalIds);
     const workspaceTerminals = terminals.filter((terminal) => activeIds.has(terminal.id));
     const results = await Promise.allSettled(workspaceTerminals.map((terminal) =>
       invoke("write_terminal", { sessionId: terminal.id, data: changeDirectoryCommand(terminal.shell, path) }),
@@ -378,14 +411,15 @@ function App() {
     const workspace: TerminalWorkspace = {
       id: crypto.randomUUID(),
       name,
-      rootPath: repoPath,
+      rootPath: "",
+      folderPaths: [],
       terminalIds: [],
       activeTerminalId: null,
       layout: null,
     };
     setTerminalWorkspaceState((current) => ({ workspaces: [...current.workspaces, workspace], activeId: workspace.id }));
     setRepoInfo(null);
-  }, [repoPath, showToast, terminalWorkspaceState.workspaces]);
+  }, [showToast, terminalWorkspaceState.workspaces]);
 
   const renameWorkspace = useCallback(() => {
     if (!activeTerminalWorkspace) return;
@@ -420,6 +454,7 @@ function App() {
       showToast("Launch the desktop app to add workspace folders.");
       return;
     }
+    if (!activeTerminalWorkspace) return;
     const selection = await open({
       directory: true,
       multiple: true,
@@ -428,31 +463,31 @@ function App() {
     });
     const additions = selection === null ? [] : typeof selection === "string" ? [selection] : selection;
     if (additions.length === 0) return;
-    setWorkspaceFolders((current) => mergeWorkspaceFolders(current, additions));
     dismissToast();
-    await activateWorkspaceFolder(additions[additions.length - 1]);
-  }, [activateWorkspaceFolder, dismissToast, repoPath, showToast]);
+    await activateWorkspaceFolder(additions[additions.length - 1], additions);
+  }, [activeTerminalWorkspace, activateWorkspaceFolder, dismissToast, repoPath, showToast]);
 
   const removeWorkspaceFolder = useCallback((path: string) => {
-    const next = workspaceFolders.filter((folder) => folder !== path);
-    const fallback = next[next.length - 1] ?? "";
-    const affected = terminalWorkspaceState.workspaces.filter((workspace) => workspace.rootPath === path);
-    setWorkspaceFolders(next);
-    setTerminalWorkspaceState((current) => ({
+    const workspace = activeTerminalWorkspace;
+    if (!workspace || !workspace.folderPaths.includes(path)) return;
+    const folderPaths = workspace.folderPaths.filter((folder) => folder !== path);
+    const rootPath = workspace.rootPath === path ? folderPaths[folderPaths.length - 1] ?? "" : workspace.rootPath;
+    updateTerminalWorkspace(workspace.id, (current) => ({
       ...current,
-      workspaces: current.workspaces.map((workspace) => workspace.rootPath === path ? { ...workspace, rootPath: fallback } : workspace),
+      folderPaths: current.folderPaths.filter((folder) => folder !== path),
+      rootPath: current.rootPath === path ? rootPath : current.rootPath,
     }));
-    if (repoPath === path) setRepoInfo(null);
-    if (fallback && isTauri()) {
-      const affectedIds = new Set(affected.flatMap((workspace) => workspace.terminalIds));
-      void Promise.allSettled(terminals.filter((terminal) => affectedIds.has(terminal.id)).map((terminal) =>
-        invoke("write_terminal", { sessionId: terminal.id, data: changeDirectoryCommand(terminal.shell, fallback) }),
-      )).then((results) => {
-        const failed = results.find((result) => result.status === "rejected");
-        if (failed?.status === "rejected") showToast(`Could not change terminal working directory: ${String(failed.reason)}`);
-      });
-    }
-  }, [repoPath, showToast, terminalWorkspaceState.workspaces, terminals, workspaceFolders]);
+    if (workspace.rootPath !== path) return;
+    setRepoInfo(null);
+    if (!rootPath || !isTauri()) return;
+    const terminalIds = new Set(workspace.terminalIds);
+    void Promise.allSettled(terminals.filter((terminal) => terminalIds.has(terminal.id)).map((terminal) =>
+      invoke("write_terminal", { sessionId: terminal.id, data: changeDirectoryCommand(terminal.shell, rootPath) }),
+    )).then((results) => {
+      const failed = results.find((result) => result.status === "rejected");
+      if (failed?.status === "rejected") showToast(`Could not change terminal working directory: ${String(failed.reason)}`);
+    });
+  }, [activeTerminalWorkspace, showToast, terminals, updateTerminalWorkspace]);
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       const target = event.target;
@@ -513,7 +548,7 @@ function App() {
 
       <PanelGroup direction="horizontal" className="workspace">
         <Panel defaultSize={27} minSize={18} maxSize={46} className="tools-panel">
-          <section className="tool-content">{activeTool === "changes" ? <GitChanges repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} /> : activeTool === "graph" ? <GitGraph repoPath={repoInfo ? repoPath : ""} onError={showToast} /> : <WorkspacePanel folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} />}</section>
+          <section className="tool-content">{activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} /> : activeTool === "graph" ? <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} /> : <WorkspacePanel folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} />}</section>
           <nav className="tool-tabs" aria-label="Developer tools">
             {tools.map((tool) => <button key={tool.id} className={`tool-tab ${activeTool === tool.id ? "selected" : ""}`} onClick={() => setActiveTool(tool.id)} type="button"><span className="tool-icon">{tool.icon}</span>{tool.label}</button>)}
           </nav>
