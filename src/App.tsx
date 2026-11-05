@@ -8,6 +8,24 @@ import "./styles/app.css";
 
 const TerminalPane = lazy(() => import("./features/terminal/TerminalPane"));
 
+type TerminalNameEditorProps = {
+  terminalName: string;
+  value: string;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  compact?: boolean;
+  onChange: (value: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+};
+
+function TerminalNameEditor({ terminalName, value, inputRef, compact = false, onChange, onSave, onCancel }: TerminalNameEditorProps) {
+  return <form className={`terminal-name-editor ${compact ? "compact" : ""}`} aria-label={`Rename ${terminalName}`} onSubmit={(event) => { event.preventDefault(); onSave(); }} onClick={(event) => event.stopPropagation()}>
+    <input ref={inputRef} aria-label={`New name for ${terminalName}`} autoComplete="off" maxLength={60} value={value} onChange={(event) => onChange(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onCancel(); } }} />
+    <button className="terminal-name-save" type="submit" aria-label={`Save name for ${terminalName}`} title="Save name">✓</button>
+    <button className="terminal-name-cancel" type="button" aria-label={`Cancel renaming ${terminalName}`} title="Cancel" onClick={onCancel}>×</button>
+  </form>;
+}
+
 type ToolId = "changes" | "graph" | "workspace";
 type ShellKind = "powershell" | "bash" | "zsh";
 type TerminalSession = { id: string; name: string; shell: ShellKind; shellLabel: string; profileId?: string; workingDirectory: string | null };
@@ -75,6 +93,9 @@ function App() {
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
   const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutNode | null>(null);
+  const [editingTerminalId, setEditingTerminalId] = useState<string | null>(null);
+  const [terminalNameDraft, setTerminalNameDraft] = useState("");
+  const terminalNameInputRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<string | null>(null);
   const initializedRef = useRef(false);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -111,6 +132,13 @@ function App() {
   useEffect(() => () => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
   }, []);
+
+  useEffect(() => {
+    if (editingTerminalId) {
+      terminalNameInputRef.current?.focus();
+      terminalNameInputRef.current?.select();
+    }
+  }, [editingTerminalId]);
 
   const createTerminal = useCallback(async (showInTabs = true): Promise<TerminalSession | null> => {
     dismissToast();
@@ -156,6 +184,7 @@ function App() {
     }
     const next = terminals.filter((terminal) => terminal.id !== id);
     setTerminals(next);
+    setEditingTerminalId((current) => current === id ? null : current);
     if (activeTerminalId === id) setActiveTerminalId(next[0]?.id ?? null);
     setLayout((current) => current ? removeTerminal(current, id) : null);
   }, [activeTerminalId, showToast, terminals]);
@@ -209,11 +238,19 @@ function App() {
     dismissToast();
   }, [dismissToast, repoPath]);
 
-  const renameTerminal = useCallback((terminal: TerminalSession) => {
-    const name = window.prompt("Terminal name", terminal.name)?.trim();
-    if (!name) return;
-    setTerminals((current) => current.map((item) => item.id === terminal.id ? { ...item, name } : item));
+  const beginRenameTerminal = useCallback((terminal: TerminalSession) => {
+    setEditingTerminalId(terminal.id);
+    setTerminalNameDraft(terminal.name);
   }, []);
+
+  const saveTerminalName = useCallback(() => {
+    if (!editingTerminalId) return;
+    const name = terminalNameDraft.trim();
+    if (name) setTerminals((current) => current.map((terminal) => terminal.id === editingTerminalId ? { ...terminal, name } : terminal));
+    setEditingTerminalId(null);
+  }, [editingTerminalId, terminalNameDraft]);
+
+  const cancelTerminalRename = useCallback(() => setEditingTerminalId(null), []);
 
   const activateWorkspaceFolder = useCallback(async (path: string) => {
     setRepoPath(path);
@@ -302,14 +339,20 @@ function App() {
         <PanelResizeHandle className="resize-handle" aria-label="Resize developer tools" />
         <Panel minSize={35} className="terminal-panel">
           <div className="terminal-toolbar">
-            <div className="terminal-tabs" role={layout ? undefined : "tablist"} aria-label={layout ? "Terminal workspace actions" : "Terminal sessions"}>
-              {!layout && terminals.map((terminal) => <button key={terminal.id} className={`terminal-tab ${terminal.id === activeTerminalId ? "selected" : ""}`} onClick={() => setActiveTerminalId(terminal.id)} onDoubleClick={() => renameTerminal(terminal)} onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); void closeTerminal(terminal.id); } }} type="button" role="tab" aria-selected={terminal.id === activeTerminalId}><span className="terminal-dot" />{terminal.name}{terminals.length > 1 && <span className="tab-close" role="button" aria-label={`Close ${terminal.name}`} onClick={(event) => { event.stopPropagation(); void closeTerminal(terminal.id); }}>×</span>}</button>)}
+            <div className="terminal-tabs" role={layout ? undefined : "group"} aria-label={layout ? "Terminal workspace actions" : "Terminal sessions"}>
+              {!layout && terminals.map((terminal) => <div key={terminal.id} className={`terminal-tab-item ${terminal.id === activeTerminalId ? "selected" : ""}`} role="presentation">
+                {editingTerminalId === terminal.id ? <TerminalNameEditor terminalName={terminal.name} value={terminalNameDraft} inputRef={terminalNameInputRef} compact onChange={setTerminalNameDraft} onSave={saveTerminalName} onCancel={cancelTerminalRename} /> : <>
+                  <button className={`terminal-tab ${terminal.id === activeTerminalId ? "selected" : ""}`} onClick={() => setActiveTerminalId(terminal.id)} onDoubleClick={() => beginRenameTerminal(terminal)} onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); void closeTerminal(terminal.id); } }} type="button" aria-pressed={terminal.id === activeTerminalId} aria-label={`${terminal.name}. Double-click to rename.`} title={terminal.name}><span className="terminal-dot" /><span className="terminal-tab-name">{terminal.name}</span></button>
+                  <button className="terminal-tab-rename" type="button" aria-label={`Rename ${terminal.name}`} title="Rename terminal" onClick={() => beginRenameTerminal(terminal)}>✎</button>
+                  {terminals.length > 1 && <button className="tab-close" type="button" aria-label={`Close ${terminal.name}`} title={`Close ${terminal.name}`} onClick={() => void closeTerminal(terminal.id)}>×</button>}
+                </>}
+              </div>)}
               <button className="icon-button new-terminal" aria-label="Add terminal to workspace" title="Add terminal pane" onClick={() => void addTerminalToWorkspace()} type="button">＋</button>
             </div>
             <div className="toolbar-actions"><button className="toolbar-button" type="button" aria-label="Split horizontally" title="Split side by side" onClick={() => void splitActiveTerminal("horizontal")} disabled={!activeTerminal}>▤</button><button className="toolbar-button" type="button" aria-label="Split vertically" title="Split top and bottom" onClick={() => void splitActiveTerminal("vertical")} disabled={!activeTerminal}>▥</button>{agentProfiles.map((profile) => <button className="agent-launch" key={profile.id} type="button" title={`Launch ${profile.name}`} onClick={() => createAgentTerminal(profile)}>{profile.id === "claude" ? "Claude" : profile.id === "codex" ? "Codex" : profile.name}</button>)}<span className="toolbar-divider" /><button className="toolbar-button" type="button" aria-label="Terminal options" disabled>···</button></div>
           </div>
           <section className="terminal-surface" aria-label="Terminal workspace">
-            <TerminalWorkspaceLayout layout={layout} terminals={terminals} activeTerminalId={activeTerminalId} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
+            <TerminalWorkspaceLayout layout={layout} terminals={terminals} activeTerminalId={activeTerminalId} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} terminalNameInputRef={terminalNameInputRef} onRename={beginRenameTerminal} onNameChange={setTerminalNameDraft} onNameSave={saveTerminalName} onNameCancel={cancelTerminalRename} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
             {terminals.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Welcome to <span>yerminal</span></div><p>Create a terminal to begin.</p><button className="primary-button" onClick={() => void createTerminal()} type="button">New Terminal</button></div>}
 
             <div className="terminal-status"><span className="status-indicator" />{activeTerminal?.shellLabel ?? "No terminal"}<span className="status-separator">·</span>{activeTerminal ? "Running" : "Ready"}</div>
@@ -531,6 +574,13 @@ type TerminalWorkspaceLayoutProps = {
   layout: LayoutNode | null;
   terminals: TerminalSession[];
   activeTerminalId: string | null;
+  editingTerminalId: string | null;
+  terminalNameDraft: string;
+  terminalNameInputRef: React.RefObject<HTMLInputElement | null>;
+  onRename: (terminal: TerminalSession) => void;
+  onNameChange: (value: string) => void;
+  onNameSave: () => void;
+  onNameCancel: () => void;
   onFocus: (sessionId: string) => void;
   onExit: (sessionId: string) => void;
   onClose: (sessionId: string) => void;
@@ -538,7 +588,7 @@ type TerminalWorkspaceLayoutProps = {
   onResize: (splitId: string, ratio: number) => void;
 };
 
-function TerminalWorkspaceLayout({ layout, terminals, activeTerminalId, onFocus, onExit, onClose, onMove, onResize }: TerminalWorkspaceLayoutProps) {
+function TerminalWorkspaceLayout({ layout, terminals, activeTerminalId, editingTerminalId, terminalNameDraft, terminalNameInputRef, onRename, onNameChange, onNameSave, onNameCancel, onFocus, onExit, onClose, onMove, onResize }: TerminalWorkspaceLayoutProps) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const paneRefs = useRef(new Map<string, HTMLDivElement>());
   const paneDragRef = useRef<{ sourceId: string; pointerId: number; startX: number; startY: number; started: boolean } | null>(null);
@@ -618,7 +668,7 @@ function TerminalWorkspaceLayout({ layout, terminals, activeTerminalId, onFocus,
               setDropTargetPaneId(null);
             }}
           >⠿</button>
-          <span className="terminal-pane-title" title={terminal.name}>{terminal.name}</span>
+          {editingTerminalId === terminal.id ? <TerminalNameEditor terminalName={terminal.name} value={terminalNameDraft} inputRef={terminalNameInputRef} compact onChange={onNameChange} onSave={onNameSave} onCancel={onNameCancel} /> : <><span className="terminal-pane-title" title={terminal.name}>{terminal.name}</span><button className="pane-rename" type="button" aria-label={`Rename ${terminal.name}`} title="Rename terminal" onClick={() => onRename(terminal)}>✎</button></>}
           <button className="pane-close" type="button" aria-label={`Close ${terminal.name}`} onClick={() => onClose(terminal.id)}>×</button>
         </header>}
         <div className="terminal-pane-body">
