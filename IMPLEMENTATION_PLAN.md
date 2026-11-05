@@ -10,7 +10,7 @@ Source specification: Yusuf's pasted “Rust AI Agent Workspace” brief.
 5. Agent profiles: launch configured CLI commands as ordinary terminal processes. Claude/Codex profile source added; runtime validation pending.
 6. Git tools: read-only Changes, lazy diff, incremental Graph, manual refresh. Source implemented; Rust/runtime verification pending.
 7. Performance and security: bounded xterm scrollback, split terminal bundle, constrained IPC; runtime resource profiling remains pending.
-8. Validation: frontend production build passes; Rust formatting/checks, Tauri build, automated backend tests, real interactive-terminal checks, and Linux/macOS checks remain blocked until Rust/Cargo and runtime validation are available.
+8. Validation: frontend build, Rust formatting, and `cargo check` pass on Windows. Tauri runtime, automated backend tests, real interactive-terminal checks, and Linux/macOS platform validation remain pending.
 
 Phases will remain usable after each step. The reference image mentioned by the brief was not included, so the first layout follows its written description.
 

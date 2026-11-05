@@ -27,7 +27,7 @@ Frontend production build:
 npm run build
 ```
 
-Rust/Tauri builds and interactive terminal behavior have not been validated in the current environment because Rust/Cargo are unavailable. Windows ConPTY behavior, Linux/macOS builds, and CLI agent launches still require runtime validation.
+The Windows MSVC Rust toolchain is installed. `cargo fmt --check` and `cargo check --manifest-path src-tauri/Cargo.toml` pass. The Tauri window, ConPTY behavior, and real CLI agent launches still require runtime validation; Linux/macOS builds are also unverified.
 
 ## Notes
 
