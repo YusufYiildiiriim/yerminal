@@ -15,8 +15,12 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
   const fitRef = useRef<FitAddon | null>(null);
   const activeRef = useRef(active);
   const visibleRef = useRef(visible);
+  const onFocusRef = useRef(onFocus);
+  const onExitRef = useRef(onExit);
   activeRef.current = active;
   visibleRef.current = visible;
+  onFocusRef.current = onFocus;
+  onExitRef.current = onExit;
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -55,7 +59,7 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
     terminal.open(hostRef.current);
     terminalRef.current = terminal;
     fitRef.current = fit;
-    const handleFocus = () => onFocus(sessionId);
+    const handleFocus = () => onFocusRef.current(sessionId);
     hostRef.current.addEventListener("focusin", handleFocus);
 
     let disposed = false;
@@ -78,7 +82,7 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
       exitUnlisten = await listen<string>("terminal-exited", ({ payload }) => {
         if (payload === sessionId) {
           terminal.writeln("\r\n[process exited]");
-          onExit(sessionId);
+          onExitRef.current(sessionId);
         }
       });
       if (disposed) {
@@ -94,7 +98,7 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
         }
       } catch (error) {
         terminal.writeln(`\r\n[terminal start error: ${String(error)}]`);
-        onExit(sessionId);
+        onExitRef.current(sessionId);
         return;
       }
       terminal.onData((data) => {
@@ -126,7 +130,7 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [sessionId, shell, profileId, workingDirectory, onExit, onFocus]);
+  }, [sessionId, shell, profileId, workingDirectory]);
 
   useEffect(() => {
     if (!visible || !terminalRef.current || !fitRef.current) return;

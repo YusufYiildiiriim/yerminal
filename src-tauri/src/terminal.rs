@@ -55,6 +55,8 @@ struct TerminalOutput {
 }
 
 struct TerminalSession {
+    shell: String,
+    working_directory: String,
     writer: Mutex<Box<dyn Write + Send>>,
     master: Mutex<Box<dyn MasterPty + Send>>,
     child: Mutex<Box<dyn Child + Send + Sync>>,
@@ -75,6 +77,9 @@ impl SessionManager {
         cols: u16,
         rows: u16,
     ) -> Result<TerminalInfo, String> {
+        if let Some(info) = self.existing_info(&id) {
+            return Ok(info);
+        }
         let cwd = resolve_working_directory(working_directory)?;
         let executable = resolve_shell(shell)?;
         self.spawn_process(
@@ -98,10 +103,16 @@ impl SessionManager {
         cols: u16,
         rows: u16,
     ) -> Result<TerminalInfo, String> {
+        if let Some(info) = self.existing_info(&id) {
+            return Ok(info);
+        }
         let profile = load_agent_profiles(&app)?
             .into_iter()
             .find(|profile| profile.id == profile_id)
             .ok_or_else(|| format!("Unknown agent profile: {profile_id}"))?;
+        if let Some(info) = self.existing_info(&id) {
+            return Ok(info);
+        }
         let cwd = resolve_working_directory(working_directory)?;
         let executable = resolve_program(&profile.command)?;
         self.spawn_process(
@@ -114,6 +125,14 @@ impl SessionManager {
             cols,
             rows,
         )
+    }
+
+    fn existing_info(&self, id: &str) -> Option<TerminalInfo> {
+        self.sessions.get(id).map(|session| TerminalInfo {
+            id: id.to_owned(),
+            shell: session.shell.clone(),
+            working_directory: session.working_directory.clone(),
+        })
     }
 
     fn spawn_process(
@@ -167,7 +186,10 @@ impl SessionManager {
             .map_err(|error| format!("Could not start {executable}: {error}"))?;
         drop(pair.slave);
 
+        let working_directory = cwd.to_string_lossy().into_owned();
         let session = Arc::new(TerminalSession {
+            shell: label.clone(),
+            working_directory: working_directory.clone(),
             writer: Mutex::new(writer),
             master: Mutex::new(pair.master),
             child: Mutex::new(child),
@@ -181,7 +203,7 @@ impl SessionManager {
         Ok(TerminalInfo {
             id,
             shell: label,
-            working_directory: cwd.to_string_lossy().into_owned(),
+            working_directory,
         })
     }
 
