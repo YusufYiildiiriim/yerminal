@@ -7,14 +7,16 @@ import "@xterm/xterm/css/xterm.css";
 
 type TerminalOutput = { sessionId: string; data: string };
 type ShellKind = "powershell" | "bash" | "zsh";
-type TerminalPaneProps = { sessionId: string; shell: ShellKind; active: boolean; onExit: (sessionId: string) => void };
+type TerminalPaneProps = { sessionId: string; shell: ShellKind; active: boolean; visible: boolean; onFocus: (sessionId: string) => void; onExit: (sessionId: string) => void };
 
-export function TerminalPane({ sessionId, shell, active, onExit }: TerminalPaneProps) {
+export function TerminalPane({ sessionId, shell, active, visible, onFocus, onExit }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const activeRef = useRef(active);
+  const visibleRef = useRef(visible);
   activeRef.current = active;
+  visibleRef.current = visible;
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -53,6 +55,8 @@ export function TerminalPane({ sessionId, shell, active, onExit }: TerminalPaneP
     terminal.open(hostRef.current);
     terminalRef.current = terminal;
     fitRef.current = fit;
+    const handleFocus = () => onFocus(sessionId);
+    hostRef.current.addEventListener("focusin", handleFocus);
 
     let disposed = false;
     let outputUnlisten: (() => void) | undefined;
@@ -108,7 +112,7 @@ export function TerminalPane({ sessionId, shell, active, onExit }: TerminalPaneP
     });
 
     const resizeObserver = new ResizeObserver(() => {
-      if (!activeRef.current || disposed) return;
+      if (!visibleRef.current || disposed) return;
       fit.fit();
       void invoke("resize_terminal", { sessionId, cols: terminal.cols, rows: terminal.rows });
     });
@@ -119,25 +123,26 @@ export function TerminalPane({ sessionId, shell, active, onExit }: TerminalPaneP
       resizeObserver.disconnect();
       outputUnlisten?.();
       exitUnlisten?.();
+      hostRef.current?.removeEventListener("focusin", handleFocus);
       terminal.dispose();
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [sessionId, shell, onExit]);
+  }, [sessionId, shell, onExit, onFocus]);
 
   useEffect(() => {
-    if (!active || !terminalRef.current || !fitRef.current) return;
+    if (!visible || !terminalRef.current || !fitRef.current) return;
     requestAnimationFrame(() => {
       fitRef.current?.fit();
       const terminal = terminalRef.current;
-      if (terminal && isTauri()) {
+      if (terminal && isTauri() && activeRef.current) {
         void invoke("resize_terminal", { sessionId, cols: terminal.cols, rows: terminal.rows });
         terminal.focus();
       }
     });
-  }, [active, sessionId]);
+  }, [active, visible, sessionId]);
 
-  return <div className="terminal-instance" ref={hostRef} aria-label={`Terminal ${sessionId}`} hidden={!active} />;
+  return <div className="terminal-instance" ref={hostRef} aria-label={`Terminal ${sessionId}`} hidden={!visible} />;
 }
 
 export default TerminalPane;
