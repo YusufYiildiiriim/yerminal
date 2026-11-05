@@ -39,13 +39,33 @@ function App() {
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
   const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutNode | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const initializedRef = useRef(false);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const dismissToast = useCallback(() => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = null;
+    setToast(null);
+  }, []);
+
+  const showToast = useCallback((message: string) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToast(message);
+    toastTimeoutRef.current = setTimeout(() => {
+      toastTimeoutRef.current = null;
+      setToast(null);
+    }, 5000);
+  }, []);
+
+  useEffect(() => () => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+  }, []);
 
   const createTerminal = useCallback(async (showInTabs = true): Promise<TerminalSession | null> => {
-    setError(null);
+    dismissToast();
     if (!isTauri()) {
-      setError("Install Rust/Cargo and launch the desktop app with npm run tauri dev.");
+      showToast("Install Rust/Cargo and launch the desktop app with npm run tauri dev.");
       return null;
     }
     try {
@@ -63,32 +83,32 @@ function App() {
       if (showInTabs) setLayout(null);
       return terminal;
     } catch (reason) {
-      setError(String(reason));
+      showToast(String(reason));
       return null;
     }
-  }, [repoPath, terminals.length]);
+  }, [dismissToast, repoPath, showToast, terminals.length]);
 
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
-    if (terminals.length === 0 && !error) void createTerminal();
-  }, [createTerminal, error, terminals.length]);
+    if (terminals.length === 0) void createTerminal();
+  }, [createTerminal, terminals.length]);
 
   useEffect(() => {
     if (!isTauri()) return;
-    void invoke<AgentProfile[]>("list_agent_profiles").then(setAgentProfiles).catch((reason: unknown) => setError(String(reason)));
-  }, []);
+    void invoke<AgentProfile[]>("list_agent_profiles").then(setAgentProfiles).catch((reason: unknown) => showToast(String(reason)));
+  }, [showToast]);
 
   const closeTerminal = useCallback(async (id: string) => {
     if (isTauri()) {
       try { await invoke("close_terminal", { sessionId: id }); }
-      catch (reason) { setError(String(reason)); }
+      catch (reason) { showToast(String(reason)); }
     }
     const next = terminals.filter((terminal) => terminal.id !== id);
     setTerminals(next);
     if (activeTerminalId === id) setActiveTerminalId(next[0]?.id ?? null);
     setLayout((current) => current ? removeTerminal(current, id) : null);
-  }, [activeTerminalId, terminals]);
+  }, [activeTerminalId, showToast, terminals]);
 
   const handleTerminalExit = useCallback((id: string) => {
     setTerminals((current) => current.map((terminal) => terminal.id === id ? { ...terminal, shellLabel: `${terminal.shellLabel} · exited` } : terminal));
@@ -127,8 +147,8 @@ function App() {
     setTerminals((current) => [...current, terminal]);
     setActiveTerminalId(id);
     setLayout(null);
-    setError(null);
-  }, [repoPath]);
+    dismissToast();
+  }, [dismissToast, repoPath]);
 
   const renameTerminal = useCallback((terminal: TerminalSession) => {
     const name = window.prompt("Terminal name", terminal.name)?.trim();
@@ -149,7 +169,7 @@ function App() {
       const info = await invoke<RepositoryInfo>("git_repository_info", { path });
       setRepoPath(path);
       setRepoInfo(info);
-      setError(null);
+      dismissToast();
       if (isTauri()) {
         const results = await Promise.allSettled(terminals.map((terminal) =>
           invoke("write_terminal", {
@@ -158,13 +178,13 @@ function App() {
           }),
         ));
         const failed = results.find((result) => result.status === "rejected");
-        if (failed?.status === "rejected") setError(`Could not change terminal working directory: ${String(failed.reason)}`);
+        if (failed?.status === "rejected") showToast(`Could not change terminal working directory: ${String(failed.reason)}`);
       }
     } catch (reason) {
       setRepoInfo(null);
-      setError(String(reason));
+      showToast(String(reason));
     }
-  }, [repoPath, terminals]);
+  }, [dismissToast, repoPath, showToast, terminals]);
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -208,7 +228,7 @@ function App() {
 
       <PanelGroup direction="horizontal" className="workspace">
         <Panel defaultSize={27} minSize={18} maxSize={46} className="tools-panel">
-          <section className="tool-content">{activeTool === "changes" ? <GitChanges repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void openRepository()} /> : <GitGraph repoPath={repoPath} />}</section>
+          <section className="tool-content">{activeTool === "changes" ? <GitChanges repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void openRepository()} onError={showToast} /> : <GitGraph repoPath={repoPath} onError={showToast} />}</section>
           <nav className="tool-tabs" aria-label="Developer tools">
             {tools.map((tool) => <button key={tool.id} className={`tool-tab ${activeTool === tool.id ? "selected" : ""}`} onClick={() => setActiveTool(tool.id)} type="button"><span className="tool-icon">{tool.icon}</span>{tool.label}</button>)}
             <button className="tool-tab add-tool" aria-label="Add tool" type="button">＋</button>
@@ -218,7 +238,7 @@ function App() {
         <Panel minSize={35} className="terminal-panel">
           <div className="terminal-toolbar">
             <div className="terminal-tabs" role={layout ? undefined : "tablist"} aria-label={layout ? "Terminal workspace actions" : "Terminal sessions"}>
-              {!layout && terminals.map((terminal) => <button key={terminal.id} className={`terminal-tab ${terminal.id === activeTerminalId ? "selected" : ""}`} onClick={() => setActiveTerminalId(terminal.id)} onDoubleClick={() => renameTerminal(terminal)} type="button" role="tab" aria-selected={terminal.id === activeTerminalId}><span className="terminal-dot" />{terminal.name}{terminals.length > 1 && <span className="tab-close" role="button" aria-label={`Close ${terminal.name}`} onClick={(event) => { event.stopPropagation(); void closeTerminal(terminal.id); }}>×</span>}</button>)}
+              {!layout && terminals.map((terminal) => <button key={terminal.id} className={`terminal-tab ${terminal.id === activeTerminalId ? "selected" : ""}`} onClick={() => setActiveTerminalId(terminal.id)} onDoubleClick={() => renameTerminal(terminal)} onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); void closeTerminal(terminal.id); } }} type="button" role="tab" aria-selected={terminal.id === activeTerminalId}><span className="terminal-dot" />{terminal.name}{terminals.length > 1 && <span className="tab-close" role="button" aria-label={`Close ${terminal.name}`} onClick={(event) => { event.stopPropagation(); void closeTerminal(terminal.id); }}>×</span>}</button>)}
               <button className="icon-button new-terminal" aria-label="Add terminal to workspace" title="Add terminal pane" onClick={() => void addTerminalToWorkspace()} type="button">＋</button>
             </div>
             <div className="toolbar-actions"><button className="toolbar-button" type="button" aria-label="Split horizontally" title="Split side by side" onClick={() => void splitActiveTerminal("horizontal")} disabled={!activeTerminal}>▤</button><button className="toolbar-button" type="button" aria-label="Split vertically" title="Split top and bottom" onClick={() => void splitActiveTerminal("vertical")} disabled={!activeTerminal}>▥</button>{agentProfiles.map((profile) => <button className="agent-launch" key={profile.id} type="button" title={`Launch ${profile.name}`} onClick={() => createAgentTerminal(profile)}>{profile.id === "claude" ? "Claude" : profile.id === "codex" ? "Codex" : profile.name}</button>)}<span className="toolbar-divider" /><button className="toolbar-button" type="button" aria-label="Terminal options" disabled>···</button></div>
@@ -227,42 +247,42 @@ function App() {
             {layout
               ? <TerminalLayout node={layout} terminals={terminals} activeTerminalId={activeTerminalId} onFocus={focusTerminal} onExit={handleTerminalExit} />
               : terminals.map((terminal) => <Suspense key={terminal.id} fallback={<div className="terminal-placeholder">Loading terminal…</div>}><TerminalPane sessionId={terminal.id} shell={terminal.shell} profileId={terminal.profileId} workingDirectory={terminal.workingDirectory} active={terminal.id === activeTerminalId} visible={terminal.id === activeTerminalId} onFocus={focusTerminal} onExit={handleTerminalExit} /></Suspense>)}
-            {terminals.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Welcome to <span>yerminal</span></div><p>{error ?? "Create a terminal to begin."}</p><button className="primary-button" onClick={() => void createTerminal()} type="button">New Terminal</button></div>}
-            {error && terminals.length > 0 && <div className="terminal-error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError(null)} type="button">×</button></div>}
+            {terminals.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Welcome to <span>yerminal</span></div><p>Create a terminal to begin.</p><button className="primary-button" onClick={() => void createTerminal()} type="button">New Terminal</button></div>}
+
             <div className="terminal-status"><span className="status-indicator" />{activeTerminal?.shellLabel ?? "No terminal"}<span className="status-separator">·</span>{activeTerminal ? "Running" : "Ready"}</div>
           </section>
           <footer className="statusbar"><span><span className="status-indicator" />{repoInfo ? `${repoInfo.branch} · ${repoInfo.state}` : "No folder opened"}</span><span>UTF-8</span><span>{navigator.userAgent.includes("Windows") ? "Windows" : navigator.platform}</span></footer>
         </Panel>
       </PanelGroup>
+      {toast && <div className="app-toast" role="alert" aria-live="assertive" aria-atomic="true"><span>{toast}</span><button aria-label="Dismiss notification" onClick={dismissToast} type="button">×</button></div>}
     </main>
   );
 }
 
-function GitChanges({ repoPath, repoInfo, onOpenRepository }: { repoPath: string; repoInfo: RepositoryInfo | null; onOpenRepository: () => void }) {
+function GitChanges({ repoPath, repoInfo, onOpenRepository, onError }: { repoPath: string; repoInfo: RepositoryInfo | null; onOpenRepository: () => void; onError: (message: string) => void }) {
   const [changes, setChanges] = useState<FileChange[]>([]);
   const [selected, setSelected] = useState<FileChange | null>(null);
   const [selectedStaged, setSelectedStaged] = useState(false);
   const [diff, setDiff] = useState("");
-  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!repoPath || !isTauri()) return;
-    try { setChanges(await invoke<FileChange[]>("git_status", { path: repoPath })); setError(null); }
-    catch (reason) { setError(String(reason)); }
-  }, [repoPath]);
+    try { setChanges(await invoke<FileChange[]>("git_status", { path: repoPath })); }
+    catch (reason) { onError(String(reason)); }
+  }, [onError, repoPath]);
 
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => { setSelected(null); setSelectedStaged(false); }, [repoPath]);
   useEffect(() => {
     if (!selected || !repoPath || !isTauri()) { setDiff(""); return; }
     void invoke<string>("git_diff", { path: repoPath, filePath: selected.path, staged: selectedStaged })
-      .then(setDiff).catch((reason: unknown) => setError(String(reason)));
-  }, [repoPath, selected, selectedStaged]);
+      .then(setDiff).catch((reason: unknown) => onError(String(reason)));
+  }, [onError, repoPath, selected, selectedStaged]);
 
   return <div className="tool-view">
     <header className="tool-header"><div><h1>Git Changes</h1><p>{repoInfo ? `${repoInfo.branch} · ${changes.length} changed` : "Review your working tree"}</p></div><button className="icon-button refresh-button" aria-label="Refresh changes" onClick={() => void refresh()} type="button">↻</button></header>
     {!repoInfo ? <div className="empty-repository"><div className="empty-icon">⌂</div><h2>No repository opened</h2><p>Open a folder to view its changes.</p><button className="primary-button" onClick={onOpenRepository} type="button">Open Folder</button></div> : <>
-      {error && <div className="git-error" role="alert">{error}</div>}
+
       <div className="change-list">{changes.length === 0 ? <div className="change-empty">Working tree clean</div> : changes.map((change) => <button key={change.path} className={`change-row ${selected?.path === change.path ? "selected" : ""}`} onClick={() => { setSelected(change); setSelectedStaged(change.staged && !change.unstaged); }} type="button"><span className={`change-kind ${change.kind}`}>{change.kind === "modified" ? "M" : change.kind === "deleted" ? "D" : change.kind === "untracked" ? "?" : change.kind === "renamed" ? "R" : "A"}</span><span className="change-path" title={change.path}>{change.path}</span>{change.staged && <span className="change-badge">S</span>}{change.unstaged && <span className="change-badge unstaged">U</span>}</button>)}</div>
       {selected && <section className="diff-view"><div className="diff-heading"><span>{selected.path}</span>{selected.staged && selected.unstaged && <div className="diff-sides"><button className={selectedStaged ? "active" : ""} onClick={() => setSelectedStaged(true)} type="button">Index</button><button className={!selectedStaged ? "active" : ""} onClick={() => setSelectedStaged(false)} type="button">Working Tree</button></div>}<button onClick={() => setSelected(null)} aria-label="Close diff" type="button">×</button></div><DiffViewer diff={diff} emptyMessage="No diff available for this selection." /></section>}
     </>}
@@ -270,13 +290,12 @@ function GitChanges({ repoPath, repoInfo, onOpenRepository }: { repoPath: string
   </div>;
 }
 
-function GitGraph({ repoPath }: { repoPath: string }) {
+function GitGraph({ repoPath, onError }: { repoPath: string; onError: (message: string) => void }) {
   const [commits, setCommits] = useState<CommitInfo[]>([]);
   const [selectedCommit, setSelectedCommit] = useState<CommitInfo | null>(null);
   const [commitFiles, setCommitFiles] = useState<CommitFileChange[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileDiff, setFileDiff] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const load = useCallback(async (append: boolean) => {
@@ -285,10 +304,10 @@ function GitGraph({ repoPath }: { repoPath: string }) {
     try {
       const more = await invoke<CommitInfo[]>("git_history", { path: repoPath, skip: append ? commits.length : 0, limit: 50 });
       setCommits((current) => append ? [...current, ...more] : more);
-      setError(null);
-    } catch (reason) { setError(String(reason)); }
+
+    } catch (reason) { onError(String(reason)); }
     finally { setLoading(false); }
-  }, [commits.length, loading, repoPath]);
+  }, [commits.length, loading, onError, repoPath]);
   useEffect(() => { setCommits([]); void load(false); }, [repoPath]);
 
   const selectCommit = useCallback(async (commit: CommitInfo) => {

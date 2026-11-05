@@ -53,8 +53,8 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .terminal-instance[hidden] { display: none; }
 .terminal-instance .xterm { height: 100%; }
 .terminal-instance .xterm-viewport { scrollbar-color: #383942 #101114; }
-.terminal-error { position: absolute; top: 12px; right: 14px; max-width: min(480px, 70%); display: flex; gap: 14px; align-items: center; padding: 9px 11px; border: 1px solid #79434a; border-radius: 6px; background: #321f23; color: #f0b5bc; font-size: 11px; }
-.terminal-error button { border: 0; background: transparent; color: #f0b5bc; font-size: 16px; }
+
+
 .toolbar-button:disabled { opacity: .35; cursor: default; }
 .terminal-split { width: 100%; height: 100%; position: relative; }
 .terminal-split-panel { position: relative; min-width: 0; min-height: 0; }
@@ -71,7 +71,7 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .change-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }.change-badge { padding: 2px 4px; border-radius: 3px; background: #282943; color: #aaa9dd; font: 9px Inter, sans-serif; }.change-badge.unstaged { background: #3b2f25; color: #d2ac79; }
 .diff-view { flex: 1; min-height: 100px; display: flex; flex-direction: column; border-top: 1px solid var(--border); }.diff-heading { height: 31px; flex: 0 0 31px; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 0 10px; color: #afb0b9; font-size: 10px; }.diff-heading span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.diff-heading button { border: 0; background: none; color: #8a8c96; font-size: 15px; }.diff-view pre { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 8px 10px; color: #c3c5cb; background: #101114; font: 10px/1.55 "Cascadia Code", Consolas, monospace; white-space: pre; }
 .diff-sides { display: flex; gap: 3px; flex: 0 0 auto; }.diff-sides button { padding: 3px 5px; border-radius: 3px; color: #858792; font: 9px Inter, sans-serif; }.diff-sides button.active { color: #e4e0ff; background: #37314f; }
-.git-error { margin: 8px; padding: 8px; border: 1px solid #79434a; border-radius: 5px; background: #321f23; color: #f0b5bc; font-size: 10px; overflow-wrap: anywhere; }
+
 .commit-row { min-height: 55px; display: flex; gap: 9px; padding: 7px 10px; }.commit-rail { width: 20px; flex: 0 0 20px; position: relative; display: flex; justify-content: center; }.commit-rail svg { position: absolute; inset: -8px 0; width: 20px; height: calc(100% + 16px); }.commit-line { stroke: #4c4761; stroke-width: 1.5; }.commit-node { z-index: 1; width: 8px; height: 8px; margin-top: 4px; border: 2px solid #b09fff; border-radius: 50%; background: var(--panel); }.commit-info { min-width: 0; flex: 1; }.commit-message { overflow: hidden; color: #d2d2d8; font-size: 10px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }.commit-meta { display: flex; gap: 8px; margin-top: 4px; color: #777984; font-size: 9px; }.commit-meta code { color: #9c91ce; }.commit-meta time { margin-left: auto; white-space: nowrap; }.branch-label { display: inline-block; margin: 4px 4px 0 0; padding: 2px 5px; border: 1px solid #343044; border-radius: 3px; color: #b9aaf2; font-size: 9px; }
 .load-more { margin: 6px 10px 10px; padding: 7px; border: 1px solid #34353c; border-radius: 5px; background: #1b1c21; color: #c3c4cc; font-size: 10px; }.load-more:hover { background: #24252b; }.load-more:disabled { opacity: .6; }
 .agent-launch { padding: 5px 7px; border: 1px solid #34313e; border-radius: 5px; background: #211f29; color: #c7bbee; font-size: 10px; }.agent-launch:hover { background: #302b3a; }
@@ -106,3 +106,7 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .diff-code::-webkit-scrollbar-track { background: #15161a; }
 .diff-code::-webkit-scrollbar-thumb { border: 2px solid #15161a; border-radius: 8px; background: #45434f; }
 .diff-code::-webkit-scrollbar-thumb:hover { background: #625c72; }
+.app-toast { position: fixed; z-index: 20; right: 24px; bottom: 40px; display: flex; align-items: center; gap: 16px; width: min(520px, calc(100vw - 32px)); padding: 11px 13px; border: 1px solid #79434a; border-radius: 8px; background: #321f23; color: #f0c1c6; box-shadow: 0 10px 30px #0008; font-size: 12px; line-height: 1.45; }
+.app-toast span { min-width: 0; overflow-wrap: anywhere; }
+.app-toast button { flex: 0 0 auto; width: 24px; height: 24px; border: 0; border-radius: 4px; background: transparent; color: inherit; font-size: 17px; }
+.app-toast button:hover, .app-toast button:focus-visible { outline: 2px solid #d58d95; outline-offset: 1px; background: #512b31; }
