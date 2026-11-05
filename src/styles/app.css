@@ -83,3 +83,8 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .tool-tab:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--accent); outline-offset: -2px; }
 .tool-icon { color: inherit; }
 .add-tool { flex: 0 0 38px; padding: 0; }
+.change-list, .commit-list, .diff-view pre { scrollbar-color: #45434f #15161a; scrollbar-width: thin; }
+.change-list::-webkit-scrollbar, .commit-list::-webkit-scrollbar, .diff-view pre::-webkit-scrollbar { width: 8px; height: 8px; }
+.change-list::-webkit-scrollbar-track, .commit-list::-webkit-scrollbar-track, .diff-view pre::-webkit-scrollbar-track { background: #15161a; }
+.change-list::-webkit-scrollbar-thumb, .commit-list::-webkit-scrollbar-thumb, .diff-view pre::-webkit-scrollbar-thumb { border: 2px solid #15161a; border-radius: 8px; background: #45434f; }
+.change-list::-webkit-scrollbar-thumb:hover, .commit-list::-webkit-scrollbar-thumb:hover, .diff-view pre::-webkit-scrollbar-thumb:hover { background: #625c72; }
