@@ -712,7 +712,7 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove }: { 
     return <WorkspaceTreeNode
       key={entry.path}
       entry={entry}
-      root={root}
+
       depth={depth}
       expanded={expanded}
       children={children}
@@ -777,9 +777,9 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove }: { 
   </div>;
 }
 
-function WorkspaceTreeNode({ entry, root, depth, expanded, children, loading, error, onToggle, onRetry, onOpen, renderChildren }: {
+function WorkspaceTreeNode({ entry, depth, expanded, children, loading, error, onToggle, onRetry, onOpen, renderChildren }: {
   entry: WorkspaceEntry;
-  root: string;
+
   depth: number;
   expanded: boolean;
   children: WorkspaceEntry[];
