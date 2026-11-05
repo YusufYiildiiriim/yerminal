@@ -96,13 +96,27 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .agent-launch { padding: 5px 7px; border: 1px solid #34313e; border-radius: 5px; background: #211f29; color: #c7bbee; font-size: 10px; }.agent-launch:hover { background: #302b3a; }
 .commit-row { width: 100%; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }.commit-row:hover, .commit-row.selected { background: #222329; }.commit-info { display: block; }.commit-details { min-height: 120px; max-height: 48%; display: flex; flex-direction: column; border-top: 1px solid var(--border); }.commit-file-list { flex: 0 0 auto; max-height: 120px; overflow: auto; }.commit-file-diff { flex: 1; min-height: 70px; overflow: auto; margin: 0; padding: 8px 10px; color: #c3c5cb; background: #101114; font: 10px/1.55 "Cascadia Code", Consolas, monospace; white-space: pre; }
 
-.tool-tabs { display: flex; flex: 0 0 42px; align-items: stretch; border-top: 1px solid var(--border); background: var(--panel-raised); }
-.tool-tab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; padding: 0 10px; border: 0; border-right: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 11px; transition: background .15s, color .15s; }
+.tool-tabs { display: flex; flex: 0 0 42px; align-items: stretch; overflow-x: auto; overflow-y: hidden; border-top: 1px solid var(--border); background: var(--panel-raised); }
+.tool-tab { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; padding: 0 11px; border: 0; border-right: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 11px; white-space: nowrap; transition: background .15s, color .15s; }
 .tool-tab:hover { background: #222329; color: #d6d5df; }
 .tool-tab.selected { background: #24212f; color: #e4e0ff; box-shadow: inset 0 2px 0 var(--accent); }
 .tool-tab:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--accent); outline-offset: -2px; }
 .tool-icon { color: inherit; }
 .add-tool { flex: 0 0 38px; padding: 0; }
+.workspace-folder-list { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
+.workspace-empty { height: 100%; min-height: 220px; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; text-align: center; }
+.workspace-empty h2 { margin: 0 0 7px; font-size: 12px; font-weight: 600; }
+.workspace-empty p { max-width: 220px; margin: 0; color: #82848e; font-size: 11px; line-height: 1.6; }
+.workspace-folder { display: flex; align-items: center; min-width: 0; margin-bottom: 4px; border: 1px solid transparent; border-radius: 6px; }
+.workspace-folder:hover { background: #1d1e24; }
+.workspace-folder.selected { border-color: #383346; background: #211f29; }
+.workspace-folder-select { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; padding: 9px 8px; border: 0; background: transparent; color: #c6c7ce; text-align: left; }
+.workspace-folder-icon { flex: 0 0 auto; color: var(--accent); font-size: 14px; }
+.workspace-folder-label { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.workspace-folder-label strong { overflow: hidden; color: #dedee4; font-size: 11px; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-folder-label small { overflow: hidden; color: #80828d; font: 9px "Cascadia Code", Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-folder-remove { width: 26px; height: 26px; flex: 0 0 26px; margin-right: 5px; border: 0; border-radius: 4px; background: transparent; color: #777984; font-size: 16px; }
+.workspace-folder-remove:hover { background: #39282d; color: #e8a0a6; }
 .change-list, .commit-list, .diff-view pre { scrollbar-color: #45434f #15161a; scrollbar-width: thin; }
 .change-list::-webkit-scrollbar, .commit-list::-webkit-scrollbar, .diff-view pre::-webkit-scrollbar { width: 8px; height: 8px; }
 .change-list::-webkit-scrollbar-track, .commit-list::-webkit-scrollbar-track, .diff-view pre::-webkit-scrollbar-track { background: #15161a; }

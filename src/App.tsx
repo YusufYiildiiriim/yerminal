@@ -7,7 +7,7 @@ import "./styles/app.css";
 
 const TerminalPane = lazy(() => import("./features/terminal/TerminalPane"));
 
-type ToolId = "changes" | "graph";
+type ToolId = "changes" | "graph" | "workspace";
 type ShellKind = "powershell" | "bash" | "zsh";
 type TerminalSession = { id: string; name: string; shell: ShellKind; shellLabel: string; profileId?: string; workingDirectory: string | null };
 type AgentProfile = { id: string; name: string };
@@ -17,6 +17,38 @@ type FileChange = { path: string; kind: string; staged: boolean; unstaged: boole
 type CommitInfo = { id: string; shortId: string; message: string; author: string; timestamp: number; parents: string[]; branches: string[] };
 type CommitFileChange = { path: string; kind: string };
 const COMMIT_PAGE_SIZE = 50;
+type PersistedWorkspace = { folders: string[]; activePath: string };
+
+const WORKSPACE_STORAGE_KEY = "yerminal.workspace";
+
+function readWorkspace(): PersistedWorkspace {
+  try {
+    const value = localStorage.getItem(WORKSPACE_STORAGE_KEY);
+    if (!value) return { folders: [], activePath: "" };
+    const parsed = JSON.parse(value) as Partial<PersistedWorkspace>;
+    const folders = Array.isArray(parsed.folders)
+      ? [...new Set(parsed.folders.filter((folder): folder is string => typeof folder === "string" && folder.length > 0))]
+      : [];
+    return { folders, activePath: typeof parsed.activePath === "string" && folders.includes(parsed.activePath) ? parsed.activePath : folders[0] ?? "" };
+  } catch {
+    return { folders: [], activePath: "" };
+  }
+}
+
+function mergeWorkspaceFolders(current: string[], additions: string[]): string[] {
+  const isWindows = navigator.userAgent.includes("Windows");
+  const key = (path: string) => {
+    const normalized = path.replace(/\\/g, "/").replace(/\/$/, "");
+    return isWindows ? normalized.toLocaleLowerCase() : normalized;
+  };
+  const known = new Set(current.map(key));
+  return [...current, ...additions.filter((path) => {
+    const normalized = key(path);
+    if (!normalized || known.has(normalized)) return false;
+    known.add(normalized);
+    return true;
+  })];
+}
 
 function changeDirectoryCommand(shell: ShellKind, path: string): string {
   if (shell === "powershell") {
@@ -30,11 +62,13 @@ function changeDirectoryCommand(shell: ShellKind, path: string): string {
 const tools: { id: ToolId; label: string; icon: string }[] = [
   { id: "changes", label: "Git Changes", icon: "◫" },
   { id: "graph", label: "Git Graph", icon: "⌘" },
+  { id: "workspace", label: "Workspace", icon: "▣" },
 ];
 
 function App() {
   const [activeTool, setActiveTool] = useState<ToolId>("changes");
-  const [repoPath, setRepoPath] = useState("");
+  const [workspaceFolders, setWorkspaceFolders] = useState<string[]>(() => readWorkspace().folders);
+  const [repoPath, setRepoPath] = useState(() => readWorkspace().activePath);
   const [repoInfo, setRepoInfo] = useState<RepositoryInfo | null>(null);
   const [agentProfiles, setAgentProfiles] = useState<AgentProfile[]>([]);
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
@@ -58,6 +92,20 @@ function App() {
       setToast(null);
     }, 5000);
   }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify({ folders: workspaceFolders, activePath: repoPath })); }
+    catch (reason) { showToast(`Could not save workspace: ${String(reason)}`); }
+  }, [repoPath, showToast, workspaceFolders]);
+
+  useEffect(() => {
+    if (!repoPath || !isTauri()) { setRepoInfo(null); return; }
+    let cancelled = false;
+    void invoke<RepositoryInfo>("git_repository_info", { path: repoPath })
+      .then((info) => { if (!cancelled) setRepoInfo(info); })
+      .catch(() => { if (!cancelled) setRepoInfo(null); });
+    return () => { cancelled = true; };
+  }, [repoPath]);
 
   useEffect(() => () => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
@@ -166,35 +214,42 @@ function App() {
     setTerminals((current) => current.map((item) => item.id === terminal.id ? { ...item, name } : item));
   }, []);
 
-  const openRepository = useCallback(async () => {
+  const activateWorkspaceFolder = useCallback(async (path: string) => {
+    setRepoPath(path);
+    setRepoInfo(null);
+    if (!path) return;
+    if (isTauri()) {
+      const results = await Promise.allSettled(terminals.map((terminal) =>
+        invoke("write_terminal", { sessionId: terminal.id, data: changeDirectoryCommand(terminal.shell, path) }),
+      ));
+      const failed = results.find((result) => result.status === "rejected");
+      if (failed?.status === "rejected") showToast(`Could not change terminal working directory: ${String(failed.reason)}`);
+    }
+  }, [showToast, terminals]);
+
+  const addWorkspaceFolders = useCallback(async () => {
+    if (!isTauri()) {
+      showToast("Launch the desktop app to add workspace folders.");
+      return;
+    }
     const selection = await open({
       directory: true,
-      multiple: false,
-      title: "Open Working Tree",
+      multiple: true,
+      title: "Add Workspace Folders",
       defaultPath: repoPath || undefined,
     });
-    if (typeof selection !== "string") return;
-    const path = selection;
-    try {
-      const info = await invoke<RepositoryInfo>("git_repository_info", { path });
-      setRepoPath(path);
-      setRepoInfo(info);
-      dismissToast();
-      if (isTauri()) {
-        const results = await Promise.allSettled(terminals.map((terminal) =>
-          invoke("write_terminal", {
-            sessionId: terminal.id,
-            data: changeDirectoryCommand(terminal.shell, path),
-          }),
-        ));
-        const failed = results.find((result) => result.status === "rejected");
-        if (failed?.status === "rejected") showToast(`Could not change terminal working directory: ${String(failed.reason)}`);
-      }
-    } catch (reason) {
-      setRepoInfo(null);
-      showToast(String(reason));
-    }
-  }, [dismissToast, repoPath, showToast, terminals]);
+    const additions = selection === null ? [] : typeof selection === "string" ? [selection] : selection;
+    if (additions.length === 0) return;
+    setWorkspaceFolders((current) => mergeWorkspaceFolders(current, additions));
+    dismissToast();
+    await activateWorkspaceFolder(additions[additions.length - 1]);
+  }, [activateWorkspaceFolder, dismissToast, repoPath, showToast]);
+
+  const removeWorkspaceFolder = useCallback((path: string) => {
+    const next = workspaceFolders.filter((folder) => folder !== path);
+    setWorkspaceFolders(next);
+    if (repoPath === path) void activateWorkspaceFolder(next[next.length - 1] ?? "");
+  }, [activateWorkspaceFolder, repoPath, workspaceFolders]);
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -231,17 +286,16 @@ function App() {
         <div className="brand-mark">y</div>
         <span className="brand-name">yerminal</span>
         <span className="title-divider" />
-        <button className="repo-select" type="button" onClick={() => void openRepository()}><span className="repo-glyph">⌂</span> {repoInfo ? `${repoInfo.root} · ${repoInfo.branch}` : "Open a folder"} <span className="chevron">⌄</span></button>
+        <button className="repo-select" type="button" onClick={() => void addWorkspaceFolders()}><span className="repo-glyph">⌂</span> {repoInfo ? `${repoInfo.root} · ${repoInfo.branch}` : repoPath || "Add workspace folders"} <span className="chevron">⌄</span></button>
         <div className="titlebar-spacer" />
         <span className="window-caption">Agent Workspace</span>
       </header>
 
       <PanelGroup direction="horizontal" className="workspace">
         <Panel defaultSize={27} minSize={18} maxSize={46} className="tools-panel">
-          <section className="tool-content">{activeTool === "changes" ? <GitChanges repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void openRepository()} onError={showToast} /> : <GitGraph repoPath={repoPath} onError={showToast} />}</section>
+          <section className="tool-content">{activeTool === "changes" ? <GitChanges repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} /> : activeTool === "graph" ? <GitGraph repoPath={repoInfo ? repoPath : ""} onError={showToast} /> : <WorkspacePanel folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} />}</section>
           <nav className="tool-tabs" aria-label="Developer tools">
             {tools.map((tool) => <button key={tool.id} className={`tool-tab ${activeTool === tool.id ? "selected" : ""}`} onClick={() => setActiveTool(tool.id)} type="button"><span className="tool-icon">{tool.icon}</span>{tool.label}</button>)}
-            <button className="tool-tab add-tool" aria-label="Add tool" type="button">＋</button>
           </nav>
         </Panel>
         <PanelResizeHandle className="resize-handle" aria-label="Resize developer tools" />
@@ -267,6 +321,26 @@ function App() {
   );
 }
 
+function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove }: { folders: string[]; activePath: string; onAdd: () => void; onActivate: (path: string) => void; onRemove: (path: string) => void }) {
+  return <div className="tool-view workspace-view">
+    <header className="tool-header"><div><h1>Workspace</h1><p>{folders.length} {folders.length === 1 ? "folder" : "folders"} included</p></div><button className="icon-button refresh-button" aria-label="Add workspace folders" title="Add folders" onClick={onAdd} type="button">＋</button></header>
+    <div className="workspace-folder-list">
+      {folders.length === 0 ? <div className="workspace-empty"><div className="empty-icon">▣</div><h2>No workspace folders</h2><p>Add one or more folders to use them as your workspace roots.</p><button className="primary-button" onClick={onAdd} type="button">Add Folder</button></div> : folders.map((folder) => {
+        const name = folder.split(/[\\/]/).filter(Boolean).pop() ?? folder;
+        const selected = folder === activePath;
+        return <div className={`workspace-folder ${selected ? "selected" : ""}`} key={folder}>
+          <button className="workspace-folder-select" onClick={() => onActivate(folder)} type="button" aria-pressed={selected} title={folder}>
+            <span className="workspace-folder-icon">{selected ? "▣" : "▢"}</span>
+            <span className="workspace-folder-label"><strong>{name}</strong><small>{folder}</small></span>
+          </button>
+          <button className="workspace-folder-remove" aria-label={`Remove ${name} from workspace`} title="Remove from workspace" onClick={() => onRemove(folder)} type="button">×</button>
+        </div>;
+      })}
+    </div>
+    <div className="panel-footnote"><span className="read-only-mark">⌂</span> Workspace folders are saved on this device</div>
+  </div>;
+}
+
 function GitChanges({ repoPath, repoInfo, onOpenRepository, onError }: { repoPath: string; repoInfo: RepositoryInfo | null; onOpenRepository: () => void; onError: (message: string) => void }) {
   const [changes, setChanges] = useState<FileChange[]>([]);
   const [selected, setSelected] = useState<FileChange | null>(null);
@@ -274,18 +348,18 @@ function GitChanges({ repoPath, repoInfo, onOpenRepository, onError }: { repoPat
   const [diff, setDiff] = useState("");
 
   const refresh = useCallback(async () => {
-    if (!repoPath || !isTauri()) return;
+    if (!repoPath || !repoInfo || !isTauri()) return;
     try { setChanges(await invoke<FileChange[]>("git_status", { path: repoPath })); }
     catch (reason) { onError(String(reason)); }
-  }, [onError, repoPath]);
+  }, [onError, repoInfo, repoPath]);
 
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => { setSelected(null); setSelectedStaged(false); }, [repoPath]);
   useEffect(() => {
-    if (!selected || !repoPath || !isTauri()) { setDiff(""); return; }
+    if (!selected || !repoInfo || !repoPath || !isTauri()) { setDiff(""); return; }
     void invoke<string>("git_diff", { path: repoPath, filePath: selected.path, staged: selectedStaged })
       .then(setDiff).catch((reason: unknown) => onError(String(reason)));
-  }, [onError, repoPath, selected, selectedStaged]);
+  }, [onError, repoInfo, repoPath, selected, selectedStaged]);
 
   return <div className="tool-view">
     <header className="tool-header"><div><h1>Git Changes</h1><p>{repoInfo ? `${repoInfo.branch} · ${changes.length} changed` : "Review your working tree"}</p></div><button className="icon-button refresh-button" aria-label="Refresh changes" onClick={() => void refresh()} type="button">↻</button></header>
