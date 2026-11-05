@@ -88,8 +88,31 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .change-row:hover, .change-row.selected { background: #222329; }
 .change-kind { width: 15px; flex: 0 0 15px; text-align: center; color: #d3ae70; font-weight: 700; }.change-kind.added, .change-kind.untracked { color: #7dc99a; }.change-kind.deleted { color: #dc7b82; }.change-kind.renamed { color: #93b0e6; }
 .change-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }.change-badge { padding: 2px 4px; border-radius: 3px; background: #282943; color: #aaa9dd; font: 9px Inter, sans-serif; }.change-badge.unstaged { background: #3b2f25; color: #d2ac79; }
-.diff-view { flex: 1; min-height: 100px; display: flex; flex-direction: column; border-top: 1px solid var(--border); }.diff-heading { height: 31px; flex: 0 0 31px; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 0 10px; color: #afb0b9; font-size: 10px; }.diff-heading span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.diff-heading button { border: 0; background: none; color: #8a8c96; font-size: 15px; }.diff-view pre { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 8px 10px; color: #c3c5cb; background: #101114; font: 10px/1.55 "Cascadia Code", Consolas, monospace; white-space: pre; }
+.diff-heading { height: 31px; flex: 0 0 31px; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 0 10px; color: #afb0b9; font-size: 10px; }.diff-heading span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.diff-heading button { border: 0; background: none; color: #8a8c96; font-size: 15px; }
 .diff-sides { display: flex; gap: 3px; flex: 0 0 auto; }.diff-sides button { padding: 3px 5px; border-radius: 3px; color: #858792; font: 9px Inter, sans-serif; }.diff-sides button.active { color: #e4e0ff; background: #37314f; }
+.diff-preview-backdrop { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 28px; background: #07080bdc; backdrop-filter: blur(5px); }
+.diff-preview-dialog { width: min(1480px, 100%); height: min(960px, 100%); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #383943; border-radius: 12px; background: #131419; box-shadow: 0 28px 100px #000b, 0 0 0 1px #ffffff08; }
+.diff-preview-header { min-height: 76px; flex: 0 0 auto; display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-bottom: 1px solid #2b2c34; background: linear-gradient(180deg, #1b1c22, #17181d); }
+.diff-preview-file-icon { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; border: 1px solid #403b56; border-radius: 8px; background: #252232; color: #b8aaff; font: 18px "Cascadia Code", Consolas, monospace; }
+.diff-preview-heading { min-width: 0; flex: 1; }
+.diff-preview-heading h2 { overflow: hidden; margin: 0; color: #e5e5eb; font: 600 14px Inter, "Segoe UI", sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.diff-preview-heading p { display: flex; align-items: center; gap: 7px; overflow: hidden; margin: 6px 0 0; color: #858893; font: 10px Inter, "Segoe UI", sans-serif; white-space: nowrap; }
+.diff-preview-heading p span:first-child { overflow: hidden; text-overflow: ellipsis; }
+.diff-preview-separator { color: #555761; }
+.diff-preview-header-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; }
+.diff-preview-badge { padding: 4px 7px; border: 1px solid transparent; border-radius: 5px; font-size: 9px; }
+.diff-preview-badge.staged { border-color: #383858; background: #25253a; color: #b8b7ed; }
+.diff-preview-badge.unstaged { border-color: #4c3e2c; background: #32291f; color: #d6b17d; }
+.diff-preview-header-actions .diff-sides { margin-left: 5px; padding: 3px; border: 1px solid #34353d; border-radius: 6px; background: #111216; }
+.diff-preview-header-actions .diff-sides button { padding: 6px 9px; font-size: 10px; }
+.diff-preview-close { width: 30px; height: 30px; margin-left: 4px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #9b9da6; font-size: 21px; line-height: 1; }
+.diff-preview-close:hover, .diff-preview-close:focus-visible { border-color: #514250; outline: none; background: #36272d; color: #f1c4cb; }
+.diff-preview-content { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden; }
+.diff-preview-loading { flex: 1; display: grid; place-items: center; color: #858792; font-size: 12px; }
+.diff-preview-content .diff-code { font-size: 12px; line-height: 1.65; padding: 14px 0; }
+.diff-preview-content .diff-line { min-height: 20px; padding-right: 20px; }
+.diff-preview-content .diff-line-marker { width: 42px; flex-basis: 42px; padding-right: 13px; }
+.diff-preview-footer { height: 31px; flex: 0 0 31px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-top: 1px solid #292a31; background: #17181d; color: #727580; font-size: 9px; }
 
 .commit-row { min-height: 55px; display: flex; gap: 9px; padding: 7px 10px; }.commit-rail { width: 20px; flex: 0 0 20px; position: relative; display: flex; justify-content: center; }.commit-rail svg { position: absolute; inset: -8px 0; width: 20px; height: calc(100% + 16px); }.commit-line { stroke: #4c4761; stroke-width: 1.5; }.commit-node { z-index: 1; width: 8px; height: 8px; margin-top: 4px; border: 2px solid #b09fff; border-radius: 50%; background: var(--panel); }.commit-info { min-width: 0; flex: 1; }.commit-message { overflow: hidden; color: #d2d2d8; font-size: 10px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }.commit-meta { display: flex; gap: 8px; margin-top: 4px; color: #777984; font-size: 9px; }.commit-meta code { color: #9c91ce; }.commit-meta time { margin-left: auto; white-space: nowrap; }.branch-label { display: inline-block; margin: 4px 4px 0 0; padding: 2px 5px; border: 1px solid #343044; border-radius: 3px; color: #b9aaf2; font-size: 9px; }
 .load-more { margin: 6px 10px 10px; padding: 7px; border: 1px solid #34353c; border-radius: 5px; background: #1b1c21; color: #c3c4cc; font-size: 10px; }.load-more:hover { background: #24252b; }.load-more:disabled { opacity: .6; }
@@ -117,12 +140,11 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .workspace-folder-label small { overflow: hidden; color: #80828d; font: 9px "Cascadia Code", Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-folder-remove { width: 26px; height: 26px; flex: 0 0 26px; margin-right: 5px; border: 0; border-radius: 4px; background: transparent; color: #777984; font-size: 16px; }
 .workspace-folder-remove:hover { background: #39282d; color: #e8a0a6; }
-.change-list, .commit-list, .diff-view pre { scrollbar-color: #45434f #15161a; scrollbar-width: thin; }
-.change-list::-webkit-scrollbar, .commit-list::-webkit-scrollbar, .diff-view pre::-webkit-scrollbar { width: 8px; height: 8px; }
-.change-list::-webkit-scrollbar-track, .commit-list::-webkit-scrollbar-track, .diff-view pre::-webkit-scrollbar-track { background: #15161a; }
-.change-list::-webkit-scrollbar-thumb, .commit-list::-webkit-scrollbar-thumb, .diff-view pre::-webkit-scrollbar-thumb { border: 2px solid #15161a; border-radius: 8px; background: #45434f; }
-.change-list::-webkit-scrollbar-thumb:hover, .commit-list::-webkit-scrollbar-thumb:hover, .diff-view pre::-webkit-scrollbar-thumb:hover { background: #625c72; }
-
+.change-list, .commit-list, .diff-view pre, .diff-code { scrollbar-color: #45434f #15161a; scrollbar-width: thin; }
+.change-list::-webkit-scrollbar, .commit-list::-webkit-scrollbar, .diff-view pre::-webkit-scrollbar, .diff-code::-webkit-scrollbar { width: 8px; height: 8px; }
+.change-list::-webkit-scrollbar-track, .commit-list::-webkit-scrollbar-track, .diff-view pre::-webkit-scrollbar-track, .diff-code::-webkit-scrollbar-track { background: #15161a; }
+.change-list::-webkit-scrollbar-thumb, .commit-list::-webkit-scrollbar-thumb, .diff-view pre::-webkit-scrollbar-thumb, .diff-code::-webkit-scrollbar-thumb { border: 2px solid #15161a; border-radius: 8px; background: #45434f; }
+.change-list::-webkit-scrollbar-thumb:hover, .commit-list::-webkit-scrollbar-thumb:hover, .diff-view pre::-webkit-scrollbar-thumb:hover, .diff-code::-webkit-scrollbar-thumb:hover { background: #625c72; }
 .diff-code { flex: 1; min-height: 0; overflow: auto; padding: 8px 0; background: #101114; color: #c3c5cb; font: 10px/1.6 "Cascadia Code", Consolas, monospace; white-space: pre; outline: none; }
 .diff-line { display: flex; min-height: 16px; padding-right: 12px; }
 .diff-line code { font: inherit; }

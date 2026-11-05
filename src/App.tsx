@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { DiffViewer } from "./features/git/DiffViewer";
@@ -346,6 +347,9 @@ function GitChanges({ repoPath, repoInfo, onOpenRepository, onError }: { repoPat
   const [selected, setSelected] = useState<FileChange | null>(null);
   const [selectedStaged, setSelectedStaged] = useState(false);
   const [diff, setDiff] = useState("");
+  const [diffLoading, setDiffLoading] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const lastFocusedRowRef = useRef<HTMLButtonElement>(null);
 
   const refresh = useCallback(async () => {
     if (!repoPath || !repoInfo || !isTauri()) return;
@@ -356,17 +360,68 @@ function GitChanges({ repoPath, repoInfo, onOpenRepository, onError }: { repoPat
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => { setSelected(null); setSelectedStaged(false); }, [repoPath]);
   useEffect(() => {
-    if (!selected || !repoInfo || !repoPath || !isTauri()) { setDiff(""); return; }
+    if (!selected || !repoInfo || !repoPath || !isTauri()) { setDiff(""); setDiffLoading(false); return; }
+    let active = true;
+    setDiff("");
+    setDiffLoading(true);
     void invoke<string>("git_diff", { path: repoPath, filePath: selected.path, staged: selectedStaged })
-      .then(setDiff).catch((reason: unknown) => onError(String(reason)));
+      .then((result) => { if (active) setDiff(result); })
+      .catch((reason: unknown) => { if (active) onError(String(reason)); })
+      .finally(() => { if (active) setDiffLoading(false); });
+    return () => { active = false; };
   }, [onError, repoInfo, repoPath, selected, selectedStaged]);
+  useEffect(() => {
+    if (!selected) return;
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelected(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      lastFocusedRowRef.current?.focus();
+    };
+  }, [selected]);
 
   return <div className="tool-view">
     <header className="tool-header"><div><h1>Git Changes</h1><p>{repoInfo ? `${repoInfo.branch} · ${changes.length} changed` : "Review your working tree"}</p></div><button className="icon-button refresh-button" aria-label="Refresh changes" onClick={() => void refresh()} type="button">↻</button></header>
     {!repoInfo ? <div className="empty-repository"><div className="empty-icon">⌂</div><h2>No repository opened</h2><p>Open a folder to view its changes.</p><button className="primary-button" onClick={onOpenRepository} type="button">Open Folder</button></div> : <>
 
-      <div className="change-list">{changes.length === 0 ? <div className="change-empty">Working tree clean</div> : changes.map((change) => <button key={change.path} className={`change-row ${selected?.path === change.path ? "selected" : ""}`} onClick={() => { setSelected(change); setSelectedStaged(change.staged && !change.unstaged); }} type="button"><span className={`change-kind ${change.kind}`}>{change.kind === "modified" ? "M" : change.kind === "deleted" ? "D" : change.kind === "untracked" ? "?" : change.kind === "renamed" ? "R" : "A"}</span><span className="change-path" title={change.path}>{change.path}</span>{change.staged && <span className="change-badge">S</span>}{change.unstaged && <span className="change-badge unstaged">U</span>}</button>)}</div>
-      {selected && <section className="diff-view"><div className="diff-heading"><span>{selected.path}</span>{selected.staged && selected.unstaged && <div className="diff-sides"><button className={selectedStaged ? "active" : ""} onClick={() => setSelectedStaged(true)} type="button">Index</button><button className={!selectedStaged ? "active" : ""} onClick={() => setSelectedStaged(false)} type="button">Working Tree</button></div>}<button onClick={() => setSelected(null)} aria-label="Close diff" type="button">×</button></div><DiffViewer diff={diff} emptyMessage="No diff available for this selection." /></section>}
+      <div className="change-list">{changes.length === 0 ? <div className="change-empty">Working tree clean</div> : changes.map((change) => <button key={change.path} className={`change-row ${selected?.path === change.path ? "selected" : ""}`} onClick={(event) => { lastFocusedRowRef.current = event.currentTarget; setSelected(change); setSelectedStaged(change.staged && !change.unstaged); }} type="button"><span className={`change-kind ${change.kind}`}>{change.kind === "modified" ? "M" : change.kind === "deleted" ? "D" : change.kind === "untracked" ? "?" : change.kind === "renamed" ? "R" : "A"}</span><span className="change-path" title={change.path}>{change.path}</span>{change.staged && <span className="change-badge">S</span>}{change.unstaged && <span className="change-badge unstaged">U</span>}</button>)}</div>
+      {selected && createPortal(
+        <div className="diff-preview-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelected(null); }}>
+          <section className="diff-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="diff-preview-title" aria-describedby="diff-preview-description" onKeyDown={(event) => {
+            if (event.key !== "Tab") return;
+            const focusable = event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex="0"]');
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+          }}>
+            <header className="diff-preview-header">
+              <div className="diff-preview-file-icon">{selected.kind === "deleted" ? "−" : selected.kind === "untracked" || selected.kind === "added" ? "+" : "±"}</div>
+              <div className="diff-preview-heading">
+                <h2 id="diff-preview-title" title={selected.path}>{selected.path}</h2>
+                <p id="diff-preview-description"><span>{repoInfo?.root}</span><span className="diff-preview-separator">/</span>{selectedStaged ? "Index snapshot" : "Working tree snapshot"}</p>
+              </div>
+              <div className="diff-preview-header-actions">
+                {selected.staged && <span className="diff-preview-badge staged">Staged</span>}
+                {selected.unstaged && <span className="diff-preview-badge unstaged">Unstaged</span>}
+                {selected.staged && selected.unstaged && <div className="diff-sides" aria-label="Diff version">
+                  <button className={selectedStaged ? "active" : ""} onClick={() => setSelectedStaged(true)} type="button">Index</button>
+                  <button className={!selectedStaged ? "active" : ""} onClick={() => setSelectedStaged(false)} type="button">Working Tree</button>
+                </div>}
+                <button ref={closeButtonRef} className="diff-preview-close" onClick={() => setSelected(null)} aria-label="Close diff preview" title="Close preview (Esc)" type="button">×</button>
+              </div>
+            </header>
+            <div className="diff-preview-content">
+              {diffLoading ? <div className="diff-preview-loading">Loading file changes…</div> : <DiffViewer diff={diff} emptyMessage="No diff available for this selection." />}
+            </div>
+            <footer className="diff-preview-footer"><span>{diffLoading ? "Loading diff…" : `${diff ? diff.split(/\r?\n/).length : 0} lines`}</span><span>Press Esc to close</span></footer>
+          </section>
+        </div>,
+        document.body,
+      )}
     </>}
     <div className="panel-footnote"><span className="read-only-mark">◉</span> Read-only Git tools</div>
   </div>;
