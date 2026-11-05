@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fs,
     io::{Read, Write},
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -8,7 +9,7 @@ use std::{
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize, PtySystem};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Clone, Copy, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -88,7 +89,7 @@ impl SessionManager {
         cols: u16,
         rows: u16,
     ) -> Result<TerminalInfo, String> {
-        let profile = agent_profiles()?.into_iter().find(|profile| profile.id == profile_id)
+        let profile = load_agent_profiles(&app)?.into_iter().find(|profile| profile.id == profile_id)
             .ok_or_else(|| format!("Unknown agent profile: {profile_id}"))?;
         let cwd = resolve_working_directory(working_directory)?;
         let executable = resolve_program(&profile.command)?;
@@ -185,14 +186,23 @@ impl SessionManager {
     }
 }
 
-pub fn agent_profiles() -> Result<Vec<AgentProfile>, String> {
-    toml::from_str::<AgentConfig>(include_str!("../agents.toml"))
-        .map(|config| config.agents)
-        .map_err(|error| format!("Could not load agent profiles: {error}"))
+pub fn load_agent_profiles(app: &AppHandle) -> Result<Vec<AgentProfile>, String> {
+    let config_directory = app.path().app_config_dir().map_err(|error| format!("Could not locate app configuration folder: {error}"))?;
+    fs::create_dir_all(&config_directory).map_err(|error| format!("Could not create app configuration folder: {error}"))?;
+    let path = config_directory.join("agents.toml");
+    if !path.exists() {
+        fs::write(&path, include_str!("../agents.toml")).map_err(|error| format!("Could not create default agent profiles: {error}"))?;
+    }
+    let content = fs::read_to_string(path).map_err(|error| format!("Could not read agent profiles: {error}"))?;
+    let profiles = toml::from_str::<AgentConfig>(&content).map_err(|error| format!("Could not parse agent profiles: {error}"))?.agents;
+    if profiles.len() > 20 || profiles.iter().any(|profile| profile.id.is_empty() || profile.id.len() > 64 || profile.command.is_empty() || profile.args.len() > 32) {
+        return Err("Agent profiles exceed the supported limits or contain an invalid profile".to_owned());
+    }
+    Ok(profiles)
 }
 
-pub fn agent_profile_list() -> Result<Vec<AgentProfileInfo>, String> {
-    agent_profiles().map(|profiles| profiles.into_iter().map(|profile| AgentProfileInfo { id: profile.id, name: profile.name }).collect())
+pub fn agent_profile_list(app: &AppHandle) -> Result<Vec<AgentProfileInfo>, String> {
+    load_agent_profiles(app).map(|profiles| profiles.into_iter().map(|profile| AgentProfileInfo { id: profile.id, name: profile.name }).collect())
 }
 
 impl ShellKind {

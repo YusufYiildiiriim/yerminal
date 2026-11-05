@@ -28,7 +28,7 @@ fn close_terminal(manager: State<'_, Mutex<SessionManager>>, session_id: String)
 }
 
 #[tauri::command]
-fn list_agent_profiles() -> Result<Vec<AgentProfileInfo>, String> { terminal::agent_profile_list() }
+fn list_agent_profiles(app: tauri::AppHandle) -> Result<Vec<AgentProfileInfo>, String> { terminal::agent_profile_list(&app) }
 
 #[tauri::command]
 fn create_agent_terminal(app: tauri::AppHandle, manager: State<'_, Mutex<SessionManager>>, session_id: String, profile_id: String, working_directory: Option<String>, cols: u16, rows: u16) -> Result<TerminalInfo, String> {
