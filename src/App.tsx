@@ -375,6 +375,10 @@ type TerminalWorkspaceLayoutProps = {
 
 function TerminalWorkspaceLayout({ layout, terminals, activeTerminalId, onFocus, onExit, onClose, onMove, onResize }: TerminalWorkspaceLayoutProps) {
   const surfaceRef = useRef<HTMLDivElement>(null);
+  const paneRefs = useRef(new Map<string, HTMLDivElement>());
+  const paneDragRef = useRef<{ sourceId: string; pointerId: number; startX: number; startY: number; started: boolean } | null>(null);
+  const [draggingPaneId, setDraggingPaneId] = useState<string | null>(null);
+  const [dropTargetPaneId, setDropTargetPaneId] = useState<string | null>(null);
   const geometry = useMemo(() => {
     if (layout) return getLayoutGeometry(layout);
     const panes = new Map<string, LayoutRect>();
@@ -382,7 +386,27 @@ function TerminalWorkspaceLayout({ layout, terminals, activeTerminalId, onFocus,
     return { panes, dividers: [] };
   }, [activeTerminalId, layout]);
 
-  return <div className="terminal-layout-surface" ref={surfaceRef}>
+  const findPaneAtPoint = (clientX: number, clientY: number, sourceId: string) => {
+    for (const [paneId, pane] of paneRefs.current) {
+      if (paneId === sourceId || !geometry.panes.has(paneId)) continue;
+      const bounds = pane.getBoundingClientRect();
+      if (clientX >= bounds.left && clientX <= bounds.right && clientY >= bounds.top && clientY <= bounds.bottom) return paneId;
+    }
+    return null;
+  };
+
+  const finishPaneDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = paneDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const targetId = drag.started ? findPaneAtPoint(event.clientX, event.clientY, drag.sourceId) : null;
+    paneDragRef.current = null;
+    setDraggingPaneId(null);
+    setDropTargetPaneId(null);
+    if (drag.started && targetId) onMove(drag.sourceId, targetId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+
+  return <div className="terminal-layout-surface" ref={surfaceRef} data-pane-dragging={draggingPaneId ? "true" : undefined}>
     {terminals.map((terminal) => {
       const rect = geometry.panes.get(terminal.id);
       const style: CSSProperties = rect
@@ -392,39 +416,41 @@ function TerminalWorkspaceLayout({ layout, terminals, activeTerminalId, onFocus,
         key={terminal.id}
         className={`terminal-pane-frame ${rect && layout ? "layout-pane" : ""}`}
         style={style}
-        onDragOver={(event) => {
-          if (!layout || !event.dataTransfer.types.includes("text/plain")) return;
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "move";
+        ref={(element) => {
+          if (element) paneRefs.current.set(terminal.id, element);
+          else paneRefs.current.delete(terminal.id);
         }}
-        onDragEnter={(event) => {
-          if (!layout || !event.dataTransfer.types.includes("text/plain")) return;
-          event.preventDefault();
-          event.currentTarget.dataset.dragOver = "true";
-        }}
-        onDragLeave={(event) => {
-          const nextTarget = event.relatedTarget;
-          if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) delete event.currentTarget.dataset.dragOver;
-        }}
-        onDrop={(event) => {
-          const sourceId = event.dataTransfer.getData("text/plain");
-          if (!sourceId || sourceId === terminal.id || !layout) return;
-          event.preventDefault();
-          delete event.currentTarget.dataset.dragOver;
-          onMove(sourceId, terminal.id);
-        }}
+        data-drag-over={dropTargetPaneId === terminal.id ? "true" : undefined}
+        data-drag-source={draggingPaneId === terminal.id ? "true" : undefined}
       >
         {layout && rect && <header className="terminal-pane-header">
           <button
             className="pane-drag-handle"
             type="button"
-            draggable
             aria-label={`Drag ${terminal.name} to swap pane positions`}
             title="Drag onto another pane to swap positions"
             onMouseDown={() => onFocus(terminal.id)}
-            onDragStart={(event) => {
-              event.dataTransfer.setData("text/plain", terminal.id);
-              event.dataTransfer.effectAllowed = "move";
+            onPointerDown={(event) => {
+              if (event.button !== 0 || !layout) return;
+              event.preventDefault();
+              onFocus(terminal.id);
+              paneDragRef.current = { sourceId: terminal.id, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, started: false };
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              const drag = paneDragRef.current;
+              if (!drag || drag.pointerId !== event.pointerId) return;
+              if (!drag.started && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 5) return;
+              drag.started = true;
+              setDraggingPaneId(drag.sourceId);
+              setDropTargetPaneId(findPaneAtPoint(event.clientX, event.clientY, drag.sourceId));
+            }}
+            onPointerUp={finishPaneDrag}
+            onPointerCancel={(event) => {
+              if (paneDragRef.current?.pointerId !== event.pointerId) return;
+              paneDragRef.current = null;
+              setDraggingPaneId(null);
+              setDropTargetPaneId(null);
             }}
           >⠿</button>
           <span className="terminal-pane-title" title={terminal.name}>{terminal.name}</span>

@@ -59,10 +59,13 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .terminal-layout-surface { position: absolute; inset: 0; overflow: hidden; }
 .terminal-pane-frame { position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: #101114; }
 .terminal-pane-frame.layout-pane { border: 1px solid #292a30; }
-.terminal-pane-frame[data-drag-over="true"] { z-index: 4; outline: 2px solid var(--accent); outline-offset: -2px; }
+.terminal-pane-frame[data-drag-over="true"] { z-index: 4; outline: 2px solid var(--accent); outline-offset: -2px; box-shadow: inset 0 0 0 999px rgb(93 156 255 / 7%); }
+.terminal-pane-frame[data-drag-over="true"]::after { content: "Drop to swap panes"; position: absolute; z-index: 6; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 8px 12px; border: 1px solid var(--accent); border-radius: 6px; background: #17181df2; color: #e7e9ef; font-size: 12px; font-weight: 600; pointer-events: none; white-space: nowrap; }
+.terminal-pane-frame[data-drag-source="true"] { opacity: .72; }
 .terminal-pane-header { height: 29px; flex: 0 0 29px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-bottom: 1px solid #292a30; background: #17181d; user-select: none; }
 .pane-drag-handle, .pane-close { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #92949e; }
-.pane-drag-handle { cursor: grab; font-size: 15px; }
+.pane-drag-handle { cursor: grab; font-size: 15px; touch-action: none; user-select: none; }
+.terminal-layout-surface[data-pane-dragging="true"] .pane-drag-handle { color: var(--accent); }
 .pane-drag-handle:active { cursor: grabbing; }
 .pane-drag-handle:hover, .pane-close:hover { background: #2a2b32; color: #f0f0f3; }
 .terminal-pane-title { min-width: 0; flex: 1; overflow: hidden; color: #bfc0c8; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
