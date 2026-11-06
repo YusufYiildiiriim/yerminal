@@ -7,7 +7,7 @@ import { TerminalResourceGraph } from "./features/terminal/TerminalResourceGraph
 import { CodeWorkspace, type EditorFileTab, type EditorGroupState } from "./features/editor/CodeWorkspace";
 import { FloatingTerminalDockGuides, FloatingTerminalModeToggle } from "./features/terminal/FloatingTerminalLayoutControls";
 import { useFloatingTerminalLayout, type TerminalDockEdge, type TerminalLayoutMode } from "./features/terminal/floatingTerminalLayout";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import "./styles/app.css";
 
 const TerminalPane = lazy(() => import("./features/terminal/TerminalPane"));
@@ -212,6 +212,8 @@ function App() {
       return false;
     }
   });
+  const toolsPanelRef = useRef<ImperativePanelHandle>(null);
+  const [toolsPanelCollapsed, setToolsPanelCollapsed] = useState(false);
   const [activeMainView, setActiveMainView] = useState<"code" | "terminals">("terminals");
   const [terminalLayoutMode, setTerminalLayoutMode] = useState<TerminalLayoutMode>("tiled");
   const [terminalWorkspaceState, setTerminalWorkspaceState] = useState<TerminalWorkspaceState>(() => readTerminalWorkspaceState());
@@ -247,6 +249,16 @@ function App() {
       localStorage.setItem(TOOL_PANEL_AUTO_HIDE_KEY, String(toolPanelAutoHide));
     } catch {
       // Keep the setting available for the current session when storage is unavailable.
+    }
+  }, [toolPanelAutoHide]);
+
+  useEffect(() => {
+    if (toolPanelAutoHide) {
+      toolsPanelRef.current?.collapse();
+      setToolsPanelCollapsed(true);
+    } else {
+      toolsPanelRef.current?.expand();
+      setToolsPanelCollapsed(false);
     }
   }, [toolPanelAutoHide]);
 
@@ -892,7 +904,11 @@ function App() {
       </header>
 
       <PanelGroup direction="horizontal" className="workspace">
-        <Panel defaultSize={27} minSize={18} maxSize={46} className="tools-panel">
+        <Panel ref={toolsPanelRef} defaultSize={27} minSize={18} maxSize={46} collapsible collapsedSize={4} className="tools-panel" data-autohide-collapsed={toolsPanelCollapsed ? "true" : "false"} onBlurCapture={(event) => {
+          if (!toolPanelAutoHide || event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+          toolsPanelRef.current?.collapse();
+          setToolsPanelCollapsed(true);
+        }}>
           <section className="workspace-navigation" aria-label="Workspace navigation">
             <div className="workspace-navigation-controls">
               <div className="workspace-switcher">
@@ -916,7 +932,7 @@ function App() {
           </section>
           <div className="workspace-tool-layout" data-panel-auto-hide={toolPanelAutoHide ? "true" : "false"}>
             <nav className="tool-sidebar" aria-label="Workspace tools">
-              {tools.map((tool) => <button key={tool.id} className={`tool-sidebar-item ${activeTool === tool.id ? "selected" : ""}`} onClick={() => setActiveTool(tool.id)} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={tool.label}>
+              {tools.map((tool) => <button key={tool.id} className={`tool-sidebar-item ${activeTool === tool.id ? "selected" : ""}`} onClick={() => { setActiveTool(tool.id); if (toolPanelAutoHide) { toolsPanelRef.current?.expand(); setToolsPanelCollapsed(false); } }} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={tool.label}>
                 <span className="tool-sidebar-icon" aria-hidden="true">{tool.icon}</span>
                 <span className="tool-sidebar-label">{tool.label}</span>
               </button>)}
