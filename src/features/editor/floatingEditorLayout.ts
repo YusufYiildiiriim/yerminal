@@ -157,6 +157,21 @@ function edgeAtPoint(clientX: number, clientY: number, bounds: DOMRect): EditorD
   return distances[0].distance <= EDGE_SNAP_DISTANCE ? distances[0].edge : null;
 }
 
+type CanvasBounds = { left: number; top: number; width: number; height: number };
+
+function getCanvasBounds(surface: HTMLElement): CanvasBounds | null {
+  const rect = surface.getBoundingClientRect();
+  const scaleX = surface.offsetWidth > 0 ? rect.width / surface.offsetWidth : 1;
+  const scaleY = surface.offsetHeight > 0 ? rect.height / surface.offsetHeight : 1;
+  const bounds = {
+    left: rect.left + surface.clientLeft * scaleX,
+    top: rect.top + surface.clientTop * scaleY,
+    width: surface.clientWidth * scaleX,
+    height: surface.clientHeight * scaleY,
+  };
+  return bounds.width > 0 && bounds.height > 0 ? bounds : null;
+}
+
 export function useFloatingEditorLayout(workspaceId: string, groupIds: string[]): FloatingEditorLayoutController {
   const groupIdsKey = groupIds.join("|");
   const stableGroupIds = useMemo(
@@ -230,16 +245,14 @@ export function useFloatingEditorLayout(workspaceId: string, groupIds: string[])
     if (target.closest("button, select, input, textarea, .editor-group-resize-handle")) return;
     const surface = surfaceRef.current;
     if (!surface) return;
-    const bounds = surface.getBoundingClientRect();
-    if (bounds.width <= 0 || bounds.height <= 0) return;
-    const rect = getRect(groupId);
-    const left = bounds.left + rect.x / 100 * bounds.width;
-    const top = bounds.top + rect.y / 100 * bounds.height;
+    const pane = event.currentTarget.closest<HTMLElement>(".editor-group-pane");
+    if (!pane) return;
+    const paneBounds = pane.getBoundingClientRect();
     dragRef.current = {
       groupId,
       pointerId: event.pointerId,
-      offsetX: event.clientX - left,
-      offsetY: event.clientY - top,
+      offsetX: event.clientX - paneBounds.left,
+      offsetY: event.clientY - paneBounds.top,
       startX: event.clientX,
       startY: event.clientY,
       moved: false,
@@ -254,11 +267,16 @@ export function useFloatingEditorLayout(workspaceId: string, groupIds: string[])
     const surface = surfaceRef.current;
     if (!drag || drag.groupId !== groupId || drag.pointerId !== event.pointerId || !surface) return;
     const bounds = surface.getBoundingClientRect();
-    if (bounds.width <= 0 || bounds.height <= 0) return;
+    const canvasBounds = getCanvasBounds(surface);
+    const pane = event.currentTarget.closest<HTMLElement>(".editor-group-pane");
+    if (!canvasBounds || !pane) return;
+    const paneBounds = pane.getBoundingClientRect();
     const current = getRect(groupId);
     if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >= 3) drag.moved = true;
-    const x = clamp((event.clientX - drag.offsetX - bounds.left) / bounds.width * 100, 0, 100 - current.width);
-    const y = clamp((event.clientY - drag.offsetY - bounds.top) / bounds.height * 100, 0, 100 - current.height);
+    const maxX = Math.max(0, (canvasBounds.width - paneBounds.width) / canvasBounds.width * 100);
+    const maxY = Math.max(0, (canvasBounds.height - paneBounds.height) / canvasBounds.height * 100);
+    const x = clamp((event.clientX - drag.offsetX - canvasBounds.left) / canvasBounds.width * 100, 0, maxX);
+    const y = clamp((event.clientY - drag.offsetY - canvasBounds.top) / canvasBounds.height * 100, 0, maxY);
     updateSnapshot((value) => ({
       ...value,
       positions: { ...value.positions, [groupId]: { ...current, x, y } },

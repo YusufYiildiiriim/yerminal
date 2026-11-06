@@ -117,6 +117,21 @@ function edgeAtPoint(clientX: number, clientY: number, bounds: DOMRect): Termina
   return distances[0].distance <= EDGE_SNAP_DISTANCE ? distances[0].edge : null;
 }
 
+type CanvasBounds = { left: number; top: number; width: number; height: number };
+
+function getCanvasBounds(surface: HTMLElement): CanvasBounds | null {
+  const rect = surface.getBoundingClientRect();
+  const scaleX = surface.offsetWidth > 0 ? rect.width / surface.offsetWidth : 1;
+  const scaleY = surface.offsetHeight > 0 ? rect.height / surface.offsetHeight : 1;
+  const bounds = {
+    left: rect.left + surface.clientLeft * scaleX,
+    top: rect.top + surface.clientTop * scaleY,
+    width: surface.clientWidth * scaleX,
+    height: surface.clientHeight * scaleY,
+  };
+  return bounds.width > 0 && bounds.height > 0 ? bounds : null;
+}
+
 export function useFloatingTerminalLayout(
   workspaceId: string,
   sessionIds: string[],
@@ -188,35 +203,38 @@ export function useFloatingTerminalLayout(
 
   const startDrag = useCallback((sessionId: string, event: ReactPointerEvent<HTMLElement>) => {
     if (event.button !== 0 || !surfaceRef.current) return;
-    const bounds = surfaceRef.current.getBoundingClientRect();
-    const rect = getRect(sessionId);
-    const windowLeft = bounds.left + bounds.width * rect.x / 100;
-    const windowTop = bounds.top + bounds.height * rect.y / 100;
+    const pane = event.currentTarget.closest<HTMLElement>(".floating-terminal-window");
+    if (!pane) return;
+    const paneBounds = pane.getBoundingClientRect();
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = {
       sessionId,
       pointerId: event.pointerId,
-      offsetX: event.clientX - windowLeft,
-      offsetY: event.clientY - windowTop,
+      offsetX: event.clientX - paneBounds.left,
+      offsetY: event.clientY - paneBounds.top,
     };
     setDraggingSessionId(sessionId);
-  }, [getRect]);
+  }, []);
 
   const moveDrag = useCallback((sessionId: string, event: ReactPointerEvent<HTMLElement>) => {
     const drag = dragRef.current;
     const surface = surfaceRef.current;
     if (!drag || drag.sessionId !== sessionId || drag.pointerId !== event.pointerId || !surface) return;
-    const bounds = surface.getBoundingClientRect();
-    if (bounds.width <= 0 || bounds.height <= 0) return;
+    const bounds = getCanvasBounds(surface);
+    const pane = event.currentTarget.closest<HTMLElement>(".floating-terminal-window");
+    if (!bounds || !pane) return;
+    const paneBounds = pane.getBoundingClientRect();
     const current = getRect(sessionId);
-    const x = Math.max(0, Math.min(100 - current.width, (event.clientX - drag.offsetX - bounds.left) / bounds.width * 100));
-    const y = Math.max(0, Math.min(100 - current.height, (event.clientY - drag.offsetY - bounds.top) / bounds.height * 100));
+    const maxX = Math.max(0, (bounds.width - paneBounds.width) / bounds.width * 100);
+    const maxY = Math.max(0, (bounds.height - paneBounds.height) / bounds.height * 100);
+    const x = Math.max(0, Math.min(maxX, (event.clientX - drag.offsetX - bounds.left) / bounds.width * 100));
+    const y = Math.max(0, Math.min(maxY, (event.clientY - drag.offsetY - bounds.top) / bounds.height * 100));
     setSnapshot((value) => {
       const target = value.workspaceId === workspaceId ? value : readSnapshot(workspaceId, sessionIds);
       return { ...target, positions: { ...target.positions, [sessionId]: { ...current, x, y } } };
     });
-    setDockTarget(edgeAtPoint(event.clientX, event.clientY, bounds));
+    setDockTarget(edgeAtPoint(event.clientX, event.clientY, surface.getBoundingClientRect()));
   }, [getRect, sessionIdsKey, workspaceId]);
 
   const endDrag = useCallback((sessionId: string, event: ReactPointerEvent<HTMLElement>) => {
