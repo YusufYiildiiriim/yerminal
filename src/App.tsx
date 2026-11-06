@@ -4,6 +4,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { DiffViewer } from "./features/git/DiffViewer";
 import { CodeWorkspace, type EditorFileTab } from "./features/editor/CodeWorkspace";
+import { TerminalResourceGraph } from "./features/terminal/TerminalResourceGraph";
 import { FloatingTerminalDockGuides, FloatingTerminalModeToggle } from "./features/terminal/FloatingTerminalLayoutControls";
 import { useFloatingTerminalLayout, type TerminalDockEdge, type TerminalLayoutMode } from "./features/terminal/floatingTerminalLayout";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -183,7 +184,7 @@ const tools: { id: ToolId; label: string; icon: string }[] = [
 
 function App() {
   const [activeTool, setActiveTool] = useState<ToolId>("changes");
-  const [activeMainView, setActiveMainView] = useState<"code" | "terminals">("terminals");
+  const [activeMainView, setActiveMainView] = useState<"code" | "terminals" | "graph">("terminals");
   const [terminalLayoutMode, setTerminalLayoutMode] = useState<TerminalLayoutMode>("tiled");
   const [terminalWorkspaceState, setTerminalWorkspaceState] = useState<TerminalWorkspaceState>(() => readTerminalWorkspaceState());
   const [editorWorkspaces, setEditorWorkspaces] = useState<Record<string, EditorWorkspaceState>>({});
@@ -770,6 +771,7 @@ function App() {
             <nav className="workspace-view-tabs" role="tablist" aria-label="Workspace views">
               <button className={`workspace-view-tab ${activeMainView === "code" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "code"} onClick={() => setActiveMainView("code")} type="button"><span aria-hidden="true">⌘</span> Code{activeEditorWorkspace.tabs.length > 0 && <small>{activeEditorWorkspace.tabs.length}</small>}</button>
               <button className={`workspace-view-tab ${activeMainView === "terminals" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "terminals"} onClick={() => setActiveMainView("terminals")} type="button"><span aria-hidden="true">▣</span> Terminals{activeWorkspaceTerminals.length > 0 && <small>{activeWorkspaceTerminals.length}</small>}</button>
+              <button className={activeMainView === "graph" ? "workspace-view-tab selected" : "workspace-view-tab"} role="tab" aria-selected={activeMainView === "graph"} onClick={() => setActiveMainView("graph")} type="button"><span aria-hidden="true">▤</span> Graph{activeWorkspaceTerminals.length > 0 && <small>{activeWorkspaceTerminals.length}</small>}</button>
             </nav>
             {activeMainView === "terminals" && <div className="terminal-session-toolbar">
               <div className="terminal-tabs" role={layout || activeWorkspaceTerminalIds.length <= 1 ? undefined : "tablist"} aria-label={layout || activeWorkspaceTerminalIds.length <= 1 ? "Terminal workspace actions" : "Terminal sessions"}>
@@ -786,6 +788,7 @@ function App() {
             </div>}
           </div>
           {activeMainView === "code" && <CodeWorkspace tabs={activeEditorWorkspace.tabs} activeTabId={activeEditorWorkspace.activeTabId} onSelect={selectEditorTab} onClose={closeEditorTab} onChange={updateEditorFileContent} onSave={(tabId) => void saveEditorFile(tabId)} />}
+          {activeMainView === "graph" && <TerminalResourceGraph workspaceName={activeTerminalWorkspace?.name ?? "Workspace"} terminals={activeWorkspaceTerminals} activeTerminalId={activeTerminalId} />}
           <div className="terminal-workspace-view" hidden={activeMainView !== "terminals"}>
           <section className="terminal-surface" aria-label="Terminal workspace">
             <TerminalWorkspaceLayout layout={layout} terminals={terminals} visibleTerminalIds={activeWorkspaceTerminalIds} workspaceId={activeTerminalWorkspace?.id ?? ""} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} terminalNameInputRef={terminalNameInputRef} onRename={beginRenameTerminal} onNameChange={setTerminalNameDraft} onNameSave={saveTerminalName} onNameCancel={cancelTerminalRename} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />

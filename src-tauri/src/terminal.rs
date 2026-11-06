@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     io::{Read, Write},
     path::PathBuf,
@@ -9,6 +9,7 @@ use std::{
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Clone, Copy, serde::Deserialize)]
@@ -24,6 +25,16 @@ pub struct TerminalInfo {
     pub id: String,
     pub shell: String,
     pub working_directory: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalResourceUsage {
+    pub session_id: String,
+    pub available: bool,
+    pub process_count: usize,
+    pub memory_bytes: u64,
+    pub cpu_percent: Option<f32>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -55,6 +66,8 @@ struct TerminalOutput {
 }
 
 struct TerminalSession {
+    process_id: Option<u32>,
+    process_start_time: Option<u64>,
     shell: String,
     working_directory: String,
     writer: Mutex<Box<dyn Write + Send>>,
@@ -62,6 +75,123 @@ struct TerminalSession {
     child: Mutex<Box<dyn Child + Send + Sync>>,
 }
 
+pub(crate) struct TerminalProcessRoot {
+    session_id: String,
+    process_id: Option<u32>,
+    process_start_time: Option<u64>,
+    running: bool,
+}
+
+pub struct TerminalResourceMonitor {
+    metrics_system: Option<System>,
+    previous_process_start_times: HashMap<Pid, u64>,
+}
+
+impl Default for TerminalResourceMonitor {
+    fn default() -> Self {
+        Self {
+            metrics_system: System::new().ok(),
+            previous_process_start_times: HashMap::new(),
+        }
+    }
+}
+
+impl TerminalResourceMonitor {
+    pub(crate) fn collect(
+        &mut self,
+        roots: Vec<TerminalProcessRoot>,
+    ) -> Vec<TerminalResourceUsage> {
+        let Some(metrics_system) = self.metrics_system.as_mut() else {
+            return roots
+                .into_iter()
+                .map(|root| TerminalResourceUsage::unavailable(root.session_id))
+                .collect();
+        };
+
+        metrics_system.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::nothing().with_cpu().with_memory(),
+        );
+
+        let process_start_times: HashMap<Pid, u64> = metrics_system
+            .processes()
+            .iter()
+            .map(|(pid, process)| (pid.clone(), process.start_time()))
+            .collect();
+        let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
+        for (pid, process) in metrics_system.processes() {
+            if let Some(parent_pid) = process.parent() {
+                let parent_start_time = metrics_system
+                    .process(parent_pid.clone())
+                    .map(|parent| parent.start_time());
+                if parent_start_time.is_some_and(|start_time| process.start_time() >= start_time) {
+                    children.entry(parent_pid).or_default().push(pid.clone());
+                }
+            }
+        }
+
+        let cpu_count = std::thread::available_parallelism()
+            .map(|count| count.get() as f32)
+            .unwrap_or(1.0);
+        let metrics = roots
+            .into_iter()
+            .map(|root| {
+                let Some(process_id) = root.process_id else {
+                    return TerminalResourceUsage::unavailable(root.session_id);
+                };
+                let Some(expected_start_time) = root.process_start_time else {
+                    return TerminalResourceUsage::unavailable(root.session_id);
+                };
+                if !root.running {
+                    return TerminalResourceUsage::unavailable(root.session_id);
+                }
+
+                let root_pid = Pid::from(process_id as usize);
+                if metrics_system
+                    .process(root_pid.clone())
+                    .is_none_or(|process| process.start_time() != expected_start_time)
+                {
+                    return TerminalResourceUsage::unavailable(root.session_id);
+                }
+
+                let mut process_ids = HashSet::new();
+                let mut pending = vec![root_pid.clone()];
+                while let Some(parent_pid) = pending.pop() {
+                    if !process_ids.insert(parent_pid.clone()) {
+                        continue;
+                    }
+                    if let Some(child_pids) = children.get(&parent_pid) {
+                        pending.extend(child_pids.iter().cloned());
+                    }
+                }
+
+                let cpu_ready = process_ids.iter().all(|pid| {
+                    self.previous_process_start_times.get(pid) == process_start_times.get(pid)
+                });
+                let mut memory_bytes = 0u64;
+                let mut cpu_usage = 0.0f32;
+                for pid in &process_ids {
+                    if let Some(process) = metrics_system.process(pid.clone()) {
+                        memory_bytes = memory_bytes.saturating_add(process.memory());
+                        cpu_usage += process.cpu_usage();
+                    }
+                }
+
+                TerminalResourceUsage {
+                    session_id: root.session_id,
+                    available: true,
+                    process_count: process_ids.len(),
+                    memory_bytes,
+                    cpu_percent: cpu_ready.then(|| (cpu_usage / cpu_count).clamp(0.0, 100.0)),
+                }
+            })
+            .collect();
+
+        self.previous_process_start_times = process_start_times;
+        metrics
+    }
+}
 #[derive(Default)]
 pub struct SessionManager {
     sessions: HashMap<String, Arc<TerminalSession>>,
@@ -184,10 +314,14 @@ impl SessionManager {
             .slave
             .spawn_command(command)
             .map_err(|error| format!("Could not start {executable}: {error}"))?;
+        let process_id = child.process_id();
+        let process_start_time = process_id.and_then(read_process_start_time);
         drop(pair.slave);
 
         let working_directory = cwd.to_string_lossy().into_owned();
         let session = Arc::new(TerminalSession {
+            process_id,
+            process_start_time,
             shell: label.clone(),
             working_directory: working_directory.clone(),
             writer: Mutex::new(writer),
@@ -205,6 +339,39 @@ impl SessionManager {
             shell: label,
             working_directory,
         })
+    }
+
+    pub(crate) fn process_roots(
+        &self,
+        session_ids: &[String],
+    ) -> Result<Vec<TerminalProcessRoot>, String> {
+        if session_ids.len() > 128 {
+            return Err("Too many terminal sessions requested".to_owned());
+        }
+        Ok(session_ids
+            .iter()
+            .map(|id| {
+                let Some(session) = self.sessions.get(id) else {
+                    return TerminalProcessRoot {
+                        session_id: id.clone(),
+                        process_id: None,
+                        process_start_time: None,
+                        running: false,
+                    };
+                };
+                let running = session
+                    .child
+                    .lock()
+                    .map(|mut child| matches!(child.try_wait(), Ok(None)))
+                    .unwrap_or(false);
+                TerminalProcessRoot {
+                    session_id: id.clone(),
+                    process_id: session.process_id,
+                    process_start_time: session.process_start_time,
+                    running,
+                }
+            })
+            .collect())
     }
 
     pub fn write(&self, id: &str, data: &str) -> Result<(), String> {
@@ -314,6 +481,29 @@ impl ShellKind {
             Self::Powershell => "PowerShell",
             Self::Bash => "Bash",
             Self::Zsh => "Zsh",
+        }
+    }
+}
+
+fn read_process_start_time(process_id: u32) -> Option<u64> {
+    let mut system = System::new().ok()?;
+    let pid = Pid::from(process_id as usize);
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&[pid.clone()]),
+        true,
+        ProcessRefreshKind::nothing(),
+    );
+    system.process(pid).map(|process| process.start_time())
+}
+
+impl TerminalResourceUsage {
+    fn unavailable(session_id: String) -> Self {
+        Self {
+            session_id,
+            available: false,
+            process_count: 0,
+            memory_bytes: 0,
+            cpu_percent: None,
         }
     }
 }

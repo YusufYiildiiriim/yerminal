@@ -5,8 +5,27 @@ pub mod workspace_fs;
 use git::{CommitFileChange, CommitFileContent, CommitInfo, FileChange, RepositoryInfo};
 use std::sync::Mutex;
 use tauri::{Manager, State};
-use terminal::{AgentProfileInfo, SessionManager, ShellKind, TerminalInfo};
+use terminal::{
+    AgentProfileInfo, SessionManager, ShellKind, TerminalInfo, TerminalResourceMonitor,
+    TerminalResourceUsage,
+};
 use workspace_fs::WorkspaceEntry;
+
+#[tauri::command]
+fn terminal_resource_usage(
+    manager: State<'_, Mutex<SessionManager>>,
+    monitor: State<'_, Mutex<TerminalResourceMonitor>>,
+    session_ids: Vec<String>,
+) -> Result<Vec<TerminalResourceUsage>, String> {
+    let roots = manager
+        .lock()
+        .map_err(|_| "Terminal manager is unavailable".to_owned())?
+        .process_roots(&session_ids)?;
+    monitor
+        .lock()
+        .map_err(|_| "Terminal resource monitor is unavailable".to_owned())
+        .map(|mut monitor| monitor.collect(roots))
+}
 
 #[tauri::command]
 fn create_terminal(
@@ -151,6 +170,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Mutex::new(SessionManager::default()))
+        .manage(Mutex::new(TerminalResourceMonitor::default()))
         .invoke_handler(tauri::generate_handler![
             create_terminal,
             create_agent_terminal,
@@ -158,6 +178,7 @@ pub fn run() {
             write_terminal,
             resize_terminal,
             close_terminal,
+            terminal_resource_usage,
             git_repository_info,
             git_status,
             git_diff,
