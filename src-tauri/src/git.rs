@@ -3,7 +3,10 @@ use git2::{
     StatusOptions,
 };
 use serde::Serialize;
-use std::path::Path;
+use std::{
+    fs,
+    path::{Component, Path, PathBuf},
+};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -176,6 +179,202 @@ pub fn diff(path: &str, file_path: &str, staged: bool) -> Result<String, String>
     })
     .map_err(|error| format!("Could not read diff: {error}"))?;
     Ok(output)
+}
+
+fn validated_worktree_path(repo: &Repository, file_path: &str) -> Result<PathBuf, String> {
+    let relative = Path::new(file_path);
+    let components: Vec<_> = relative.components().collect();
+    if components.is_empty()
+        || components
+            .iter()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err("Invalid repository-relative file path".to_owned());
+    }
+
+    let root = repo
+        .workdir()
+        .ok_or_else(|| "Git worktree is unavailable".to_owned())?
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve Git worktree: {error}"))?;
+    let mut parent = root.clone();
+    for component in components.iter().take(components.len().saturating_sub(1)) {
+        if let Component::Normal(part) = component {
+            parent.push(part);
+        }
+        if parent.exists() {
+            parent = parent
+                .canonicalize()
+                .map_err(|error| format!("Could not resolve file path: {error}"))?;
+            if !parent.starts_with(&root) {
+                return Err("File path escapes the Git worktree".to_owned());
+            }
+            if !parent.is_dir() {
+                return Err("A parent component is not a directory".to_owned());
+            }
+        }
+    }
+
+    Ok(relative.to_path_buf())
+}
+
+pub fn stage_file(path: &str, file_path: &str) -> Result<(), String> {
+    let repo = open_repository(path)?;
+    let relative = validated_worktree_path(&repo, file_path)?;
+    let worktree_file = repo
+        .workdir()
+        .ok_or_else(|| "Git worktree is unavailable".to_owned())?
+        .join(&relative);
+    let mut index = repo
+        .index()
+        .map_err(|error| format!("Could not open Git index: {error}"))?;
+
+    match fs::symlink_metadata(&worktree_file) {
+        Ok(metadata) if metadata.is_file() || metadata.file_type().is_symlink() => index
+            .add_path(&relative)
+            .map_err(|error| format!("Could not stage file: {error}"))?,
+        Ok(_) => return Err("Only individual files can be staged".to_owned()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            if index.get_path(&relative, 0).is_some() {
+                index
+                    .remove_path(&relative)
+                    .map_err(|error| format!("Could not stage file deletion: {error}"))?;
+            } else {
+                return Err("File no longer exists; refresh Git Changes".to_owned());
+            }
+        }
+        Err(error) => return Err(format!("Could not inspect file: {error}")),
+    }
+
+    index
+        .write()
+        .map_err(|error| format!("Could not write Git index: {error}"))
+}
+
+pub fn unstage_file(path: &str, file_path: &str) -> Result<(), String> {
+    let repo = open_repository(path)?;
+    let relative = validated_worktree_path(&repo, file_path)?;
+    let head = match repo.head() {
+        Ok(head) => Some(
+            head.peel_to_commit()
+                .map_err(|error| format!("Could not read HEAD commit: {error}"))?,
+        ),
+        Err(error)
+            if error.code() == git2::ErrorCode::UnbornBranch
+                || error.code() == git2::ErrorCode::NotFound =>
+        {
+            None
+        }
+        Err(error) => return Err(format!("Could not read HEAD: {error}")),
+    };
+
+    if let Some(head) = head {
+        repo.reset_default(Some(&head.as_object()), [relative.as_path()])
+            .map_err(|error| format!("Could not unstage file: {error}"))
+    } else {
+        let mut index = repo
+            .index()
+            .map_err(|error| format!("Could not open Git index: {error}"))?;
+        if index.get_path(&relative, 0).is_some() {
+            index
+                .remove_path(&relative)
+                .map_err(|error| format!("Could not unstage file: {error}"))?;
+        }
+        index
+            .write()
+            .map_err(|error| format!("Could not write Git index: {error}"))
+    }
+}
+
+pub fn discard_worktree_file(path: &str, file_path: &str) -> Result<(), String> {
+    let repo = open_repository(path)?;
+    let relative = validated_worktree_path(&repo, file_path)?;
+    let worktree_file = repo
+        .workdir()
+        .ok_or_else(|| "Git worktree is unavailable".to_owned())?
+        .join(&relative);
+    let index = repo
+        .index()
+        .map_err(|error| format!("Could not open Git index: {error}"))?;
+
+    if index.get_path(&relative, 0).is_some() {
+        let mut options = git2::build::CheckoutBuilder::new();
+        options.force().path(&relative);
+        repo.checkout_index(None, Some(&mut options))
+            .map_err(|error| format!("Could not restore working tree file: {error}"))
+    } else {
+        match fs::symlink_metadata(&worktree_file) {
+            Ok(metadata) if metadata.file_type().is_file() || metadata.file_type().is_symlink() => {
+                fs::remove_file(&worktree_file)
+                    .map_err(|error| format!("Could not discard untracked file: {error}"))
+            }
+            Ok(_) => Err("Only individual files can be discarded".to_owned()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!("Could not inspect file: {error}")),
+        }
+    }
+}
+
+pub fn commit_staged(path: &str, message: &str) -> Result<String, String> {
+    let message = message.trim();
+    if message.is_empty() || message.len() > 64 * 1024 {
+        return Err("Enter a commit message of at most 64 KiB".to_owned());
+    }
+    let repo = open_repository(path)?;
+    if repo.state() != RepositoryState::Clean {
+        return Err("Finish the current Git operation before committing".to_owned());
+    }
+    if !status(path)?.iter().any(|change| change.staged) {
+        return Err("There are no staged changes to commit".to_owned());
+    }
+
+    let mut index = repo
+        .index()
+        .map_err(|error| format!("Could not open Git index: {error}"))?;
+    if index.has_conflicts() {
+        return Err("Resolve all merge conflicts before committing".to_owned());
+    }
+    let tree_id = index
+        .write_tree()
+        .map_err(|error| format!("Could not write staged tree: {error}"))?;
+    let tree = repo
+        .find_tree(tree_id)
+        .map_err(|error| format!("Could not read staged tree: {error}"))?;
+    let parent = match repo.head() {
+        Ok(head) => Some(
+            head.peel_to_commit()
+                .map_err(|error| format!("Could not read HEAD commit: {error}"))?,
+        ),
+        Err(error)
+            if error.code() == git2::ErrorCode::UnbornBranch
+                || error.code() == git2::ErrorCode::NotFound =>
+        {
+            None
+        }
+        Err(error) => return Err(format!("Could not read HEAD: {error}")),
+    };
+    if parent
+        .as_ref()
+        .and_then(|commit| commit.tree().ok())
+        .is_some_and(|parent_tree| parent_tree.id() == tree_id)
+    {
+        return Err("There are no staged changes to commit".to_owned());
+    }
+    let signature = repo.signature().map_err(|error| {
+        format!("Configure user.name and user.email before committing: {error}")
+    })?;
+    let parents: Vec<_> = parent.iter().collect();
+    let oid = repo
+        .commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            message,
+            &tree,
+            &parents,
+        )
+        .map_err(|error| format!("Could not create commit: {error}"))?;
+    Ok(oid.to_string())
 }
 
 pub fn history(path: &str, skip: usize, limit: usize) -> Result<Vec<CommitInfo>, String> {

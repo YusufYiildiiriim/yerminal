@@ -952,8 +952,14 @@ function GitChanges({ repoPath, repoInfo, onOpenRepository, onError }: { repoPat
   const [selectedStaged, setSelectedStaged] = useState(false);
   const [diff, setDiff] = useState("");
   const [diffLoading, setDiffLoading] = useState(false);
+  const [commitMessage, setCommitMessage] = useState("");
+  const [fileAction, setFileAction] = useState<{ path: string; action: string } | null>(null);
+  const [discardTarget, setDiscardTarget] = useState<string | null>(null);
+  const [isCommitting, setIsCommitting] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const lastFocusedRowRef = useRef<HTMLButtonElement>(null);
+  const stagedChanges = changes.filter((change) => change.staged);
+  const unstagedChanges = changes.filter((change) => change.unstaged);
 
   const refresh = useCallback(async () => {
     if (!repoPath || !repoInfo || !isTauri()) return;
@@ -961,8 +967,37 @@ function GitChanges({ repoPath, repoInfo, onOpenRepository, onError }: { repoPat
     catch (reason) { onError(String(reason)); }
   }, [onError, repoInfo, repoPath]);
 
+  const runFileAction = async (action: "stage" | "unstage" | "discard", filePath: string) => {
+    if (!repoPath || !repoInfo || fileAction) return;
+    const command = action === "stage" ? "git_stage_file" : action === "unstage" ? "git_unstage_file" : "git_discard_worktree_file";
+    setFileAction({ path: filePath, action });
+    try {
+      await invoke<void>(command, { path: repoPath, filePath });
+      await refresh();
+    } catch (reason) {
+      onError(String(reason));
+    } finally {
+      setFileAction(null);
+    }
+  };
+
+  const commitStaged = async () => {
+    if (!repoPath || !repoInfo || stagedChanges.length === 0 || !commitMessage.trim() || isCommitting) return;
+    setIsCommitting(true);
+    try {
+      const commitId = await invoke<string>("git_commit_staged", { path: repoPath, message: commitMessage });
+      setCommitMessage("");
+      await refresh();
+      onError(`Created commit ${commitId.slice(0, 7)}`);
+    } catch (reason) {
+      onError(String(reason));
+    } finally {
+      setIsCommitting(false);
+    }
+  };
+
   useEffect(() => { void refresh(); }, [refresh]);
-  useEffect(() => { setSelected(null); setSelectedStaged(false); }, [repoPath]);
+  useEffect(() => { setSelected(null); setSelectedStaged(false); setCommitMessage(""); setDiscardTarget(null); }, [repoPath]);
   useEffect(() => {
     if (!selected || !repoInfo || !repoPath || !isTauri()) { setDiff(""); setDiffLoading(false); return; }
     let active = true;
@@ -987,11 +1022,41 @@ function GitChanges({ repoPath, repoInfo, onOpenRepository, onError }: { repoPat
     };
   }, [selected]);
 
-  return <div className="tool-view">
-    <header className="tool-header"><div><h1>Git Changes</h1><p>{repoInfo ? `${repoInfo.branch} · ${changes.length} changed` : "Review your working tree"}</p></div><button className="icon-button refresh-button" aria-label="Refresh changes" onClick={() => void refresh()} type="button">↻</button></header>
-    {!repoInfo ? <div className="empty-repository"><div className="empty-icon">⌂</div><h2>No repository opened</h2><p>Open a folder to view its changes.</p><button className="primary-button" onClick={onOpenRepository} type="button">Open Folder</button></div> : <>
+  const renderChangeRow = (change: FileChange, staged: boolean) => <div className={`change-row ${selected?.path === change.path && selectedStaged === staged ? "selected" : ""}`} key={`${staged ? "staged" : "unstaged"}:${change.path}`}>
+    <button className="change-main-row" onClick={(event) => { lastFocusedRowRef.current = event.currentTarget; setSelected(change); setSelectedStaged(staged); }} type="button" title={change.path}>
+      <span className={`change-kind ${change.kind}`}>{change.kind === "modified" ? "M" : change.kind === "deleted" ? "D" : change.kind === "untracked" ? "?" : change.kind === "renamed" ? "R" : "A"}</span>
+      <span className="change-path">{change.path}</span>
+      {staged && <span className="change-badge">S</span>}
+      {!staged && <span className="change-badge unstaged">U</span>}
+    </button>
+    <div className="change-row-actions">
+      <button className={`change-action ${staged ? "unstage" : "stage"}`} aria-label={`${staged ? "Unstage" : "Stage"} ${change.path}`} title={`${staged ? "Unstage" : "Stage"} change`} disabled={Boolean(fileAction)} onClick={() => void runFileAction(staged ? "unstage" : "stage", change.path)} type="button">
+        <span aria-hidden="true">{fileAction?.path === change.path && fileAction.action === (staged ? "unstage" : "stage") ? "…" : staged ? "−" : "+"}</span>
+      </button>
+      {!staged && <button className="change-action discard" aria-label={`Discard working tree changes to ${change.path}`} title="Discard working tree changes" disabled={Boolean(fileAction)} onClick={() => setDiscardTarget(change.path)} type="button"><span aria-hidden="true">↶</span></button>}
+    </div>
+  </div>;
 
-      <div className="change-list">{changes.length === 0 ? <div className="change-empty">Working tree clean</div> : changes.map((change) => <button key={change.path} className={`change-row ${selected?.path === change.path ? "selected" : ""}`} onClick={(event) => { lastFocusedRowRef.current = event.currentTarget; setSelected(change); setSelectedStaged(change.staged && !change.unstaged); }} type="button"><span className={`change-kind ${change.kind}`}>{change.kind === "modified" ? "M" : change.kind === "deleted" ? "D" : change.kind === "untracked" ? "?" : change.kind === "renamed" ? "R" : "A"}</span><span className="change-path" title={change.path}>{change.path}</span>{change.staged && <span className="change-badge">S</span>}{change.unstaged && <span className="change-badge unstaged">U</span>}</button>)}</div>
+  return <div className="tool-view">
+    <header className="tool-header"><div><h1>Git Changes</h1><p>{repoInfo ? `${repoInfo.branch} · ${stagedChanges.length} staged · ${unstagedChanges.length} unstaged` : "Review your working tree"}</p></div><button className="icon-button refresh-button" aria-label="Refresh changes" onClick={() => void refresh()} type="button">↻</button></header>
+    {!repoInfo ? <div className="empty-repository"><div className="empty-icon">⌂</div><h2>No repository opened</h2><p>Open a folder to view its changes.</p><button className="primary-button" onClick={onOpenRepository} type="button">Open Folder</button></div> : <>
+      <section className="git-commit-box" aria-label="Commit staged changes">
+        <div className="git-commit-box-heading"><span>Commit staged changes</span><span className="git-staged-count">{stagedChanges.length}</span></div>
+        <textarea aria-label="Commit message" placeholder="Message (required)" rows={2} maxLength={65536} value={commitMessage} onChange={(event) => setCommitMessage(event.currentTarget.value)} />
+        <button className="git-commit-button" onClick={() => void commitStaged()} disabled={isCommitting || Boolean(fileAction) || stagedChanges.length === 0 || !commitMessage.trim()} type="button"><span aria-hidden="true">✓</span><span>{isCommitting ? "Committing…" : "Commit staged"}</span><small>{stagedChanges.length}</small></button>
+      </section>
+      <div className="change-list" aria-label="Repository changes">
+        {changes.length === 0 ? <div className="change-empty">Working tree clean</div> : <>
+          <section className="change-group" aria-label="Staged changes">
+            <header className="change-group-heading"><span>Staged Changes</span><span>{stagedChanges.length}</span></header>
+            {stagedChanges.length === 0 ? <div className="change-group-empty">No staged changes</div> : stagedChanges.map((change) => renderChangeRow(change, true))}
+          </section>
+          <section className="change-group" aria-label="Changes">
+            <header className="change-group-heading"><span>Changes</span><span>{unstagedChanges.length}</span></header>
+            {unstagedChanges.length === 0 ? <div className="change-group-empty">No unstaged changes</div> : unstagedChanges.map((change) => renderChangeRow(change, false))}
+          </section>
+        </>}
+      </div>
       {selected && createPortal(
         <div className="diff-preview-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelected(null); }}>
           <section className="diff-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="diff-preview-title" aria-describedby="diff-preview-description" onKeyDown={(event) => {
@@ -1026,8 +1091,18 @@ function GitChanges({ repoPath, repoInfo, onOpenRepository, onError }: { repoPat
         </div>,
         document.body,
       )}
+      {discardTarget && createPortal(
+        <div className="git-confirm-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDiscardTarget(null); }}>
+          <section className="git-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="discard-title" aria-describedby="discard-description">
+            <div className="git-confirm-heading"><span aria-hidden="true">↶</span><div><h2 id="discard-title">Discard working tree changes?</h2><p id="discard-description">This permanently removes the unstaged version. Staged content is kept.</p></div></div>
+            <code className="git-confirm-path" title={discardTarget}>{discardTarget}</code>
+            <footer><button type="button" onClick={() => setDiscardTarget(null)}>Cancel</button><button className="git-confirm-danger" type="button" disabled={Boolean(fileAction)} onClick={() => { const path = discardTarget; setDiscardTarget(null); void runFileAction("discard", path); }}>Discard changes</button></footer>
+          </section>
+        </div>,
+        document.body,
+      )}
     </>}
-    <div className="panel-footnote"><span className="read-only-mark">◉</span> Read-only Git tools</div>
+    <div className="panel-footnote"><span className="read-only-mark">◇</span> Stage, unstage, discard, and commit changes</div>
   </div>;
 }
 

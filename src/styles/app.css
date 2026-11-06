@@ -223,6 +223,44 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .change-row:hover, .change-row.selected { background: #222329; }
 .change-kind { width: 15px; flex: 0 0 15px; text-align: center; color: #d3ae70; font-weight: 700; }.change-kind.added, .change-kind.untracked { color: #7dc99a; }.change-kind.deleted { color: #dc7b82; }.change-kind.renamed { color: #93b0e6; }
 .change-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }.change-badge { padding: 2px 4px; border-radius: 3px; background: #282943; color: #aaa9dd; font: 9px Inter, sans-serif; }.change-badge.unstaged { background: #3b2f25; color: #d2ac79; }
+.git-commit-box { display: grid; flex: 0 0 auto; gap: 7px; padding: 10px 12px; border-bottom: 1px solid #292a31; background: #17181d; }
+.git-commit-box-heading { display: flex; align-items: center; justify-content: space-between; color: #d0d0d8; font-size: 10px; font-weight: 600; }
+.git-staged-count { min-width: 18px; padding: 2px 5px; border-radius: 8px; background: #2a2939; color: #c2b8f7; font-size: 9px; text-align: center; }
+.git-commit-box textarea { width: 100%; min-height: 42px; max-height: 90px; resize: vertical; padding: 7px 8px; border: 1px solid #34353d; border-radius: 5px; outline: none; background: #101115; color: #d8d8e0; font: 10px/1.45 Inter, "Segoe UI", sans-serif; }
+.git-commit-box textarea::placeholder { color: #737580; }
+.git-commit-box textarea:focus { border-color: #7567a7; box-shadow: 0 0 0 2px #7868a51f; }
+.git-commit-button { min-height: 30px; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 0 9px; border: 1px solid #514773; border-radius: 5px; background: #302a43; color: #e0d9ff; font-size: 10px; font-weight: 600; }
+.git-commit-button > span:first-child { color: #aee0bd; font-size: 13px; }
+.git-commit-button small { min-width: 16px; margin-left: auto; padding: 2px 4px; border-radius: 8px; background: #443b5c; color: #e5deff; font-size: 9px; }
+.git-commit-button:hover:not(:disabled), .git-commit-button:focus-visible { border-color: #897bbb; outline: none; background: #3b3450; }
+.git-commit-button:disabled { border-color: #33343b; background: #202126; color: #656771; cursor: not-allowed; }
+.change-list { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; padding: 4px 0 8px; }
+.change-group { flex: 0 0 auto; }
+.change-group-heading { height: 27px; display: flex; align-items: center; gap: 7px; padding: 0 12px; color: #9d9faa; font-size: 9px; font-weight: 650; text-transform: uppercase; letter-spacing: .045em; }
+.change-group-heading span:last-child { min-width: 15px; padding: 1px 4px; border-radius: 7px; background: #282930; color: #aeb0ba; text-align: center; font-size: 8px; }
+.change-group-empty { padding: 4px 13px 9px 20px; color: #62646e; font-size: 9px; }
+.change-row { min-height: 31px; gap: 0; padding: 2px 7px 2px 0; }
+.change-main-row { min-width: 0; min-height: 27px; flex: 1; display: flex; align-items: center; gap: 8px; overflow: hidden; padding: 3px 0 3px 13px; border: 0; background: transparent; color: #c4c5cb; text-align: left; font: 10px "Cascadia Code", Consolas, monospace; }
+.change-main-row:hover { color: #f0eef8; }
+.change-row-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; opacity: .3; transition: opacity .12s ease; }
+.change-row:hover .change-row-actions, .change-row:focus-within .change-row-actions { opacity: 1; }
+.change-action { width: 23px; height: 23px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #858893; font: 15px "Segoe UI Symbol", "Segoe UI", sans-serif; line-height: 1; }
+.change-action.stage:hover, .change-action.stage:focus-visible { border-color: #385846; outline: none; background: #1d3227; color: #9ce0b2; }
+.change-action.unstage:hover, .change-action.unstage:focus-visible { border-color: #4c4967; outline: none; background: #29283a; color: #c5bafa; }
+.change-action.discard:hover, .change-action.discard:focus-visible { border-color: #67444a; outline: none; background: #39262c; color: #ef9da5; }
+.change-action:disabled { opacity: .35; cursor: wait; }
+.git-confirm-backdrop { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; padding: 20px; background: #08090bdc; backdrop-filter: blur(4px); }
+.git-confirm-dialog { width: min(430px, 100%); display: grid; gap: 14px; padding: 17px; border: 1px solid #48414a; border-radius: 10px; background: #191a20; box-shadow: 0 22px 70px #000b; }
+.git-confirm-heading { display: flex; align-items: flex-start; gap: 11px; }
+.git-confirm-heading > span { width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center; border: 1px solid #68464d; border-radius: 7px; background: #33242a; color: #f09da5; font-size: 17px; }
+.git-confirm-heading h2 { margin: 1px 0 5px; color: #e8e5ec; font-size: 12px; }
+.git-confirm-heading p { margin: 0; color: #9698a2; font-size: 10px; line-height: 1.5; }
+.git-confirm-path { max-width: 100%; overflow: hidden; padding: 8px; border: 1px solid #303139; border-radius: 5px; background: #111216; color: #c9c7d1; font: 10px "Cascadia Code", Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.git-confirm-dialog footer { display: flex; justify-content: flex-end; gap: 7px; }
+.git-confirm-dialog footer button { min-height: 29px; padding: 0 10px; border: 1px solid #393a42; border-radius: 5px; background: #23242a; color: #c8c9d0; font-size: 10px; }
+.git-confirm-dialog footer .git-confirm-danger { border-color: #71444c; background: #432d33; color: #ffd9dd; }
+.git-confirm-dialog footer .git-confirm-danger:hover:not(:disabled) { border-color: #9e626b; background: #57343b; }
+.git-confirm-dialog footer button:disabled { opacity: .5; cursor: wait; }
 .diff-heading { height: 31px; flex: 0 0 31px; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 0 10px; color: #afb0b9; font-size: 10px; }.diff-heading span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.diff-heading button { border: 0; background: none; color: #8a8c96; font-size: 15px; }
 .diff-sides { display: flex; gap: 3px; flex: 0 0 auto; }.diff-sides button { padding: 3px 5px; border-radius: 3px; color: #858792; font: 9px Inter, sans-serif; }.diff-sides button.active { color: #e4e0ff; background: #37314f; }
 .diff-preview-backdrop { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 28px; background: #07080bdc; backdrop-filter: blur(5px); }

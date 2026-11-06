@@ -114,6 +114,26 @@ fn git_status(path: String) -> Result<Vec<FileChange>, String> {
 }
 
 #[tauri::command]
+fn git_stage_file(path: String, file_path: String) -> Result<(), String> {
+    git::stage_file(&path, &file_path)
+}
+
+#[tauri::command]
+fn git_unstage_file(path: String, file_path: String) -> Result<(), String> {
+    git::unstage_file(&path, &file_path)
+}
+
+#[tauri::command]
+fn git_discard_worktree_file(path: String, file_path: String) -> Result<(), String> {
+    git::discard_worktree_file(&path, &file_path)
+}
+
+#[tauri::command]
+fn git_commit_staged(path: String, message: String) -> Result<String, String> {
+    git::commit_staged(&path, &message)
+}
+
+#[tauri::command]
 fn git_diff(path: String, file_path: String, staged: bool) -> Result<String, String> {
     git::diff(&path, &file_path, staged)
 }
@@ -181,6 +201,10 @@ pub fn run() {
             terminal_resource_usage,
             git_repository_info,
             git_status,
+            git_stage_file,
+            git_unstage_file,
+            git_discard_worktree_file,
+            git_commit_staged,
             git_diff,
             git_history,
             git_commit_files,
