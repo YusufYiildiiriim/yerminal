@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { DiffViewer } from "./features/git/DiffViewer";
+import { CodeWorkspace, type EditorFileTab } from "./features/editor/CodeWorkspace";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import "./styles/app.css";
 
@@ -36,8 +37,9 @@ type FileChange = { path: string; kind: string; staged: boolean; unstaged: boole
 type CommitInfo = { id: string; shortId: string; message: string; author: string; timestamp: number; parents: string[]; branches: string[] };
 type CommitFileChange = { path: string; kind: string };
 type WorkspaceEntry = { name: string; path: string; isDir: boolean; size: number | null; extension: string | null };
-type WorkspaceFilePreview = { root: string; name: string; path: string; size: number; content: string | null; error: string | null };
 const WORKSPACE_FILE_PREVIEW_LIMIT = 1024 * 1024;
+type EditorWorkspaceState = { tabs: EditorFileTab[]; activeTabId: string | null };
+type EditorFileRequest = { id: string; root: string; path: string; name: string; size?: number; sourceCommitId?: string; sourceLabel?: string };
 const COMMIT_PAGE_SIZE = 50;
 type PersistedWorkspace = { folders: string[]; activePath: string };
 type TerminalWorkspace = { id: string; name: string; rootPath: string; folderPaths: string[]; terminalIds: string[]; activeTerminalId: string | null; layout: LayoutNode | null };
@@ -161,7 +163,9 @@ const tools: { id: ToolId; label: string; icon: string }[] = [
 
 function App() {
   const [activeTool, setActiveTool] = useState<ToolId>("changes");
+  const [activeMainView, setActiveMainView] = useState<"code" | "terminals">("terminals");
   const [terminalWorkspaceState, setTerminalWorkspaceState] = useState<TerminalWorkspaceState>(() => readTerminalWorkspaceState());
+  const [editorWorkspaces, setEditorWorkspaces] = useState<Record<string, EditorWorkspaceState>>({});
 
   const [repoInfo, setRepoInfo] = useState<RepositoryInfo | null>(null);
   const [agentProfiles, setAgentProfiles] = useState<AgentProfile[]>([]);
@@ -179,6 +183,80 @@ function App() {
   const repoPath = activeTerminalWorkspace?.rootPath ?? "";
   const activeTerminalId = activeTerminalWorkspace?.activeTerminalId ?? null;
   const layout = activeTerminalWorkspace?.layout ?? null;
+  const activeEditorWorkspace = editorWorkspaces[activeTerminalWorkspace?.id ?? ""] ?? { tabs: [], activeTabId: null };
+
+  const openEditorFile = useCallback(async (request: EditorFileRequest) => {
+    const workspaceId = activeTerminalWorkspace?.id;
+    if (!workspaceId) return;
+    const tabId = request.id;
+    setActiveMainView("code");
+    const workspace = editorWorkspaces[workspaceId] ?? { tabs: [], activeTabId: null };
+    const existing = workspace.tabs.find((tab) => tab.id === tabId);
+    setEditorWorkspaces((current) => ({
+      ...current,
+      [workspaceId]: existing
+        ? { ...(current[workspaceId] ?? workspace), activeTabId: tabId, tabs: (current[workspaceId]?.tabs ?? workspace.tabs).map((tab) => tab.id === tabId && tab.status === "error" ? { ...tab, status: "loading", error: null } : tab) }
+        : { tabs: [...(current[workspaceId]?.tabs ?? workspace.tabs), { id: tabId, root: request.root, path: request.path, name: request.name, status: "loading", content: null, error: null, sourceLabel: request.sourceLabel ?? null }], activeTabId: tabId },
+    }));
+    if (existing?.status === "ready" || existing?.status === "loading") return;
+
+    const updateTab = (update: (tab: EditorFileTab) => EditorFileTab) => setEditorWorkspaces((current) => {
+      const workspace = current[workspaceId];
+      if (!workspace) return current;
+      return { ...current, [workspaceId]: { ...workspace, tabs: workspace.tabs.map((tab) => tab.id === tabId ? update(tab) : tab) } };
+    });
+
+    if (request.size !== undefined && request.size > WORKSPACE_FILE_PREVIEW_LIMIT) {
+      updateTab((tab) => ({ ...tab, status: "error", error: "This file exceeds the 1 MiB preview limit." }));
+      return;
+    }
+    if (!isTauri()) {
+      updateTab((tab) => ({ ...tab, status: "error", error: "File preview is available in the desktop app." }));
+      return;
+    }
+
+    try {
+      const result = request.sourceCommitId
+        ? await invoke<{ content: string; sourceLabel: string }>("git_commit_file_content", { path: request.root, commitId: request.sourceCommitId, filePath: request.path })
+        : { content: await invoke<string>("read_workspace_text_file", { root: request.root, path: request.path }), sourceLabel: "Workspace file" };
+      updateTab((tab) => ({ ...tab, status: "ready", content: result.content, sourceLabel: result.sourceLabel }));
+    } catch (reason) {
+      const message = String(reason);
+      const normalized = message.toLowerCase();
+      const error = normalized.includes("binary")
+        ? "Binary file preview is unavailable."
+        : normalized.includes("utf-8")
+          ? "This file isn't UTF-8 text and can't be previewed."
+          : normalized.includes("too large")
+            ? "This file exceeds the 1 MiB preview limit."
+            : message;
+      updateTab((tab) => ({ ...tab, status: "error", error }));
+    }
+  }, [activeTerminalWorkspace?.id, editorWorkspaces]);
+
+  const selectEditorTab = useCallback((tabId: string) => {
+    const workspaceId = activeTerminalWorkspace?.id;
+    if (!workspaceId) return;
+    setEditorWorkspaces((current) => {
+      const workspace = current[workspaceId];
+      return workspace ? { ...current, [workspaceId]: { ...workspace, activeTabId: tabId } } : current;
+    });
+  }, [activeTerminalWorkspace?.id]);
+
+  const closeEditorTab = useCallback((tabId: string) => {
+    const workspaceId = activeTerminalWorkspace?.id;
+    if (!workspaceId) return;
+    setEditorWorkspaces((current) => {
+      const workspace = current[workspaceId];
+      if (!workspace) return current;
+      const removedIndex = workspace.tabs.findIndex((tab) => tab.id === tabId);
+      const tabs = workspace.tabs.filter((tab) => tab.id !== tabId);
+      const activeTabId = workspace.activeTabId === tabId
+        ? tabs[Math.min(removedIndex, tabs.length - 1)]?.id ?? null
+        : workspace.activeTabId;
+      return { ...current, [workspaceId]: { tabs, activeTabId } };
+    });
+  }, [activeTerminalWorkspace?.id]);
 
   const updateTerminalWorkspace = useCallback((workspaceId: string, update: (workspace: TerminalWorkspace) => TerminalWorkspace) => {
     setTerminalWorkspaceState((current) => ({
@@ -551,13 +629,19 @@ function App() {
 
       <PanelGroup direction="horizontal" className="workspace">
         <Panel defaultSize={27} minSize={18} maxSize={46} className="tools-panel">
-          <section className="tool-content">{activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} /> : activeTool === "graph" ? <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} /> : <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} />}</section>
+          <section className="tool-content">{activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} /> : activeTool === "graph" ? <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}` })} /> : <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} />}</section>
           <nav className="tool-tabs" aria-label="Developer tools">
             {tools.map((tool) => <button key={tool.id} className={`tool-tab ${activeTool === tool.id ? "selected" : ""}`} onClick={() => setActiveTool(tool.id)} type="button"><span className="tool-icon">{tool.icon}</span>{tool.label}</button>)}
           </nav>
         </Panel>
         <PanelResizeHandle className="resize-handle" aria-label="Resize developer tools" />
         <Panel minSize={35} className="terminal-panel">
+          <nav className="workspace-view-tabs" role="tablist" aria-label="Workspace views">
+            <button className={`workspace-view-tab ${activeMainView === "code" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "code"} onClick={() => setActiveMainView("code")} type="button"><span aria-hidden="true">⌘</span> Code{activeEditorWorkspace.tabs.length > 0 && <small>{activeEditorWorkspace.tabs.length}</small>}</button>
+            <button className={`workspace-view-tab ${activeMainView === "terminals" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "terminals"} onClick={() => setActiveMainView("terminals")} type="button"><span aria-hidden="true">▣</span> Terminals{activeWorkspaceTerminals.length > 0 && <small>{activeWorkspaceTerminals.length}</small>}</button>
+          </nav>
+          {activeMainView === "code" && <CodeWorkspace tabs={activeEditorWorkspace.tabs} activeTabId={activeEditorWorkspace.activeTabId} onSelect={selectEditorTab} onClose={closeEditorTab} />}
+          <div className="terminal-workspace-view" hidden={activeMainView !== "terminals"}>
           <div className="terminal-toolbar">
             <div className="terminal-session-toolbar">
               <div className="terminal-tabs" role={layout ? undefined : "tablist"} aria-label={layout ? "Terminal workspace actions" : "Terminal sessions"}>
@@ -580,6 +664,7 @@ function App() {
             <div className="terminal-status" aria-live="polite" aria-atomic="true"><span className="status-indicator" /><strong>{activeTerminal?.name ?? "No terminal"}</strong>{activeTerminal && <span className="terminal-status-active">Active</span>}<span className="status-separator">·</span><span>{activeTerminal?.shellLabel ?? "Ready"}</span></div>
           </section>
           <footer className="statusbar"><span><span className="status-indicator" />{repoInfo ? `${repoInfo.branch} · ${repoInfo.state}` : "No folder opened"}</span><span>UTF-8</span><span>{navigator.userAgent.includes("Windows") ? "Windows" : navigator.platform}</span></footer>
+          </div>
         </Panel>
       </PanelGroup>
       {toast && <div className="app-toast" role="alert" aria-live="assertive" aria-atomic="true"><span>{toast}</span><button aria-label="Dismiss notification" onClick={dismissToast} type="button">×</button></div>}
@@ -587,7 +672,7 @@ function App() {
   );
 }
 
-function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove }: { folders: string[]; activePath: string; onAdd: () => void; onActivate: (path: string) => void; onRemove: (path: string) => void }) {
+function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOpenFile }: { folders: string[]; activePath: string; onAdd: () => void; onActivate: (path: string) => void; onRemove: (path: string) => void; onOpenFile: (root: string, entry: WorkspaceEntry) => void }) {
   const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
   const [entriesByPath, setEntriesByPath] = useState<Record<string, WorkspaceEntry[]>>({});
   const [loadingPaths, setLoadingPaths] = useState<Record<string, boolean>>({});
@@ -595,11 +680,6 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove }: { 
   const loadedPathsRef = useRef(new Set<string>());
   const pendingPathsRef = useRef(new Set<string>());
   const treeGenerationRef = useRef(0);
-  const previewRequestRef = useRef(0);
-  const [filePreview, setFilePreview] = useState<WorkspaceFilePreview | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const previewCloseRef = useRef<HTMLButtonElement>(null);
-  const lastFocusedFileRef = useRef<HTMLButtonElement>(null);
 
   const loadDirectory = useCallback(async (root: string, path: string) => {
     if (!isTauri()) {
@@ -650,62 +730,6 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove }: { 
     if (expand) void loadDirectory(root, path);
   }, [expandedPaths, loadDirectory]);
 
-  const closeFilePreview = useCallback(() => {
-    previewRequestRef.current += 1;
-    setPreviewLoading(false);
-    setFilePreview(null);
-    lastFocusedFileRef.current?.focus();
-  }, []);
-
-  const openFilePreview = useCallback(async (root: string, entry: WorkspaceEntry, button: HTMLButtonElement) => {
-    lastFocusedFileRef.current = button;
-    const requestId = ++previewRequestRef.current;
-    const preview: WorkspaceFilePreview = { root, name: entry.name, path: entry.path, size: entry.size ?? 0, content: null, error: null };
-    setFilePreview(preview);
-    if ((entry.size ?? 0) > WORKSPACE_FILE_PREVIEW_LIMIT) {
-      setPreviewLoading(false);
-      setFilePreview({ ...preview, error: "This file exceeds the 1 MiB preview limit." });
-      return;
-    }
-    if (!isTauri()) {
-      setPreviewLoading(false);
-      setFilePreview({ ...preview, error: "File preview is available in the desktop app." });
-      return;
-    }
-    setPreviewLoading(true);
-    try {
-      const content = await invoke<string>("read_workspace_text_file", { root, path: entry.path });
-      if (requestId === previewRequestRef.current) setFilePreview({ ...preview, content });
-    } catch (reason) {
-      if (requestId !== previewRequestRef.current) return;
-      const message = String(reason);
-      const normalized = message.toLowerCase();
-      const error = normalized.includes("binary")
-        ? "Binary file preview is unavailable."
-        : normalized.includes("utf-8")
-          ? "This file isn't UTF-8 text and can't be previewed."
-          : normalized.includes("too large")
-            ? "This file exceeds the 1 MiB preview limit."
-            : message;
-      setFilePreview({ ...preview, error });
-    } finally {
-      if (requestId === previewRequestRef.current) setPreviewLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!filePreview) return;
-    previewCloseRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeFilePreview();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      lastFocusedFileRef.current?.focus();
-    };
-  }, [Boolean(filePreview), closeFilePreview]);
-
   const renderEntries = (entries: WorkspaceEntry[], root: string, depth: number): ReactElement[] => entries.map((entry) => {
     const expanded = Boolean(expandedPaths[entry.path]);
     const children = entriesByPath[entry.path] ?? [];
@@ -720,7 +744,7 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove }: { 
       error={errorsByPath[entry.path] ?? null}
       onToggle={() => toggleDirectory(root, entry.path)}
       onRetry={() => void loadDirectory(root, entry.path)}
-      onOpen={(button) => void openFilePreview(root, entry, button)}
+      onOpen={() => onOpenFile(root, entry)}
       renderChildren={(childEntries, childDepth) => renderEntries(childEntries, root, childDepth)}
     />;
   });
@@ -752,28 +776,6 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove }: { 
       })}
     </div>
     <div className="panel-footnote workspace-explorer-footnote"><span className="read-only-mark">⌂</span> Read-only file explorer</div>
-    {filePreview && createPortal(
-      <div className="diff-preview-backdrop workspace-file-preview-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeFilePreview(); }}>
-        <section className="diff-preview-dialog workspace-file-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="workspace-file-title" aria-describedby="workspace-file-description" onKeyDown={(event) => {
-          if (event.key !== "Tab") return;
-          const focusable = event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex="0"]');
-          const first = focusable[0];
-          const last = focusable[focusable.length - 1];
-          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-        }}>
-          <header className="diff-preview-header workspace-file-preview-header">
-            <div className="diff-preview-file-icon">{filePreview.name.split(".").pop()?.slice(0, 3).toUpperCase() || "FILE"}</div>
-            <div className="diff-preview-heading"><h2 id="workspace-file-title" title={filePreview.name}>{filePreview.name}</h2><p id="workspace-file-description"><span>{filePreview.root}</span><span className="diff-preview-separator">/</span><span>{filePreview.path}</span></p></div>
-            <div className="diff-preview-header-actions"><span className="diff-preview-badge">Read only</span><button ref={previewCloseRef} className="diff-preview-close" onClick={closeFilePreview} aria-label="Close file preview" title="Close preview (Esc)" type="button">×</button></div>
-          </header>
-          <div className="workspace-file-preview-content">
-            {previewLoading ? <div className="diff-preview-loading">Loading file…</div> : filePreview.error ? <div className="workspace-file-preview-message"><span className="workspace-file-preview-warning">!</span><h3>Preview unavailable</h3><p>{filePreview.error}</p></div> : filePreview.content !== null && <pre tabIndex={0} aria-label={`Contents of ${filePreview.name}`}><code>{filePreview.content}</code></pre>}
-          </div>
-          <footer className="diff-preview-footer"><span>{previewLoading ? "Loading…" : filePreview.content !== null ? `${filePreview.content.split(/\r?\n/).length} lines · ${filePreview.size.toLocaleString()} bytes` : "Text preview · 1 MiB max"}</span><span>Press Esc to close</span></footer>
-        </section>
-      </div>, document.body,
-    )}
   </div>;
 }
 
@@ -896,7 +898,7 @@ function GitChanges({ repoPath, repoInfo, onOpenRepository, onError }: { repoPat
   </div>;
 }
 
-function GitGraph({ repoPath, onError }: { repoPath: string; onError: (message: string) => void }) {
+function GitGraph({ repoPath, onError, onOpenInEditor }: { repoPath: string; onError: (message: string) => void; onOpenInEditor: (commit: CommitInfo, file: CommitFileChange) => void }) {
   const [commits, setCommits] = useState<CommitInfo[]>([]);
   const commitsRef = useRef<CommitInfo[]>([]);
   const hasMoreRef = useRef(true);
@@ -1088,6 +1090,7 @@ function GitGraph({ repoPath, onError }: { repoPath: string; onError: (message: 
             <section className="commit-preview-diff" aria-label="Selected file diff">
               <div className="commit-preview-file-heading">
                 {selectedFile ? <><span className={`change-kind ${commitFiles.find((file) => file.path === selectedFile)?.kind ?? "modified"}`}>{commitFiles.find((file) => file.path === selectedFile)?.kind === "deleted" ? "D" : commitFiles.find((file) => file.path === selectedFile)?.kind === "added" ? "A" : commitFiles.find((file) => file.path === selectedFile)?.kind === "renamed" ? "R" : "M"}</span><span title={selectedFile}>{selectedFile}</span></> : <span>Select a file to inspect its changes</span>}
+                {selectedFile && <button className="commit-open-editor" type="button" onClick={() => { const file = commitFiles.find((entry) => entry.path === selectedFile); if (file) onOpenInEditor(selectedCommit, file); }} title="Open this commit version in the Code view">Open in editor <span aria-hidden="true">↗</span></button>}
               </div>
               <div className="commit-preview-diff-content">
                 {detailLoading ? <div className="commit-preview-state" role="status">Loading commit details…</div> : !selectedFile ? <div className="commit-preview-state">Choose a changed file from the list to view its patch.</div> : fileDiffLoading ? <div className="commit-preview-state" role="status">Loading diff…</div> : fileDiffError ? <div className="commit-preview-state commit-preview-error" role="alert"><span>{fileDiffError}</span><button type="button" onClick={() => void selectFile(selectedFile)}>Retry loading diff</button></div> : <DiffViewer diff={fileDiff} emptyMessage="No diff available for this file in the selected commit." />}

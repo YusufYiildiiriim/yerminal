@@ -11,13 +11,16 @@
     "tauri": "node scripts/tauri.mjs"
   },
   "dependencies": {
+    "@shikijs/langs": "^4.6.0",
+    "@shikijs/themes": "^4.6.0",
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.8.4",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-resizable-panels": "^2.1.9"
+    "react-resizable-panels": "^2.1.9",
+    "shiki": "^4.6.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.0",

@@ -2,7 +2,7 @@ pub mod git;
 pub mod terminal;
 pub mod workspace_fs;
 
-use git::{CommitFileChange, CommitInfo, FileChange, RepositoryInfo};
+use git::{CommitFileChange, CommitFileContent, CommitInfo, FileChange, RepositoryInfo};
 use std::sync::Mutex;
 use tauri::{Manager, State};
 use terminal::{AgentProfileInfo, SessionManager, ShellKind, TerminalInfo};
@@ -119,6 +119,15 @@ fn git_commit_file_diff(
 }
 
 #[tauri::command]
+fn git_commit_file_content(
+    path: String,
+    commit_id: String,
+    file_path: String,
+) -> Result<CommitFileContent, String> {
+    git::commit_file_content(&path, &commit_id, &file_path)
+}
+
+#[tauri::command]
 fn list_workspace_directory(root: String, path: String) -> Result<Vec<WorkspaceEntry>, String> {
     workspace_fs::list_directory(&root, &path)
 }
@@ -145,6 +154,7 @@ pub fn run() {
             git_history,
             git_commit_files,
             git_commit_file_diff,
+            git_commit_file_content,
             list_workspace_directory,
             read_workspace_text_file
         ])

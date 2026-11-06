@@ -43,6 +43,56 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .graph-preview { position: relative; width: 38px; height: 42px; margin-bottom: 15px; border-left: 1px solid #48425c; }.graph-preview::before, .graph-preview::after { content: ""; position: absolute; left: 2px; width: 18px; height: 20px; border-left: 1px solid #48425c; border-bottom: 1px solid #48425c; border-radius: 0 0 0 8px; }.graph-preview::before { top: 3px; }.graph-preview::after { top: 20px; transform: scaleY(-1); }.graph-preview span { position: absolute; z-index: 1; width: 7px; height: 7px; border-radius: 50%; background: #9c8bfa; left: -4px; }.graph-preview span:nth-child(1) { top: 1px; }.graph-preview span:nth-child(2) { top: 18px; left: 14px; background: #79c89a; }.graph-preview span:nth-child(3) { top: 35px; }
 .resize-handle { width: 1px; background: #292a30; cursor: col-resize; transition: background .15s; }.resize-handle:hover, .resize-handle[data-resize-handle-active] { background: var(--accent); width: 2px; }
 .terminal-panel { display: flex; flex-direction: column; min-width: 0; background: #101114; }
+.workspace-view-tabs { height: 43px; flex: 0 0 43px; display: flex; align-items: stretch; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--border); background: #141519; }
+.workspace-view-tab { position: relative; min-width: 100px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 14px; border: 0; border-radius: 0; background: transparent; color: #858791; font-size: 11px; }
+.workspace-view-tab > span { color: #777984; font-size: 13px; }
+.workspace-view-tab small { min-width: 17px; padding: 2px 5px; border-radius: 8px; background: #24252b; color: #9698a2; font-size: 9px; line-height: 1.2; }
+.workspace-view-tab:hover { color: #d9d9e0; background: #1a1b20; }
+.workspace-view-tab.selected { color: #f0eef8; }
+.workspace-view-tab.selected::after { position: absolute; right: 10px; bottom: -1px; left: 10px; height: 2px; background: #b3a6ff; content: ""; }
+.workspace-view-tab.selected > span { color: #c1b5ff; }
+.workspace-view-tab.selected small { background: #39334d; color: #d4cbff; }
+.workspace-view-tab:focus-visible, .editor-file-tab-select:focus-visible, .editor-file-tab-close:focus-visible { outline: 2px solid #c2b5ff; outline-offset: -2px; }
+.terminal-workspace-view { min-width: 0; min-height: 0; flex: 1; display: flex; flex-direction: column; }
+.terminal-workspace-view[hidden] { display: none; }
+.code-workspace { min-width: 0; min-height: 0; flex: 1; display: flex; flex-direction: column; background: #101114; }
+.editor-file-tabs { height: 37px; flex: 0 0 37px; display: flex; align-items: stretch; overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid #292a31; background: #17181d; scrollbar-color: #45434f #15161a; scrollbar-width: thin; }
+.editor-file-tab { min-width: 120px; max-width: 220px; display: flex; align-items: stretch; border-right: 1px solid #282930; color: #9698a1; }
+.editor-file-tab.selected { background: #101114; color: #e8e7ee; box-shadow: inset 0 2px #b2a5ff; }
+.editor-file-tab-select { min-width: 0; flex: 1; display: flex; align-items: center; gap: 7px; padding: 0 9px; overflow: hidden; border: 0; background: transparent; color: inherit; font-size: 10px; text-align: left; }
+.editor-file-tab-select > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editor-file-tab-icon { width: 16px; flex: 0 0 16px; color: #92bde7; font: 8px "Cascadia Code", Consolas, monospace; text-align: center; }
+.editor-file-tab-loading, .editor-loading-indicator { width: 11px; height: 11px; flex: 0 0 11px; border: 1px solid #555260; border-top-color: #c2b5ff; border-radius: 50%; animation: editor-loading .8s linear infinite; }
+@keyframes editor-loading { to { transform: rotate(360deg); } }
+.editor-file-tab-close { width: 26px; flex: 0 0 26px; border: 0; background: transparent; color: #747680; font-size: 15px; }
+.editor-file-tab-close:hover { background: #2a2b31; color: #eee; }
+.editor-tabs-empty { display: flex; align-items: center; padding: 0 12px; color: #777984; font-size: 10px; }
+.code-editor-header { min-height: 39px; flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; border-bottom: 1px solid #23242a; background: #141519; }
+.code-editor-breadcrumb { min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; color: #777984; font: 10px "Cascadia Code", Consolas, monospace; white-space: nowrap; }
+.code-editor-breadcrumb strong { overflow: hidden; color: #c6c7d0; font-weight: 500; text-overflow: ellipsis; }
+.code-editor-separator { color: #555762; }
+.code-editor-meta { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; color: #858791; font-size: 9px; }
+.code-editor-source-label { max-width: 190px; overflow: hidden; color: #b3a7e4; text-overflow: ellipsis; white-space: nowrap; }
+.code-editor-readonly { padding: 3px 6px; border: 1px solid #32333a; border-radius: 4px; background: #1d1e23; color: #92949d; }
+.code-editor-content { min-width: 0; min-height: 0; flex: 1; overflow: auto; background: #101114; scrollbar-color: #45434f #15161a; scrollbar-width: thin; }
+.code-editor-content::-webkit-scrollbar { width: 9px; height: 9px; }
+.code-editor-content::-webkit-scrollbar-track { background: #15161a; }
+.code-editor-content::-webkit-scrollbar-thumb { border: 2px solid #15161a; border-radius: 9px; background: #45434f; }
+.code-editor-content::-webkit-scrollbar-thumb:hover { background: #625c72; }
+.code-editor-highlighted, .code-editor-plain { min-width: max-content; min-height: 100%; margin: 0; padding: 16px 20px; font: 12px/1.65 "Cascadia Code", Consolas, monospace; tab-size: 4; white-space: pre; }
+.code-editor-highlighted .shiki { min-height: 100%; margin: 0; padding: 0; background: transparent !important; font: inherit; }
+.code-editor-highlighted .shiki code { font: inherit; }
+.code-editor-plain { color: #c3c5cb; }
+.code-editor-plain.is-highlighting { color: #8f929c; }
+.code-editor-message { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 32px; color: #858791; font-size: 11px; text-align: center; }
+.code-editor-message-icon { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid #564044; border-radius: 8px; background: #2b2025; color: #e1a7ad; }
+.code-editor-error strong { color: #e1c5c8; }
+.code-editor-error > span:last-child { max-width: 480px; color: #9698a2; overflow-wrap: anywhere; }
+.code-editor-empty { min-height: 0; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px; color: #82848e; text-align: center; }
+.code-editor-empty-icon { width: 48px; height: 48px; display: grid; place-items: center; margin-bottom: 13px; border: 1px solid #37343d; border-radius: 14px; background: #1e1c23; color: #a99aff; font-size: 22px; }
+.code-editor-empty h2 { margin: 0 0 7px; color: #d3d3db; font-size: 13px; font-weight: 600; }
+.code-editor-empty p { max-width: 360px; margin: 0; color: #81838d; font-size: 10px; line-height: 1.6; }
+.code-editor-statusbar { height: 24px; flex: 0 0 24px; display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 0 12px; border-top: 1px solid #2a2b32; background: #191a20; color: #858791; font-size: 9px; }
 .terminal-toolbar { height: 43px; flex: 0 0 43px; display: flex; align-items: stretch; border-bottom: 1px solid var(--border); background: #141519; }
 .titlebar-workspace-controls { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 0 1 auto; }
 .workspace-switcher { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 0 1 auto; }
@@ -188,6 +238,8 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .commit-preview-file-heading { min-height: 42px; flex: 0 0 auto; display: flex; align-items: center; gap: 9px; overflow: hidden; padding: 0 16px; border-bottom: 1px solid #292a31; background: #17181d; color: #c6c7ce; font: 10px "Cascadia Code", Consolas, monospace; }
 .commit-preview-file-heading > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commit-preview-file-heading .change-kind { width: 18px; height: 18px; flex: 0 0 18px; display: grid; place-items: center; padding: 0; border-radius: 4px; font-size: 9px; }
+.commit-open-editor { flex: 0 0 auto; margin-left: auto; padding: 5px 8px; border: 1px solid #48415e; border-radius: 5px; background: #282432; color: #d2c9ff; font: 9px Inter, "Segoe UI", sans-serif; white-space: nowrap; }
+.commit-open-editor:hover, .commit-open-editor:focus-visible { border-color: #8c7dca; outline: none; background: #39324b; color: #f0ecff; }
 .commit-preview-diff-content { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden; }
 .commit-preview-diff-content .diff-code { font-size: 12px; line-height: 1.65; padding: 14px 0; }
 .commit-preview-diff-content .diff-line { min-height: 20px; padding-right: 20px; }
@@ -289,17 +341,3 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .workspace-tree-error span { min-width: 0; overflow: hidden; flex: 1; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-tree-error button { padding: 3px 6px; border: 1px solid #50333a; border-radius: 4px; background: #2b2025; color: #e6b0b4; font-size: 9px; }
 .workspace-explorer-footnote { color: #777984; }
-.workspace-file-preview-dialog { width: min(1100px, 94vw); height: min(86vh, 850px); }
-.workspace-file-preview-header .diff-preview-heading p { overflow: hidden; }
-.workspace-file-preview-header .diff-preview-heading p span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.workspace-file-preview-content { flex: 1; min-height: 0; overflow: auto; background: #101114; scrollbar-color: #45434f #15161a; scrollbar-width: thin; }
-.workspace-file-preview-content::-webkit-scrollbar { width: 9px; height: 9px; }
-.workspace-file-preview-content::-webkit-scrollbar-track { background: #15161a; }
-.workspace-file-preview-content::-webkit-scrollbar-thumb { border: 2px solid #15161a; border-radius: 9px; background: #45434f; }
-.workspace-file-preview-content::-webkit-scrollbar-thumb:hover { background: #625c72; }
-.workspace-file-preview-content pre { min-width: max-content; min-height: 100%; margin: 0; padding: 18px 22px; color: #c3c5cb; font: 12px/1.65 "Cascadia Code", Consolas, monospace; tab-size: 4; white-space: pre; }
-.workspace-file-preview-content code { font: inherit; }
-.workspace-file-preview-message { min-height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 36px; color: #8b8d97; text-align: center; }
-.workspace-file-preview-warning { display: grid; place-items: center; width: 34px; height: 34px; margin-bottom: 12px; border: 1px solid #51452e; border-radius: 9px; background: #28241c; color: #e0bf7e; font-size: 17px; }
-.workspace-file-preview-message h3 { margin: 0 0 6px; color: #d9d8df; font-size: 13px; font-weight: 600; }
-.workspace-file-preview-message p { max-width: 410px; margin: 0; color: #868893; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }

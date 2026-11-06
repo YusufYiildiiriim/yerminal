@@ -41,6 +41,13 @@ pub struct CommitFileChange {
     pub kind: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitFileContent {
+    pub content: String,
+    pub source_label: String,
+}
+
 fn open_repository(path: &str) -> Result<Repository, String> {
     let path = Path::new(path)
         .canonicalize()
@@ -253,7 +260,69 @@ pub fn commit_file_diff(path: &str, commit_id: &str, file_path: &str) -> Result<
     Ok(output)
 }
 
-fn find_commit<'repo>(repo: &'repo Repository, commit_id: &str) -> Result<git2::Commit<'repo>, String> {
+pub fn commit_file_content(
+    path: &str,
+    commit_id: &str,
+    file_path: &str,
+) -> Result<CommitFileContent, String> {
+    if !is_repo_relative_path(file_path) {
+        return Err("Invalid repository-relative file path".to_owned());
+    }
+    let repo = open_repository(path)?;
+    let commit = find_commit(&repo, commit_id)?;
+    let commit_tree = commit
+        .tree()
+        .map_err(|error| format!("Could not read commit tree: {error}"))?;
+    let requested_path = Path::new(file_path);
+
+    let short_id = commit.id().to_string();
+    let short_id = &short_id[..short_id.len().min(8)];
+    let (tree, source_label) = if commit_tree.get_path(requested_path).is_ok() {
+        (commit_tree, format!("Commit {short_id} snapshot"))
+    } else {
+        let parent = commit
+            .parent(0)
+            .map_err(|_| "The file does not exist in this commit or its parent".to_owned())?;
+        let parent_tree = parent
+            .tree()
+            .map_err(|error| format!("Could not read parent commit tree: {error}"))?;
+        if parent_tree.get_path(requested_path).is_err() {
+            return Err("The file does not exist in this commit or its parent".to_owned());
+        }
+        (
+            parent_tree,
+            format!("Parent of {short_id} · deleted in commit"),
+        )
+    };
+
+    let entry = tree
+        .get_path(requested_path)
+        .map_err(|error| format!("Could not find file in commit tree: {error}"))?;
+    let object = entry
+        .to_object(&repo)
+        .map_err(|error| format!("Could not read commit file: {error}"))?;
+    let blob = object
+        .peel_to_blob()
+        .map_err(|_| "This commit entry is not a regular text file".to_owned())?;
+    if blob.size() as u64 > crate::workspace_fs::MAX_PREVIEW_BYTES {
+        return Err("File is too large to preview (maximum 1 MiB)".to_owned());
+    }
+    let bytes = blob.content();
+    if bytes.contains(&0) {
+        return Err("Binary file preview is unavailable".to_owned());
+    }
+    let content = String::from_utf8(bytes.to_vec())
+        .map_err(|_| "This file is not valid UTF-8 text".to_owned())?;
+    Ok(CommitFileContent {
+        content,
+        source_label,
+    })
+}
+
+fn find_commit<'repo>(
+    repo: &'repo Repository,
+    commit_id: &str,
+) -> Result<git2::Commit<'repo>, String> {
     let oid = Oid::from_str(commit_id).map_err(|error| format!("Invalid commit ID: {error}"))?;
     repo.find_commit(oid)
         .map_err(|error| format!("Could not read commit {commit_id}: {error}"))
