@@ -137,7 +137,6 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .terminal-session-toolbar { display: contents; }
 .terminal-tabs { grid-column: 1; grid-row: 1; overflow-x: auto; scrollbar-color: #45434f #15161a; scrollbar-width: thin; }
 .toolbar-actions { grid-column: 3; grid-row: 1; justify-self: end; min-width: 0; }
-.titlebar-workspace-controls { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 0 1 auto; }
 .workspace-switcher { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 0 1 auto; }
 .workspace-switcher-icon { color: var(--accent); font-size: 12px; }
 .workspace-name-select, .workspace-root-picker select { min-width: 0; border: 1px solid transparent; border-radius: 4px; background: #1b1c21; color: #d3d2dc; font: inherit; font-size: 10px; }
@@ -446,10 +445,22 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .workspace-tree-error span { min-width: 0; overflow: hidden; flex: 1; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-tree-error button { padding: 3px 6px; border: 1px solid #50333a; border-radius: 4px; background: #2b2025; color: #e6b0b4; font-size: 9px; }
 .workspace-explorer-footnote { color: #777984; }
-
 @media (max-width: 720px) {
   .workspace-view-tabs { gap: 0; padding: 0 2px; }
   .workspace-view-tab { min-width: 68px; gap: 5px; padding: 0 5px; font-size: 9px; }
   .toolbar-actions { padding: 0 5px; }
   .floating-terminal-mode-toggle button { min-width: 36px; padding: 3px 4px; font-size: 9px; }
+}
+.workspace-navigation { flex: 0 0 46%; min-height: 190px; display: flex; flex-direction: column; overflow: hidden; border-bottom: 1px solid var(--border); }
+.workspace-navigation-controls { display: flex; flex: 0 0 auto; flex-direction: column; gap: 7px; padding: 9px 10px; border-bottom: 1px solid #222329; background: #15161a; }
+.workspace-navigation-controls .workspace-switcher { width: 100%; }
+.workspace-navigation-controls .workspace-name-select { width: 0; max-width: none; flex: 1 1 auto; }
+.workspace-navigation-controls .workspace-root-picker { width: 100%; flex: 1 1 auto; }
+.workspace-navigation-controls .workspace-root-picker select { width: 0; max-width: none; flex: 1 1 auto; }
+.workspace-navigation-explorer { min-height: 0; flex: 1 1 auto; overflow: hidden; }
+.workspace-navigation-explorer > .workspace-view { height: 100%; }
+.workspace-navigation .workspace-explorer-header { padding: 13px 12px 10px; }
+.workspace-navigation .workspace-explorer-footnote { min-height: 31px; flex: 0 0 31px; }
+@media (max-height: 700px) {
+  .workspace-navigation { flex-basis: 42%; min-height: 170px; }
 }

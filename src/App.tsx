@@ -30,7 +30,7 @@ function TerminalNameEditor({ terminalName, value, inputRef, compact = false, on
   </form>;
 }
 
-type ToolId = "changes" | "graph" | "workspace";
+type ToolId = "changes" | "graph";
 type ShellKind = "powershell" | "bash" | "zsh";
 type TerminalSession = { id: string; name: string; shell: ShellKind; shellLabel: string; profileId?: string; workingDirectory: string | null };
 type LayoutNode = { type: "terminal"; sessionId: string } | { type: "split"; id: string; direction: "horizontal" | "vertical"; ratio: number; children: [LayoutNode, LayoutNode] };
@@ -185,7 +185,6 @@ function preserveEditorLineEndings(content: string, original: string): string {
 const tools: { id: ToolId; label: string; icon: string }[] = [
   { id: "changes", label: "Git Changes", icon: "◫" },
   { id: "graph", label: "Git Graph", icon: "⌘" },
-  { id: "workspace", label: "Workspace", icon: "▣" },
 ];
 
 function App() {
@@ -827,31 +826,36 @@ function App() {
         <div className="brand-mark">y</div>
         <span className="brand-name">yerminal</span>
         <span className="title-divider" />
-        <div className="titlebar-workspace-controls">
-          <div className="workspace-switcher">
-            <span className="workspace-switcher-icon" aria-hidden="true">▣</span>
-            <select className="workspace-name-select" aria-label="Active terminal workspace" value={activeTerminalWorkspace?.id ?? ""} onChange={(event) => activateWorkspace(event.currentTarget.value)}>
-              {terminalWorkspaceState.workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
-            </select>
-            <button className="workspace-action" type="button" aria-label="Create workspace" title="Create workspace" onClick={createWorkspace}>＋</button>
-            <button className="workspace-action" type="button" aria-label="Rename workspace" title="Rename workspace" onClick={renameWorkspace} disabled={!activeTerminalWorkspace}>✎</button>
-            <button className="workspace-action delete" type="button" aria-label="Delete workspace" title={terminalWorkspaceState.workspaces.length <= 1 ? "Keep at least one workspace" : "Delete workspace"} onClick={() => void deleteWorkspace()} disabled={terminalWorkspaceState.workspaces.length <= 1}>×</button>
-          </div>
-          <label className="workspace-root-picker" title={repoInfo ? `${repoInfo.root} · ${repoInfo.branch}` : repoPath || "Set a project folder for this workspace"}>
-            <span className="workspace-root-label" aria-hidden="true">⌂</span>
-            <select aria-label="Workspace project folder" value={repoPath} onChange={(event) => void activateWorkspaceFolder(event.currentTarget.value)}>
-              <option value="">Choose project folder</option>
-              {workspaceFolders.map((folder) => <option key={folder} value={folder}>{folder}</option>)}
-            </select>
-            <button className="workspace-action add-folder" type="button" aria-label="Add folders to workspace" title="Add folders" onClick={() => void addWorkspaceFolders()}>＋</button>
-          </label>
-        </div>
         <div className="titlebar-spacer" />
         <span className="window-caption">Agent Workspace</span>
       </header>
 
       <PanelGroup direction="horizontal" className="workspace">
         <Panel defaultSize={27} minSize={18} maxSize={46} className="tools-panel">
+          <section className="workspace-navigation" aria-label="Workspace navigation">
+            <div className="workspace-navigation-controls">
+              <div className="workspace-switcher">
+                <span className="workspace-switcher-icon" aria-hidden="true">▣</span>
+                <select className="workspace-name-select" aria-label="Active terminal workspace" value={activeTerminalWorkspace?.id ?? ""} onChange={(event) => activateWorkspace(event.currentTarget.value)}>
+                  {terminalWorkspaceState.workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+                </select>
+                <button className="workspace-action" type="button" aria-label="Create workspace" title="Create workspace" onClick={createWorkspace}>＋</button>
+                <button className="workspace-action" type="button" aria-label="Rename workspace" title="Rename workspace" onClick={renameWorkspace} disabled={!activeTerminalWorkspace}>✎</button>
+                <button className="workspace-action delete" type="button" aria-label="Delete workspace" title={terminalWorkspaceState.workspaces.length <= 1 ? "Keep at least one workspace" : "Delete workspace"} onClick={() => void deleteWorkspace()} disabled={terminalWorkspaceState.workspaces.length <= 1}>×</button>
+              </div>
+              <label className="workspace-root-picker" title={repoInfo ? repoInfo.root + " · " + repoInfo.branch : repoPath || "Set a project folder for this workspace"}>
+                <span className="workspace-root-label" aria-hidden="true">⌂</span>
+                <select aria-label="Workspace project folder" value={repoPath} onChange={(event) => void activateWorkspaceFolder(event.currentTarget.value)}>
+                  <option value="">Choose project folder</option>
+                  {workspaceFolders.map((folder) => <option key={folder} value={folder}>{folder}</option>)}
+                </select>
+                <button className="workspace-action add-folder" type="button" aria-label="Add folders to workspace" title="Add folders" onClick={() => void addWorkspaceFolders()}>＋</button>
+              </label>
+            </div>
+            <div className="workspace-navigation-explorer">
+              <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} onOpenFile={(root, entry) => void openEditorFile({ id: "workspace:" + root + ":" + entry.path, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} />
+            </div>
+          </section>
           <section className="tool-content">{activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} /> : activeTool === "graph" ? <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } })} /> : <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} />}</section>
           <nav className="tool-tabs" aria-label="Developer tools">
             {tools.map((tool) => <button key={tool.id} className={`tool-tab ${activeTool === tool.id ? "selected" : ""}`} onClick={() => setActiveTool(tool.id)} type="button"><span className="tool-icon">{tool.icon}</span>{tool.label}</button>)}
