@@ -672,14 +672,12 @@ function App() {
         </Panel>
         <PanelResizeHandle className="resize-handle" aria-label="Resize developer tools" />
         <Panel minSize={35} className="terminal-panel">
-          <nav className="workspace-view-tabs" role="tablist" aria-label="Workspace views">
-            <button className={`workspace-view-tab ${activeMainView === "code" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "code"} onClick={() => setActiveMainView("code")} type="button"><span aria-hidden="true">⌘</span> Code{activeEditorWorkspace.tabs.length > 0 && <small>{activeEditorWorkspace.tabs.length}</small>}</button>
-            <button className={`workspace-view-tab ${activeMainView === "terminals" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "terminals"} onClick={() => setActiveMainView("terminals")} type="button"><span aria-hidden="true">▣</span> Terminals{activeWorkspaceTerminals.length > 0 && <small>{activeWorkspaceTerminals.length}</small>}</button>
-          </nav>
-          {activeMainView === "code" && <CodeWorkspace tabs={activeEditorWorkspace.tabs} activeTabId={activeEditorWorkspace.activeTabId} onSelect={selectEditorTab} onClose={closeEditorTab} />}
-          <div className="terminal-workspace-view" hidden={activeMainView !== "terminals"}>
           <div className="terminal-toolbar">
-            <div className="terminal-session-toolbar">
+            <nav className="workspace-view-tabs" role="tablist" aria-label="Workspace views">
+              <button className={`workspace-view-tab ${activeMainView === "code" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "code"} onClick={() => setActiveMainView("code")} type="button"><span aria-hidden="true">⌘</span> Code{activeEditorWorkspace.tabs.length > 0 && <small>{activeEditorWorkspace.tabs.length}</small>}</button>
+              <button className={`workspace-view-tab ${activeMainView === "terminals" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "terminals"} onClick={() => setActiveMainView("terminals")} type="button"><span aria-hidden="true">▣</span> Terminals{activeWorkspaceTerminals.length > 0 && <small>{activeWorkspaceTerminals.length}</small>}</button>
+            </nav>
+            {activeMainView === "terminals" && <div className="terminal-session-toolbar">
               <div className="terminal-tabs" role={layout ? undefined : "tablist"} aria-label={layout ? "Terminal workspace actions" : "Terminal sessions"}>
                 {!layout && activeWorkspaceTerminals.map((terminal) => <div key={terminal.id} className={`terminal-tab-item ${terminal.id === activeTerminalId ? "selected" : ""}`} role="presentation">
                   {editingTerminalId === terminal.id ? <TerminalNameEditor terminalName={terminal.name} value={terminalNameDraft} inputRef={terminalNameInputRef} compact onChange={setTerminalNameDraft} onSave={saveTerminalName} onCancel={cancelTerminalRename} /> : <>
@@ -691,8 +689,10 @@ function App() {
                 <button className="icon-button new-terminal" aria-label="Add terminal to workspace" title="Add terminal pane" onClick={() => void addTerminalToWorkspace()} type="button">＋</button>
               </div>
               <div className="toolbar-actions"><FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={changeTerminalLayoutMode} /><button className="toolbar-button" type="button" aria-label="Split horizontally" title="Split side by side" onClick={() => void splitActiveTerminal("horizontal")} disabled={!activeTerminal}>▤</button><button className="toolbar-button" type="button" aria-label="Split vertically" title="Split top and bottom" onClick={() => void splitActiveTerminal("vertical")} disabled={!activeTerminal}>▥</button>{agentProfiles.map((profile) => <button className="agent-launch" key={profile.id} type="button" title={`Launch ${profile.name}`} onClick={() => createAgentTerminal(profile)}>{profile.id === "claude" ? "Claude" : profile.id === "codex" ? "Codex" : profile.name}</button>)}<span className="toolbar-divider" /><button className="toolbar-button" type="button" aria-label="Terminal options" disabled>···</button></div>
-            </div>
+            </div>}
           </div>
+          {activeMainView === "code" && <CodeWorkspace tabs={activeEditorWorkspace.tabs} activeTabId={activeEditorWorkspace.activeTabId} onSelect={selectEditorTab} onClose={closeEditorTab} />}
+          <div className="terminal-workspace-view" hidden={activeMainView !== "terminals"}>
           <section className="terminal-surface" aria-label="Terminal workspace">
             <TerminalWorkspaceLayout layout={layout} terminals={terminals} visibleTerminalIds={activeWorkspaceTerminalIds} workspaceId={activeTerminalWorkspace?.id ?? ""} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} terminalNameInputRef={terminalNameInputRef} onRename={beginRenameTerminal} onNameChange={setTerminalNameDraft} onNameSave={saveTerminalName} onNameCancel={cancelTerminalRename} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
             {activeWorkspaceTerminals.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Welcome to <span>yerminal</span></div><p>Create a terminal to begin.</p><button className="primary-button" onClick={() => void createTerminal()} type="button">New Terminal</button></div>}
