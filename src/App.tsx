@@ -1518,7 +1518,21 @@ function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, worksp
         data-drag-source={draggingPaneId === terminal.id ? "true" : undefined}
         data-dragging={floatingLayout.draggingSessionId === terminal.id ? "true" : undefined}
       >
-        {hasPaneHeader && <header className={`terminal-pane-header ${isSingleTerminal ? "single-terminal-pane-header" : ""}`}>
+        {hasPaneHeader && <header
+          className={`terminal-pane-header ${isSingleTerminal ? "single-terminal-pane-header" : ""}`}
+          onMouseDown={(event) => {
+            if (!isFloating || visibleTerminalIds.length <= 1 || event.button !== 1) return;
+            if (event.target instanceof Element && event.target.closest(".pane-rename, .pane-close, input, textarea, [contenteditable=true], button:not(.pane-drag-handle)")) return;
+            event.preventDefault();
+          }}
+          onAuxClick={(event) => {
+            if (!isFloating || visibleTerminalIds.length <= 1 || event.button !== 1) return;
+            if (event.target instanceof Element && event.target.closest(".pane-rename, .pane-close, input, textarea, [contenteditable=true], button:not(.pane-drag-handle)")) return;
+            event.preventDefault();
+            event.stopPropagation();
+            onClose(terminal.id);
+          }}
+        >
           {(layout || isFloating) && <button
             className={`pane-drag-handle ${isFloating ? "floating-terminal-window-handle" : ""}`}
             type="button"
@@ -1527,6 +1541,7 @@ function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, worksp
             onMouseDown={() => onFocus(terminal.id)}
             onPointerDown={(event) => {
               if (isFloating) {
+                if (event.button !== 0) return;
                 onFocus(terminal.id);
                 floatingLayout.startDrag(terminal.id, event);
                 return;
