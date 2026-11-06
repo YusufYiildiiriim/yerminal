@@ -161,7 +161,12 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
     />)}
     <header
       className={"editor-group-heading" + (layoutMode === "free" ? " free" : "")}
-      onPointerDown={layoutMode === "free" ? (event) => { onActivateGroup(group.id); onStartDrag(group.id, event); } : undefined}
+      onPointerDown={layoutMode === "free" ? (event) => {
+        if (event.button !== 0) return;
+        if (event.target instanceof Element && event.target.closest("button, select, input, textarea, [contenteditable=true], .editor-group-resize-handle")) return;
+        onActivateGroup(group.id);
+        onStartDrag(group.id, event);
+      } : undefined}
       onPointerMove={layoutMode === "free" ? (event) => onMoveDrag(group.id, event) : undefined}
       onPointerUp={layoutMode === "free" ? (event) => onEndDrag(group.id, event) : undefined}
       onPointerCancel={layoutMode === "free" ? (event) => onCancelDrag(group.id, event) : undefined}

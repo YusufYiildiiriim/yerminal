@@ -1612,6 +1612,15 @@ function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, worksp
         />)}
         {hasPaneHeader && <header
           className={`terminal-pane-header ${isSingleTerminal ? "single-terminal-pane-header" : ""}`}
+          onPointerDown={isFloating ? (event) => {
+            if (event.button !== 0) return;
+            if (event.target instanceof Element && event.target.closest(".pane-rename, .pane-close, input, textarea, [contenteditable=true], button:not(.pane-drag-handle), .floating-terminal-resize-handle")) return;
+            onFocus(terminal.id);
+            floatingLayout.startDrag(terminal.id, event);
+          } : undefined}
+          onPointerMove={isFloating ? (event) => floatingLayout.moveDrag(terminal.id, event) : undefined}
+          onPointerUp={isFloating ? (event) => floatingLayout.endDrag(terminal.id, event) : undefined}
+          onPointerCancel={isFloating ? (event) => floatingLayout.cancelDrag(terminal.id, event) : undefined}
           onMouseDown={(event) => {
             if (!isFloating || visibleTerminalIds.length <= 1 || event.button !== 1) return;
             if (event.target instanceof Element && event.target.closest(".pane-rename, .pane-close, input, textarea, [contenteditable=true], button:not(.pane-drag-handle)")) return;
@@ -1635,7 +1644,6 @@ function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, worksp
               if (isFloating) {
                 if (event.button !== 0) return;
                 onFocus(terminal.id);
-                floatingLayout.startDrag(terminal.id, event);
                 return;
               }
               if (event.button !== 0 || !layout) return;
@@ -1645,10 +1653,7 @@ function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, worksp
               event.currentTarget.setPointerCapture(event.pointerId);
             }}
             onPointerMove={(event) => {
-              if (isFloating) {
-                floatingLayout.moveDrag(terminal.id, event);
-                return;
-              }
+              if (isFloating) return;
               const drag = paneDragRef.current;
               if (!drag || drag.pointerId !== event.pointerId) return;
               if (!drag.started && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 5) return;
@@ -1656,12 +1661,9 @@ function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, worksp
               setDraggingPaneId(drag.sourceId);
               setDropTargetPaneId(findPaneAtPoint(event.clientX, event.clientY, drag.sourceId));
             }}
-            onPointerUp={(event) => isFloating ? floatingLayout.endDrag(terminal.id, event) : finishPaneDrag(event)}
+            onPointerUp={(event) => { if (!isFloating) finishPaneDrag(event); }}
             onPointerCancel={(event) => {
-              if (isFloating) {
-                floatingLayout.cancelDrag(terminal.id, event);
-                return;
-              }
+              if (isFloating) return;
               if (paneDragRef.current?.pointerId !== event.pointerId) return;
               paneDragRef.current = null;
               setDraggingPaneId(null);
