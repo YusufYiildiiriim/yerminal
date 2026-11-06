@@ -57,7 +57,7 @@ function createEmptyEditorWorkspaceState(): EditorWorkspaceState {
 
 const WORKSPACE_STORAGE_KEY = "yerminal.workspace";
 const TERMINAL_WORKSPACES_STORAGE_KEY = "yerminal.terminal-workspaces";
-const TOOL_SIDEBAR_AUTO_HIDE_KEY = "yerminal.tool-sidebar-auto-hide";
+const TOOL_PANEL_AUTO_HIDE_KEY = "yerminal.tool-panel-auto-hide";
 const HELP_SHORTCUTS = [
   { keys: "Ctrl/⌘ + Shift + T", label: "New terminal" },
   { keys: "Ctrl/⌘ + Shift + W", label: "Close active terminal" },
@@ -205,9 +205,9 @@ const tools: { id: ToolId; label: string; icon: string }[] = [
 
 function App() {
   const [activeTool, setActiveTool] = useState<ToolId>("explorer");
-  const [toolSidebarAutoHide, setToolSidebarAutoHide] = useState(() => {
+  const [toolPanelAutoHide, setToolPanelAutoHide] = useState(() => {
     try {
-      return localStorage.getItem(TOOL_SIDEBAR_AUTO_HIDE_KEY) === "true";
+      return localStorage.getItem(TOOL_PANEL_AUTO_HIDE_KEY) === "true";
     } catch {
       return false;
     }
@@ -244,11 +244,11 @@ function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(TOOL_SIDEBAR_AUTO_HIDE_KEY, String(toolSidebarAutoHide));
+      localStorage.setItem(TOOL_PANEL_AUTO_HIDE_KEY, String(toolPanelAutoHide));
     } catch {
       // Keep the setting available for the current session when storage is unavailable.
     }
-  }, [toolSidebarAutoHide]);
+  }, [toolPanelAutoHide]);
 
   useEffect(() => {
     if (!helpOpen) return;
@@ -914,15 +914,15 @@ function App() {
               </label>
             </div>
           </section>
-          <div className="workspace-tool-layout">
-            <nav className="tool-sidebar" aria-label="Workspace tools" data-auto-hide={toolSidebarAutoHide ? "true" : "false"}>
+          <div className="workspace-tool-layout" data-panel-auto-hide={toolPanelAutoHide ? "true" : "false"}>
+            <nav className="tool-sidebar" aria-label="Workspace tools">
               {tools.map((tool) => <button key={tool.id} className={`tool-sidebar-item ${activeTool === tool.id ? "selected" : ""}`} onClick={() => setActiveTool(tool.id)} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={tool.label}>
                 <span className="tool-sidebar-icon" aria-hidden="true">{tool.icon}</span>
                 <span className="tool-sidebar-label">{tool.label}</span>
               </button>)}
-              <button className="tool-sidebar-autohide" type="button" aria-label={toolSidebarAutoHide ? "Disable automatic hiding of workspace tools" : "Automatically hide workspace tools"} aria-pressed={toolSidebarAutoHide} title={toolSidebarAutoHide ? "Keep workspace tools visible" : "Automatically hide workspace tools"} onClick={() => setToolSidebarAutoHide((enabled) => !enabled)}>
-                <span aria-hidden="true">{toolSidebarAutoHide ? "⌖" : "◧"}</span>
-                <span className="tool-sidebar-autohide-label">{toolSidebarAutoHide ? "Pinned" : "Auto-hide"}</span>
+              <button className="tool-sidebar-autohide" type="button" aria-label={toolPanelAutoHide ? "Disable automatic hiding of workspace panel" : "Automatically hide workspace panel"} aria-pressed={toolPanelAutoHide} title={toolPanelAutoHide ? "Keep workspace panel visible" : "Automatically hide workspace panel"} onClick={() => setToolPanelAutoHide((enabled) => !enabled)}>
+                <span aria-hidden="true">{toolPanelAutoHide ? "⌖" : "◧"}</span>
+                <span className="tool-sidebar-autohide-label">{toolPanelAutoHide ? "Pinned" : "Auto-hide"}</span>
               </button>
             </nav>
             <section className="tool-content" aria-label={tools.find((tool) => tool.id === activeTool)?.label}>

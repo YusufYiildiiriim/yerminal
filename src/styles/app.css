@@ -379,8 +379,8 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .tool-sidebar-autohide { min-width: 0; min-height: 35px; flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; overflow: hidden; margin-top: auto; padding: 4px 2px; border: 0; border-top: 1px solid #2a2b32; background: transparent; color: #858792; font-size: 14px; }
 .tool-sidebar-autohide:hover, .tool-sidebar-autohide[aria-pressed="true"] { color: #d8d0ff; }
 .tool-sidebar-autohide-label { color: inherit; font-size: 7px; line-height: 1.1; text-align: center; }
-.tool-sidebar[data-auto-hide="true"] { width: 6px; flex-basis: 6px; gap: 0; overflow: hidden; padding: 0; }
-.tool-sidebar[data-auto-hide="true"]:hover, .tool-sidebar[data-auto-hide="true"]:focus-within { width: 64px; flex-basis: 64px; gap: 4px; padding: 7px 4px; }
+.workspace-tool-layout[data-panel-auto-hide="true"] .tool-content { flex: 0 0 0; width: 0; opacity: 0; pointer-events: none; }
+.workspace-tool-layout[data-panel-auto-hide="true"]:hover .tool-content, .workspace-tool-layout[data-panel-auto-hide="true"]:focus-within .tool-content { flex: 1 1 auto; width: auto; opacity: 1; pointer-events: auto; }
 .tool-content { display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; }
 .add-tool { flex: 0 0 38px; padding: 0; }
 .workspace-folder-list { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
@@ -478,5 +478,4 @@ button { color: inherit; font: inherit; cursor: pointer; }
   .tool-sidebar { width: 56px; flex-basis: 56px; padding-inline: 3px; }
   .tool-sidebar-label { max-width: 48px; font-size: 7px; }
   .tool-sidebar-item { min-height: 53px; }
-  .tool-sidebar[data-auto-hide="true"]:hover, .tool-sidebar[data-auto-hide="true"]:focus-within { width: 56px; flex-basis: 56px; padding: 7px 3px; }
 }
