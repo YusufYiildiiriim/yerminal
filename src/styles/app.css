@@ -56,6 +56,28 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .terminal-workspace-view { min-width: 0; min-height: 0; flex: 1; display: flex; flex-direction: column; }
 .terminal-workspace-view[hidden] { display: none; }
 .code-workspace { min-width: 0; min-height: 0; flex: 1; display: flex; flex-direction: column; background: #101114; }
+.editor-groups-toolbar { height: 34px; flex: 0 0 34px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-bottom: 1px solid #292a31; background: #141519; }
+.editor-groups-title { display: flex; align-items: center; gap: 7px; color: #a7a8b1; font-size: 10px; }
+.editor-groups-title > span:first-child { color: #a99aff; font-size: 13px; }
+.editor-groups-count { min-width: 17px; padding: 2px 5px; border-radius: 8px; background: #27252f; color: #c5bbeb; font-size: 9px; text-align: center; }
+.editor-create-group { display: flex; align-items: center; gap: 5px; padding: 4px 8px; border: 1px solid #393643; border-radius: 5px; background: #1d1b24; color: #c8c2dc; font-size: 9px; }
+.editor-create-group:hover { border-color: #685a91; background: #292534; color: #eee9ff; }
+.editor-groups-layout { min-width: 0; min-height: 0; flex: 1; display: grid; grid-template-columns: repeat(var(--editor-group-count, 1), minmax(320px, 1fr)); overflow: auto; background: #101114; }
+.editor-group-pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; border-right: 1px solid #2b2b33; background: #101114; }
+.editor-group-pane.active { box-shadow: inset 0 2px #a99aff; }
+.editor-group-heading { height: 29px; flex: 0 0 29px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 9px; border-bottom: 1px solid #292a31; background: #191a20; }
+.editor-group-title { min-width: 0; display: flex; align-items: center; gap: 6px; color: #a6a7b0; font-size: 9px; font-weight: 600; }
+.editor-group-indicator { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: #676974; }
+.editor-group-pane.active .editor-group-indicator { background: #b7a9ff; box-shadow: 0 0 0 2px #a99aff30; }
+.editor-group-count { color: #777984; font-size: 8px; font-weight: 400; }
+.editor-group-actions { display: flex; align-items: center; gap: 5px; }
+.editor-group-move { max-width: 135px; padding: 3px 18px 3px 6px; border: 1px solid #373640; border-radius: 4px; background: #222128; color: #bcb8c8; font-size: 8px; }
+.editor-group-move:disabled { opacity: .45; }
+.editor-group-close { width: 22px; height: 22px; border: 0; border-radius: 4px; background: transparent; color: #81828c; font-size: 14px; }
+.editor-group-close:hover { background: #30272d; color: #edb1b9; }
+.editor-group-pane .code-editor-header { align-items: flex-start; flex-direction: column; gap: 5px; padding: 7px 10px; }
+.editor-group-pane .code-editor-meta { max-width: 100%; flex-wrap: wrap; gap: 6px; }
+.editor-group-pane .code-editor-source-label { max-width: 120px; }
 .editor-file-tabs { height: 37px; flex: 0 0 37px; display: flex; align-items: stretch; overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid #292a31; background: #17181d; scrollbar-color: #45434f #15161a; scrollbar-width: thin; }
 .editor-file-tab { min-width: 120px; max-width: 220px; display: flex; align-items: stretch; border-right: 1px solid #282930; color: #9698a1; }
 .editor-file-tab.selected { background: #101114; color: #e8e7ee; box-shadow: inset 0 2px #b2a5ff; }

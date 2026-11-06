@@ -3,8 +3,8 @@ import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { DiffViewer } from "./features/git/DiffViewer";
-import { CodeWorkspace, type EditorFileTab } from "./features/editor/CodeWorkspace";
 import { TerminalResourceGraph } from "./features/terminal/TerminalResourceGraph";
+import { CodeWorkspace, type EditorFileTab, type EditorGroupState } from "./features/editor/CodeWorkspace";
 import { FloatingTerminalDockGuides, FloatingTerminalModeToggle } from "./features/terminal/FloatingTerminalLayoutControls";
 import { useFloatingTerminalLayout, type TerminalDockEdge, type TerminalLayoutMode } from "./features/terminal/floatingTerminalLayout";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -40,7 +40,7 @@ type CommitInfo = { id: string; shortId: string; message: string; author: string
 type CommitFileChange = { path: string; kind: string };
 type WorkspaceEntry = { name: string; path: string; isDir: boolean; size: number | null; extension: string | null };
 const WORKSPACE_FILE_PREVIEW_LIMIT = 1024 * 1024;
-type EditorWorkspaceState = { tabs: EditorFileTab[]; activeTabId: string | null };
+type EditorWorkspaceState = { tabs: EditorFileTab[]; groups: EditorGroupState[]; activeGroupId: string };
 type EditorSnapshot = { shortId: string; message: string; changeKind: string; author: string; timestamp: number };
 type EditorFileRequest = { id: string; root: string; path: string; name: string; size?: number; sourceCommitId?: string; sourceLabel?: string; snapshot?: EditorSnapshot };
 const COMMIT_PAGE_SIZE = 50;
@@ -48,6 +48,12 @@ type PersistedWorkspace = { folders: string[]; activePath: string };
 type TerminalWorkspace = { id: string; name: string; rootPath: string; folderPaths: string[]; terminalIds: string[]; activeTerminalId: string | null; layout: LayoutNode | null };
 type TerminalWorkspaceState = { workspaces: TerminalWorkspace[]; activeId: string };
 type PersistedTerminalWorkspace = { id: string; name: string; rootPath: string; folderPaths: string[] };
+
+const DEFAULT_EDITOR_GROUP_ID = "editor-group-default";
+
+function createEmptyEditorWorkspaceState(): EditorWorkspaceState {
+  return { tabs: [], groups: [{ id: DEFAULT_EDITOR_GROUP_ID, name: "Editor 1", tabIds: [], activeTabId: null }], activeGroupId: DEFAULT_EDITOR_GROUP_ID };
+}
 
 const WORKSPACE_STORAGE_KEY = "yerminal.workspace";
 const TERMINAL_WORKSPACES_STORAGE_KEY = "yerminal.terminal-workspaces";
@@ -209,7 +215,7 @@ function App() {
   const repoPath = activeTerminalWorkspace?.rootPath ?? "";
   const activeTerminalId = activeTerminalWorkspace?.activeTerminalId ?? null;
   const layout = activeTerminalWorkspace?.layout ?? null;
-  const activeEditorWorkspace = editorWorkspaces[activeTerminalWorkspace?.id ?? ""] ?? { tabs: [], activeTabId: null };
+  const activeEditorWorkspace = editorWorkspaces[activeTerminalWorkspace?.id ?? ""] ?? createEmptyEditorWorkspaceState();
 
   const openEditorFile = useCallback(async (request: EditorFileRequest) => {
     const workspaceId = activeTerminalWorkspace?.id;
@@ -218,17 +224,29 @@ function App() {
     const operationKey = editorOperationKey(workspaceId, tabId);
     const resourceKey = editorResourceKey(request.path);
     setActiveMainView("code");
-    const workspace = editorWorkspaces[workspaceId] ?? { tabs: [], activeTabId: null };
+    const workspace = editorWorkspaces[workspaceId] ?? createEmptyEditorWorkspaceState();
     const existing = workspace.tabs.find((tab) => tab.id === tabId);
     const shouldLoad = !existing || existing.status === "error";
     const operationId = shouldLoad ? ++nextEditorOperationIdRef.current : null;
     if (operationId !== null) editorOperationIdsRef.current.set(operationKey, operationId);
-    setEditorWorkspaces((current) => ({
-      ...current,
-      [workspaceId]: existing
-        ? { ...(current[workspaceId] ?? workspace), activeTabId: tabId, tabs: (current[workspaceId]?.tabs ?? workspace.tabs).map((tab) => tab.id === tabId && tab.status === "error" ? { ...tab, status: "loading", error: null } : tab) }
-        : { tabs: [...(current[workspaceId]?.tabs ?? workspace.tabs), { id: tabId, root: request.root, path: request.path, name: request.name, status: "loading", content: null, savedContent: null, error: null, sourceLabel: request.sourceLabel ?? null, sourceCommitId: request.sourceCommitId ?? null, snapshot: request.snapshot ?? null, isSaving: false, saveError: null }], activeTabId: tabId },
-    }));
+    setEditorWorkspaces((current) => {
+      const currentWorkspace = current[workspaceId] ?? workspace;
+      const currentTab = currentWorkspace.tabs.find((tab) => tab.id === tabId);
+      const currentGroup = currentWorkspace.groups.find((group) => group.tabIds.includes(tabId));
+      const targetGroupId = currentGroup?.id ?? currentWorkspace.activeGroupId;
+      const groups = currentWorkspace.groups.map((group) => {
+        if (group.id !== targetGroupId) return group;
+        return {
+          ...group,
+          tabIds: currentTab ? group.tabIds : [...group.tabIds, tabId],
+          activeTabId: tabId,
+        };
+      });
+      const tabs = currentTab
+        ? currentWorkspace.tabs.map((tab) => tab.id === tabId && tab.status === "error" ? { ...tab, status: "loading" as const, error: null } : tab)
+        : [...currentWorkspace.tabs, { id: tabId, root: request.root, path: request.path, name: request.name, status: "loading" as const, content: null, savedContent: null, error: null, sourceLabel: request.sourceLabel ?? null, sourceCommitId: request.sourceCommitId ?? null, snapshot: request.snapshot ?? null, isSaving: false, saveError: null }];
+      return { ...current, [workspaceId]: { ...currentWorkspace, tabs, groups, activeGroupId: targetGroupId } };
+    });
     if (!shouldLoad || operationId === null) return;
 
     const isCurrentOperation = () => editorOperationIdsRef.current.get(operationKey) === operationId;
@@ -355,12 +373,82 @@ function App() {
     }
   }, [activeTerminalWorkspace?.id, editorWorkspaces]);
 
-  const selectEditorTab = useCallback((tabId: string) => {
+  const createEditorGroup = useCallback(() => {
+    const workspaceId = activeTerminalWorkspace?.id;
+    if (!workspaceId) return;
+    setActiveMainView("code");
+    setEditorWorkspaces((current) => {
+      const workspace = current[workspaceId] ?? createEmptyEditorWorkspaceState();
+      let nextIndex = workspace.groups.length + 1;
+      while (workspace.groups.some((group) => group.name === "Editor " + nextIndex)) nextIndex += 1;
+      const group: EditorGroupState = { id: "editor-group-" + crypto.randomUUID(), name: "Editor " + nextIndex, tabIds: [], activeTabId: null };
+      return { ...current, [workspaceId]: { ...workspace, groups: [...workspace.groups, group], activeGroupId: group.id } };
+    });
+  }, [activeTerminalWorkspace?.id]);
+
+  const activateEditorGroup = useCallback((groupId: string) => {
     const workspaceId = activeTerminalWorkspace?.id;
     if (!workspaceId) return;
     setEditorWorkspaces((current) => {
       const workspace = current[workspaceId];
-      return workspace ? { ...current, [workspaceId]: { ...workspace, activeTabId: tabId } } : current;
+      if (!workspace || workspace.activeGroupId === groupId || !workspace.groups.some((group) => group.id === groupId)) return current;
+      return { ...current, [workspaceId]: { ...workspace, activeGroupId: groupId } };
+    });
+  }, [activeTerminalWorkspace?.id]);
+
+  const moveEditorTab = useCallback((tabId: string, targetGroupId: string) => {
+    const workspaceId = activeTerminalWorkspace?.id;
+    if (!workspaceId) return;
+    setEditorWorkspaces((current) => {
+      const workspace = current[workspaceId];
+      if (!workspace || !workspace.groups.some((group) => group.id === targetGroupId)) return current;
+      const groups = workspace.groups.map((group) => {
+        if (group.id === targetGroupId) {
+          return { ...group, tabIds: group.tabIds.includes(tabId) ? group.tabIds : [...group.tabIds, tabId], activeTabId: tabId };
+        }
+        const tabIds = group.tabIds.filter((id) => id !== tabId);
+        return { ...group, tabIds, activeTabId: group.activeTabId === tabId ? tabIds[tabIds.length - 1] ?? null : group.activeTabId };
+      });
+      return { ...current, [workspaceId]: { ...workspace, groups, activeGroupId: targetGroupId } };
+    });
+  }, [activeTerminalWorkspace?.id]);
+
+  const closeEditorGroup = useCallback((groupId: string) => {
+    const workspaceId = activeTerminalWorkspace?.id;
+    if (!workspaceId) return;
+    setEditorWorkspaces((current) => {
+      const workspace = current[workspaceId];
+      if (!workspace || workspace.groups.length <= 1) return current;
+      const closingIndex = workspace.groups.findIndex((group) => group.id === groupId);
+      if (closingIndex < 0) return current;
+      const destinationIndex = closingIndex > 0 ? closingIndex - 1 : 1;
+      const closingGroup = workspace.groups[closingIndex];
+      const destination = workspace.groups[destinationIndex];
+      const groups = workspace.groups
+        .filter((group) => group.id !== groupId)
+        .map((group) => group.id === destination.id
+          ? { ...group, tabIds: [...group.tabIds, ...closingGroup.tabIds.filter((id) => !group.tabIds.includes(id))], activeTabId: closingGroup.activeTabId ?? group.activeTabId }
+          : group);
+      return { ...current, [workspaceId]: { ...workspace, groups, activeGroupId: workspace.activeGroupId === groupId ? destination.id : workspace.activeGroupId } };
+    });
+  }, [activeTerminalWorkspace?.id]);
+
+  const selectEditorTab = useCallback((groupId: string, tabId: string) => {
+    const workspaceId = activeTerminalWorkspace?.id;
+    if (!workspaceId) return;
+    setEditorWorkspaces((current) => {
+      const workspace = current[workspaceId];
+      if (!workspace) return current;
+      const targetGroup = workspace.groups.find((group) => group.id === groupId && group.tabIds.includes(tabId));
+      if (!targetGroup) return current;
+      return {
+        ...current,
+        [workspaceId]: {
+          ...workspace,
+          activeGroupId: groupId,
+          groups: workspace.groups.map((group) => group.id === groupId ? { ...group, activeTabId: tabId } : group),
+        },
+      };
     });
   }, [activeTerminalWorkspace?.id]);
 
@@ -374,12 +462,16 @@ function App() {
     setEditorWorkspaces((current) => {
       const workspace = current[workspaceId];
       if (!workspace) return current;
-      const removedIndex = workspace.tabs.findIndex((tab) => tab.id === tabId);
-      const tabs = workspace.tabs.filter((tab) => tab.id !== tabId);
-      const activeTabId = workspace.activeTabId === tabId
-        ? tabs[Math.min(removedIndex, tabs.length - 1)]?.id ?? null
-        : workspace.activeTabId;
-      return { ...current, [workspaceId]: { tabs, activeTabId } };
+      const groups = workspace.groups.map((group) => {
+        const removedIndex = group.tabIds.indexOf(tabId);
+        if (removedIndex < 0) return group;
+        const tabIds = group.tabIds.filter((id) => id !== tabId);
+        const activeTabId = group.activeTabId === tabId
+          ? tabIds[Math.min(removedIndex, tabIds.length - 1)] ?? null
+          : group.activeTabId;
+        return { ...group, tabIds, activeTabId };
+      });
+      return { ...current, [workspaceId]: { ...workspace, tabs: workspace.tabs.filter((tab) => tab.id !== tabId), groups } };
     });
   }, [activeTerminalWorkspace?.id, editorWorkspaces]);
 
@@ -787,8 +879,20 @@ function App() {
               <div className="toolbar-actions"><FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={changeTerminalLayoutMode} /></div>
             </div>}
           </div>
-          {activeMainView === "code" && <CodeWorkspace tabs={activeEditorWorkspace.tabs} activeTabId={activeEditorWorkspace.activeTabId} onSelect={selectEditorTab} onClose={closeEditorTab} onChange={updateEditorFileContent} onSave={(tabId) => void saveEditorFile(tabId)} />}
           {activeMainView === "graph" && <TerminalResourceGraph workspaceName={activeTerminalWorkspace?.name ?? "Workspace"} terminals={activeWorkspaceTerminals} activeTerminalId={activeTerminalId} />}
+          {activeMainView === "code" && <CodeWorkspace
+            tabs={activeEditorWorkspace.tabs}
+            groups={activeEditorWorkspace.groups}
+            activeGroupId={activeEditorWorkspace.activeGroupId}
+            onSelect={selectEditorTab}
+            onActivateGroup={activateEditorGroup}
+            onClose={closeEditorTab}
+            onChange={updateEditorFileContent}
+            onSave={(tabId) => void saveEditorFile(tabId)}
+            onCreateGroup={createEditorGroup}
+            onMoveTab={moveEditorTab}
+            onCloseGroup={closeEditorGroup}
+          />}
           <div className="terminal-workspace-view" hidden={activeMainView !== "terminals"}>
           <section className="terminal-surface" aria-label="Terminal workspace">
             <TerminalWorkspaceLayout layout={layout} terminals={terminals} visibleTerminalIds={activeWorkspaceTerminalIds} workspaceId={activeTerminalWorkspace?.id ?? ""} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} terminalNameInputRef={terminalNameInputRef} onRename={beginRenameTerminal} onNameChange={setTerminalNameDraft} onNameSave={saveTerminalName} onNameCancel={cancelTerminalRename} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
