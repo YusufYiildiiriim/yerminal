@@ -23,11 +23,23 @@ type DragState = {
   offsetY: number;
 };
 
+type ResizeDirection = "left" | "right" | "top" | "bottom";
+
+type ResizeState = {
+  sessionId: string;
+  pointerId: number;
+  direction: ResizeDirection;
+  startX: number;
+  startY: number;
+  startRect: FloatingTerminalRect;
+};
+
 export type FloatingTerminalLayoutController = {
   mode: TerminalLayoutMode;
   setMode: (mode: TerminalLayoutMode) => void;
   positions: Record<string, FloatingTerminalRect>;
   draggingSessionId: string | null;
+  resizingSessionId: string | null;
   dockTarget: TerminalDockEdge | null;
   surfaceRef: RefObject<HTMLDivElement | null>;
   getRect: (sessionId: string) => FloatingTerminalRect;
@@ -36,10 +48,19 @@ export type FloatingTerminalLayoutController = {
   moveDrag: (sessionId: string, event: ReactPointerEvent<HTMLElement>) => void;
   endDrag: (sessionId: string, event: ReactPointerEvent<HTMLElement>) => void;
   cancelDrag: (sessionId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  startResize: (sessionId: string, direction: ResizeDirection, event: ReactPointerEvent<HTMLElement>) => void;
+  moveResize: (sessionId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  endResize: (sessionId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  cancelResize: (sessionId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  nudgeResize: (sessionId: string, key: string) => boolean;
 };
 
 const STORAGE_PREFIX = "yerminal:floating-terminal-layout:v1:";
 const EDGE_SNAP_DISTANCE = 36;
+const MIN_WIDTH_PX = 240;
+const MIN_HEIGHT_PX = 160;
+const MIN_SIZE_PERCENT = 14;
+const KEYBOARD_RESIZE_STEP = 4;
 
 function storageKey(workspaceId: string) {
   return `${STORAGE_PREFIX}${workspaceId}`;
@@ -103,9 +124,11 @@ export function useFloatingTerminalLayout(
 ): FloatingTerminalLayoutController {
   const [snapshot, setSnapshot] = useState<FloatingLayoutSnapshot>(() => readSnapshot(workspaceId, sessionIds));
   const [draggingSessionId, setDraggingSessionId] = useState<string | null>(null);
+  const [resizingSessionId, setResizingSessionId] = useState<string | null>(null);
   const [dockTarget, setDockTarget] = useState<TerminalDockEdge | null>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
+  const resizeRef = useRef<ResizeState | null>(null);
   const dockCallbackRef = useRef(onDockToTiledLayout);
   dockCallbackRef.current = onDockToTiledLayout;
   const sessionIdsKey = sessionIds.join("\u0000");
@@ -113,8 +136,10 @@ export function useFloatingTerminalLayout(
   useEffect(() => {
     setSnapshot(readSnapshot(workspaceId, sessionIds));
     setDraggingSessionId(null);
+    setResizingSessionId(null);
     setDockTarget(null);
     dragRef.current = null;
+    resizeRef.current = null;
   }, [workspaceId]);
 
   useEffect(() => {
@@ -218,5 +243,82 @@ export function useFloatingTerminalLayout(
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   }, []);
 
-  return { mode: currentSnapshot.mode, setMode, positions: currentSnapshot.positions, draggingSessionId, dockTarget, surfaceRef, getRect, getWindowStyle, startDrag, moveDrag, endDrag, cancelDrag };
+  const updateRect = useCallback((sessionId: string, rect: FloatingTerminalRect) => {
+    setSnapshot((value) => {
+      const target = value.workspaceId === workspaceId ? value : readSnapshot(workspaceId, sessionIds);
+      return { ...target, positions: { ...target.positions, [sessionId]: rect } };
+    });
+  }, [sessionIdsKey, workspaceId]);
+
+  const startResize = useCallback((sessionId: string, direction: ResizeDirection, event: ReactPointerEvent<HTMLElement>) => {
+    if (currentSnapshot.mode !== "floating" || event.button !== 0 || !surfaceRef.current) return;
+    const bounds = surfaceRef.current.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+    resizeRef.current = {
+      sessionId,
+      pointerId: event.pointerId,
+      direction,
+      startX: event.clientX,
+      startY: event.clientY,
+      startRect: getRect(sessionId),
+    };
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setResizingSessionId(sessionId);
+  }, [currentSnapshot.mode, getRect]);
+
+  const moveResize = useCallback((sessionId: string, event: ReactPointerEvent<HTMLElement>) => {
+    const resize = resizeRef.current;
+    const surface = surfaceRef.current;
+    if (!resize || resize.sessionId !== sessionId || resize.pointerId !== event.pointerId || !surface) return;
+    const bounds = surface.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+    const deltaX = (event.clientX - resize.startX) / bounds.width * 100;
+    const deltaY = (event.clientY - resize.startY) / bounds.height * 100;
+    const start = resize.startRect;
+    const minWidth = Math.min(100, Math.max(MIN_SIZE_PERCENT, MIN_WIDTH_PX / bounds.width * 100));
+    const minHeight = Math.min(100, Math.max(MIN_SIZE_PERCENT, MIN_HEIGHT_PX / bounds.height * 100));
+    let next = { ...start };
+    if (resize.direction === "right") next.width = Math.max(minWidth, Math.min(100 - start.x, start.width + deltaX));
+    else if (resize.direction === "left") {
+      next.x = Math.max(0, Math.min(start.x + start.width - minWidth, start.x + deltaX));
+      next.width = start.x + start.width - next.x;
+    } else if (resize.direction === "bottom") next.height = Math.max(minHeight, Math.min(100 - start.y, start.height + deltaY));
+    else {
+      next.y = Math.max(0, Math.min(start.y + start.height - minHeight, start.y + deltaY));
+      next.height = start.y + start.height - next.y;
+    }
+    updateRect(sessionId, next);
+  }, [updateRect]);
+
+  const endResize = useCallback((sessionId: string, event: ReactPointerEvent<HTMLElement>) => {
+    const resize = resizeRef.current;
+    if (!resize || resize.sessionId !== sessionId || resize.pointerId !== event.pointerId) return;
+    resizeRef.current = null;
+    setResizingSessionId(null);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  }, []);
+
+  const cancelResize = useCallback((sessionId: string, event: ReactPointerEvent<HTMLElement>) => {
+    endResize(sessionId, event);
+  }, [endResize]);
+
+  const nudgeResize = useCallback((sessionId: string, key: string) => {
+    if (currentSnapshot.mode !== "floating") return false;
+    const rect = getRect(sessionId);
+    const bounds = surfaceRef.current?.getBoundingClientRect();
+    const minWidth = bounds && bounds.width > 0 ? Math.min(100, Math.max(MIN_SIZE_PERCENT, MIN_WIDTH_PX / bounds.width * 100)) : MIN_SIZE_PERCENT;
+    const minHeight = bounds && bounds.height > 0 ? Math.min(100, Math.max(MIN_SIZE_PERCENT, MIN_HEIGHT_PX / bounds.height * 100)) : MIN_SIZE_PERCENT;
+    const next = { ...rect };
+    if (key === "ArrowRight") next.width = Math.max(minWidth, Math.min(100 - rect.x, rect.width + KEYBOARD_RESIZE_STEP));
+    else if (key === "ArrowLeft") next.width = Math.max(minWidth, Math.min(100 - rect.x, rect.width - KEYBOARD_RESIZE_STEP));
+    else if (key === "ArrowDown") next.height = Math.max(minHeight, Math.min(100 - rect.y, rect.height + KEYBOARD_RESIZE_STEP));
+    else if (key === "ArrowUp") next.height = Math.max(minHeight, Math.min(100 - rect.y, rect.height - KEYBOARD_RESIZE_STEP));
+    else return false;
+    updateRect(sessionId, next);
+    return true;
+  }, [currentSnapshot.mode, getRect, updateRect]);
+
+  return { mode: currentSnapshot.mode, setMode, positions: currentSnapshot.positions, draggingSessionId, resizingSessionId, dockTarget, surfaceRef, getRect, getWindowStyle, startDrag, moveDrag, endDrag, cancelDrag, startResize, moveResize, endResize, cancelResize, nudgeResize };
 }

@@ -61,6 +61,57 @@
   transition: none;
 }
 
+.terminal-pane-frame.floating-terminal-window[data-resizing="true"] {
+  z-index: 11;
+  border-color: #b5a5ff;
+  box-shadow: 0 16px 42px #000a, 0 0 0 1px #b5a5ff88;
+}
+
+.floating-terminal-resize-handle {
+  position: absolute;
+  z-index: 12;
+  display: block;
+  border: 0;
+  background: #a99aff12;
+  opacity: .2;
+  outline: none;
+  touch-action: none;
+  transition: opacity 100ms ease, background 100ms ease;
+}
+
+.floating-terminal-resize-handle.left,
+.floating-terminal-resize-handle.right {
+  top: 34px;
+  bottom: 10px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.floating-terminal-resize-handle.left { left: 0; }
+.floating-terminal-resize-handle.right { right: 0; }
+
+.floating-terminal-resize-handle.top,
+.floating-terminal-resize-handle.bottom {
+  right: 10px;
+  left: 10px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.floating-terminal-resize-handle.top { top: 0; }
+.floating-terminal-resize-handle.bottom { bottom: 0; }
+
+.floating-terminal-resize-handle:hover,
+.floating-terminal-resize-handle:focus-visible {
+  background: #a99aff88;
+  opacity: 1;
+}
+
+.floating-terminal-resize-handle:focus-visible {
+  outline: 1px solid #d7ceff;
+  outline-offset: -1px;
+}
+
 .floating-terminal-window-handle {
   cursor: grab;
   touch-action: none;

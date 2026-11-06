@@ -46,10 +46,16 @@ type EditorGroupPaneProps = {
   layoutMode: EditorLayoutMode;
   groupStyle: CSSProperties;
   dragging: boolean;
+  resizing: boolean;
   onStartDrag: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
   onMoveDrag: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
   onEndDrag: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
   onCancelDrag: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  onStartResize: (groupId: string, direction: "left" | "right" | "top" | "bottom", event: ReactPointerEvent<HTMLElement>) => void;
+  onMoveResize: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  onEndResize: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  onCancelResize: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  onNudgeResize: (groupId: string, key: string) => boolean;
   group: EditorGroupState;
   groups: EditorGroupState[];
   tabs: EditorFileTab[];
@@ -90,7 +96,7 @@ function detectLanguage(path: string): { id: string | null; label: string } {
   return languageByExtension[extension] ?? { id: null, label: "Plain Text" };
 }
 
-function EditorGroupPane({ layoutMode, groupStyle, dragging, onStartDrag, onMoveDrag, onEndDrag, onCancelDrag, group, groups, tabs, isActive, onSelect, onActivateGroup, onClose, onChange, onSave, onMoveTab, onCloseGroup }: EditorGroupPaneProps) {
+function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDrag, onMoveDrag, onEndDrag, onCancelDrag, onStartResize, onMoveResize, onEndResize, onCancelResize, onNudgeResize, group, groups, tabs, isActive, onSelect, onActivateGroup, onClose, onChange, onSave, onMoveTab, onCloseGroup }: EditorGroupPaneProps) {
   const groupTabs = group.tabIds.map((id) => tabs.find((tab) => tab.id === id)).filter((tab): tab is EditorFileTab => Boolean(tab));
   const activeTab = groupTabs.find((tab) => tab.id === group.activeTabId) ?? null;
   const language = useMemo(() => activeTab ? detectLanguage(activeTab.path) : null, [activeTab?.path]);
@@ -100,6 +106,14 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, onStartDrag, onMove
   const isDirty = Boolean(activeTab && activeTab.content !== null && normalizeNewlines(activeTab.content) !== normalizeNewlines(activeTab.savedContent));
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    const resizeHandle = event.target instanceof HTMLElement && event.target.closest(".editor-group-resize-handle");
+    if (layoutMode === "free" && resizeHandle && event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey) {
+      if (onNudgeResize(group.id, event.key)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s" && activeTab && !isReadOnly) {
       event.preventDefault();
       onSave(activeTab.id);
@@ -125,10 +139,26 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, onStartDrag, onMove
     className={"editor-group-pane" + (isActive ? " active" : "") + (layoutMode === "free" ? " free" : "")}
     style={layoutMode === "free" ? groupStyle : undefined}
     data-dragging={dragging ? "true" : "false"}
+    data-resizing={resizing ? "true" : undefined}
     aria-label={group.name}
     onMouseDown={() => onActivateGroup(group.id)}
     onKeyDown={handleKeyDown}
   >
+    {layoutMode === "free" && (["left", "right", "top", "bottom"] as const).map((direction) => <div
+      key={direction}
+      className={`editor-group-resize-handle ${direction}`}
+      role="separator"
+      tabIndex={0}
+      aria-orientation={direction === "left" || direction === "right" ? "vertical" : "horizontal"}
+      aria-label={`Resize ${group.name} ${direction}`}
+      aria-keyshortcuts="Alt+Shift+ArrowLeft Alt+Shift+ArrowRight Alt+Shift+ArrowUp Alt+Shift+ArrowDown"
+      title="Drag to resize · Alt+Shift+Arrow to adjust while focused"
+      onFocus={() => onActivateGroup(group.id)}
+      onPointerDown={(event) => { onActivateGroup(group.id); onStartResize(group.id, direction, event); }}
+      onPointerMove={(event) => onMoveResize(group.id, event)}
+      onPointerUp={(event) => onEndResize(group.id, event)}
+      onPointerCancel={(event) => onCancelResize(group.id, event)}
+    />)}
     <header
       className={"editor-group-heading" + (layoutMode === "free" ? " free" : "")}
       onPointerDown={layoutMode === "free" ? (event) => { onActivateGroup(group.id); onStartDrag(group.id, event); } : undefined}
@@ -206,10 +236,16 @@ export function CodeWorkspace({ workspaceId, tabs, groups, activeGroupId, onSele
         layoutMode={layout.mode}
         groupStyle={layout.getWindowStyle(group.id)}
         dragging={layout.draggingGroupId === group.id}
+        resizing={layout.resizingGroupId === group.id}
         onStartDrag={layout.startDrag}
         onMoveDrag={layout.moveDrag}
         onEndDrag={layout.endDrag}
         onCancelDrag={layout.cancelDrag}
+        onStartResize={layout.startResize}
+        onMoveResize={layout.moveResize}
+        onEndResize={layout.endResize}
+        onCancelResize={layout.cancelResize}
+        onNudgeResize={layout.nudgeResize}
         group={group}
         groups={groups}
         tabs={tabs}

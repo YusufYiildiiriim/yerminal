@@ -66,6 +66,7 @@ const HELP_SHORTCUTS = [
   { keys: "Ctrl/⌘ + Shift + B", label: "Open Git Graph" },
   { keys: "Ctrl/⌘ + Tab", label: "Focus next terminal" },
   { keys: "Ctrl/⌘ + Shift + Tab", label: "Focus previous terminal" },
+  { keys: "Alt + Shift + Arrow", label: "Resize a Free pane/group (focus a resize edge)" },
   { keys: "Ctrl/⌘ + S", label: "Save active code file" },
   { keys: "Tab", label: "Insert four spaces in the code editor" },
   { keys: "Esc", label: "Close Help or commit details; cancel terminal rename" },
@@ -1559,7 +1560,31 @@ function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, worksp
         data-drag-over={dropTargetPaneId === terminal.id ? "true" : undefined}
         data-drag-source={draggingPaneId === terminal.id ? "true" : undefined}
         data-dragging={floatingLayout.draggingSessionId === terminal.id ? "true" : undefined}
+        data-resizing={floatingLayout.resizingSessionId === terminal.id ? "true" : undefined}
       >
+        {isFloating && (["left", "right", "top", "bottom"] as const).map((direction) => <div
+          key={direction}
+          className={`floating-terminal-resize-handle ${direction}`}
+          role="separator"
+          tabIndex={0}
+          aria-orientation={direction === "left" || direction === "right" ? "vertical" : "horizontal"}
+          aria-label={`Resize ${terminal.name} ${direction}`}
+          aria-keyshortcuts="Alt+Shift+ArrowLeft Alt+Shift+ArrowRight Alt+Shift+ArrowUp Alt+Shift+ArrowDown"
+          title="Drag to resize · Alt+Shift+Arrow to adjust while focused"
+          onFocus={() => onFocus(terminal.id)}
+          onKeyDown={(event) => {
+            if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey) return;
+            if (floatingLayout.nudgeResize(terminal.id, event.key)) {
+              event.preventDefault();
+              event.stopPropagation();
+              onFocus(terminal.id);
+            }
+          }}
+          onPointerDown={(event) => { onFocus(terminal.id); floatingLayout.startResize(terminal.id, direction, event); }}
+          onPointerMove={(event) => floatingLayout.moveResize(terminal.id, event)}
+          onPointerUp={(event) => floatingLayout.endResize(terminal.id, event)}
+          onPointerCancel={(event) => floatingLayout.cancelResize(terminal.id, event)}
+        />)}
         {hasPaneHeader && <header
           className={`terminal-pane-header ${isSingleTerminal ? "single-terminal-pane-header" : ""}`}
           onMouseDown={(event) => {

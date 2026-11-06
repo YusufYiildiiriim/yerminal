@@ -34,10 +34,22 @@ type DragState = {
   moved: boolean;
 };
 
+type ResizeDirection = "left" | "right" | "top" | "bottom";
+
+type ResizeState = {
+  groupId: string;
+  pointerId: number;
+  direction: ResizeDirection;
+  startX: number;
+  startY: number;
+  startRect: FloatingEditorRect;
+};
+
 export type FloatingEditorLayoutController = {
   mode: EditorLayoutMode;
   setMode: (mode: EditorLayoutMode) => void;
   draggingGroupId: string | null;
+  resizingGroupId: string | null;
   dockTarget: EditorDockEdge | null;
   surfaceRef: RefObject<HTMLDivElement | null>;
   getRect: (groupId: string) => FloatingEditorRect;
@@ -46,11 +58,18 @@ export type FloatingEditorLayoutController = {
   moveDrag: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
   endDrag: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
   cancelDrag: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  startResize: (groupId: string, direction: ResizeDirection, event: ReactPointerEvent<HTMLElement>) => void;
+  moveResize: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  endResize: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  cancelResize: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  nudgeResize: (groupId: string, key: string) => boolean;
 };
 
 const STORAGE_PREFIX = "yerminal:floating-editor-layout:v1:";
 const EDGE_SNAP_DISTANCE = 36;
 const GROUP_GAP = 3;
+const MIN_EDITOR_SIZE = 12;
+const KEYBOARD_RESIZE_STEP = 4;
 
 function storageKey(workspaceId: string) {
   return STORAGE_PREFIX + workspaceId;
@@ -146,9 +165,11 @@ export function useFloatingEditorLayout(workspaceId: string, groupIds: string[])
   );
   const [snapshot, setSnapshot] = useState<FloatingEditorSnapshot>(() => readSnapshot(workspaceId, stableGroupIds));
   const [draggingGroupId, setDraggingGroupId] = useState<string | null>(null);
+  const [resizingGroupId, setResizingGroupId] = useState<string | null>(null);
   const [dockTarget, setDockTarget] = useState<EditorDockEdge | null>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
+  const resizeRef = useRef<ResizeState | null>(null);
   const currentSnapshot = snapshot.workspaceId === workspaceId
     ? normalizeSnapshot(snapshot, workspaceId, stableGroupIds)
     : readSnapshot(workspaceId, stableGroupIds);
@@ -156,7 +177,9 @@ export function useFloatingEditorLayout(workspaceId: string, groupIds: string[])
   useEffect(() => {
     setSnapshot(readSnapshot(workspaceId, stableGroupIds));
     dragRef.current = null;
+    resizeRef.current = null;
     setDraggingGroupId(null);
+    setResizingGroupId(null);
     setDockTarget(null);
   }, [workspaceId]);
 
@@ -204,7 +227,7 @@ export function useFloatingEditorLayout(workspaceId: string, groupIds: string[])
   const startDrag = (groupId: string, event: ReactPointerEvent<HTMLElement>) => {
     if (currentSnapshot.mode !== "free" || event.button !== 0) return;
     const target = event.target as HTMLElement;
-    if (target.closest("button, select, input, textarea")) return;
+    if (target.closest("button, select, input, textarea, .editor-group-resize-handle")) return;
     const surface = surfaceRef.current;
     if (!surface) return;
     const bounds = surface.getBoundingClientRect();
@@ -264,10 +287,85 @@ export function useFloatingEditorLayout(workspaceId: string, groupIds: string[])
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
+  const startResize = (groupId: string, direction: ResizeDirection, event: ReactPointerEvent<HTMLElement>) => {
+    if (currentSnapshot.mode !== "free" || event.button !== 0) return;
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    const bounds = surface.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+    resizeRef.current = {
+      groupId,
+      pointerId: event.pointerId,
+      direction,
+      startX: event.clientX,
+      startY: event.clientY,
+      startRect: getRect(groupId),
+    };
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setResizingGroupId(groupId);
+  };
+
+  const resizeGroupTo = (groupId: string, rect: FloatingEditorRect) => {
+    updateSnapshot((value) => ({
+      ...value,
+      positions: { ...value.positions, [groupId]: rect },
+    }));
+  };
+
+  const moveResize = (groupId: string, event: ReactPointerEvent<HTMLElement>) => {
+    const resize = resizeRef.current;
+    const surface = surfaceRef.current;
+    if (!resize || resize.groupId !== groupId || resize.pointerId !== event.pointerId || !surface) return;
+    const bounds = surface.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+    const deltaX = (event.clientX - resize.startX) / bounds.width * 100;
+    const deltaY = (event.clientY - resize.startY) / bounds.height * 100;
+    const start = resize.startRect;
+    let next = { ...start };
+    if (resize.direction === "right") next.width = clamp(start.width + deltaX, MIN_EDITOR_SIZE, 100 - start.x);
+    else if (resize.direction === "left") {
+      next.x = clamp(start.x + deltaX, 0, start.x + start.width - MIN_EDITOR_SIZE);
+      next.width = start.x + start.width - next.x;
+    } else if (resize.direction === "bottom") next.height = clamp(start.height + deltaY, MIN_EDITOR_SIZE, 100 - start.y);
+    else {
+      next.y = clamp(start.y + deltaY, 0, start.y + start.height - MIN_EDITOR_SIZE);
+      next.height = start.y + start.height - next.y;
+    }
+    resizeGroupTo(groupId, next);
+  };
+
+  const endResize = (groupId: string, event: ReactPointerEvent<HTMLElement>) => {
+    const resize = resizeRef.current;
+    if (!resize || resize.groupId !== groupId || resize.pointerId !== event.pointerId) return;
+    resizeRef.current = null;
+    setResizingGroupId(null);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+
+  const cancelResize = (groupId: string, event: ReactPointerEvent<HTMLElement>) => {
+    endResize(groupId, event);
+  };
+
+  const nudgeResize = (groupId: string, key: string) => {
+    if (currentSnapshot.mode !== "free") return false;
+    const rect = getRect(groupId);
+    let next = { ...rect };
+    if (key === "ArrowRight") next.width = clamp(rect.width + KEYBOARD_RESIZE_STEP, MIN_EDITOR_SIZE, 100 - rect.x);
+    else if (key === "ArrowLeft") next.width = clamp(rect.width - KEYBOARD_RESIZE_STEP, MIN_EDITOR_SIZE, 100 - rect.x);
+    else if (key === "ArrowDown") next.height = clamp(rect.height + KEYBOARD_RESIZE_STEP, MIN_EDITOR_SIZE, 100 - rect.y);
+    else if (key === "ArrowUp") next.height = clamp(rect.height - KEYBOARD_RESIZE_STEP, MIN_EDITOR_SIZE, 100 - rect.y);
+    else return false;
+    resizeGroupTo(groupId, next);
+    return true;
+  };
+
   return {
     mode: currentSnapshot.mode,
     setMode,
     draggingGroupId,
+    resizingGroupId,
     dockTarget,
     surfaceRef,
     getRect,
@@ -276,5 +374,10 @@ export function useFloatingEditorLayout(workspaceId: string, groupIds: string[])
     moveDrag,
     endDrag,
     cancelDrag,
+    startResize,
+    moveResize,
+    endResize,
+    cancelResize,
+    nudgeResize,
   };
 }
