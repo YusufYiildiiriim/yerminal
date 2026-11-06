@@ -57,6 +57,19 @@ function createEmptyEditorWorkspaceState(): EditorWorkspaceState {
 
 const WORKSPACE_STORAGE_KEY = "yerminal.workspace";
 const TERMINAL_WORKSPACES_STORAGE_KEY = "yerminal.terminal-workspaces";
+const HELP_SHORTCUTS = [
+  { keys: "Ctrl/⌘ + Shift + T", label: "New terminal" },
+  { keys: "Ctrl/⌘ + Shift + W", label: "Close active terminal" },
+  { keys: "Ctrl/⌘ + Shift + H", label: "Split terminal horizontally" },
+  { keys: "Ctrl/⌘ + Shift + V", label: "Split terminal vertically" },
+  { keys: "Ctrl/⌘ + Shift + G", label: "Open Git Changes" },
+  { keys: "Ctrl/⌘ + Shift + B", label: "Open Git Graph" },
+  { keys: "Ctrl/⌘ + Tab", label: "Focus next terminal" },
+  { keys: "Ctrl/⌘ + Shift + Tab", label: "Focus previous terminal" },
+  { keys: "Ctrl/⌘ + S", label: "Save active code file" },
+  { keys: "Tab", label: "Insert four spaces in the code editor" },
+  { keys: "Esc", label: "Close Help or commit details; cancel terminal rename" },
+] as const;
 
 function readWorkspace(): PersistedWorkspace {
   try {
@@ -204,6 +217,9 @@ function App() {
   const [terminalNameDraft, setTerminalNameDraft] = useState("");
   const terminalNameInputRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const helpAreaRef = useRef<HTMLDivElement>(null);
+  const helpButtonRef = useRef<HTMLButtonElement>(null);
   const initializedWorkspaceIdsRef = useRef(new Set<string>());
   const floatingModeSetterRef = useRef<((mode: TerminalLayoutMode) => void) | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -215,6 +231,24 @@ function App() {
   const activeTerminalId = activeTerminalWorkspace?.activeTerminalId ?? null;
   const layout = activeTerminalWorkspace?.layout ?? null;
   const activeEditorWorkspace = editorWorkspaces[activeTerminalWorkspace?.id ?? ""] ?? createEmptyEditorWorkspaceState();
+
+  useEffect(() => {
+    if (!helpOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !helpAreaRef.current?.contains(event.target)) setHelpOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setHelpOpen(false);
+      helpButtonRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [helpOpen]);
 
   const openEditorFile = useCallback(async (request: EditorFileRequest) => {
     const workspaceId = activeTerminalWorkspace?.id;
@@ -826,6 +860,15 @@ function App() {
         <div className="brand-mark">y</div>
         <span className="brand-name">yerminal</span>
         <span className="title-divider" />
+        <div className="titlebar-help" ref={helpAreaRef}>
+          <button ref={helpButtonRef} className="titlebar-help-button" type="button" aria-haspopup="dialog" aria-expanded={helpOpen} aria-controls="titlebar-shortcuts" onClick={() => setHelpOpen((open) => !open)}>
+            <span aria-hidden="true">?</span> Help
+          </button>
+          {helpOpen && <section className="titlebar-help-popover" id="titlebar-shortcuts" role="dialog" aria-label="Shortcuts">
+            <header className="titlebar-help-header"><h2>Shortcuts</h2><button className="titlebar-help-close" type="button" aria-label="Close shortcuts" onClick={() => { setHelpOpen(false); helpButtonRef.current?.focus(); }}>×</button></header>
+            <div className="titlebar-shortcut-list">{HELP_SHORTCUTS.map((shortcut) => <div className="titlebar-shortcut" key={shortcut.keys}><span>{shortcut.label}</span><kbd>{shortcut.keys}</kbd></div>)}</div>
+          </section>}
+        </div>
         <div className="titlebar-spacer" />
         <span className="window-caption">Agent Workspace</span>
       </header>

@@ -27,6 +27,19 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .icon-button:hover { background: #23242a; border-color: #34363e; }
 
 .titlebar-spacer { flex: 1; }.window-caption { color: #727580; font-size: 11px; }
+.titlebar-help { position: relative; display: flex; flex: 0 0 auto; align-items: center; z-index: 20; }
+.titlebar-help-button { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 9px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #999ba6; font-size: 11px; }
+.titlebar-help-button > span { display: grid; place-items: center; width: 15px; height: 15px; border: 1px solid #666277; border-radius: 50%; color: #c1b5ff; font-size: 10px; line-height: 1; }
+.titlebar-help-button:hover, .titlebar-help-button[aria-expanded="true"] { border-color: #383640; background: #1d1c23; color: #e6e3f2; }
+.titlebar-help-popover { position: absolute; top: calc(100% + 8px); left: 0; width: min(360px, calc(100vw - 24px)); max-height: min(70vh, 520px); overflow: auto; padding: 12px; border: 1px solid #34343d; border-radius: 9px; background: #191a20; box-shadow: 0 14px 36px #0009; }
+.titlebar-help-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.titlebar-help-header h2 { margin: 0; color: #e6e4ee; font-size: 12px; font-weight: 650; }
+.titlebar-help-close { width: 25px; height: 25px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: #92939d; font-size: 16px; }
+.titlebar-help-close:hover { border-color: #383943; background: #25262c; color: #f0eff4; }
+.titlebar-shortcut-list { display: grid; gap: 2px; }
+.titlebar-shortcut { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 31px; padding: 4px 6px; border-radius: 5px; color: #adb0ba; font-size: 11px; }
+.titlebar-shortcut:hover { background: #22232a; }
+.titlebar-shortcut kbd { padding: 3px 6px; border: 1px solid #3a3b44; border-radius: 5px; background: #111216; color: #d5d3df; font: 10px "Cascadia Code", Consolas, monospace; white-space: nowrap; }
 .icon-button { border: 1px solid transparent; border-radius: 5px; background: transparent; color: #90929c; display: grid; place-items: center; }
 
 .workspace { flex: 1; min-height: 0; }
