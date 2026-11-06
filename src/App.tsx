@@ -30,7 +30,7 @@ function TerminalNameEditor({ terminalName, value, inputRef, compact = false, on
   </form>;
 }
 
-type ToolId = "changes" | "graph";
+type ToolId = "explorer" | "changes" | "graph";
 type ShellKind = "powershell" | "bash" | "zsh";
 type TerminalSession = { id: string; name: string; shell: ShellKind; shellLabel: string; profileId?: string; workingDirectory: string | null };
 type LayoutNode = { type: "terminal"; sessionId: string } | { type: "split"; id: string; direction: "horizontal" | "vertical"; ratio: number; children: [LayoutNode, LayoutNode] };
@@ -197,12 +197,13 @@ function preserveEditorLineEndings(content: string, original: string): string {
 }
 
 const tools: { id: ToolId; label: string; icon: string }[] = [
+  { id: "explorer", label: "Explorer", icon: "▤" },
   { id: "changes", label: "Git Changes", icon: "◫" },
   { id: "graph", label: "Git Graph", icon: "⌘" },
 ];
 
 function App() {
-  const [activeTool, setActiveTool] = useState<ToolId>("changes");
+  const [activeTool, setActiveTool] = useState<ToolId>("explorer");
   const [activeMainView, setActiveMainView] = useState<"code" | "terminals">("terminals");
   const [terminalLayoutMode, setTerminalLayoutMode] = useState<TerminalLayoutMode>("tiled");
   const [terminalWorkspaceState, setTerminalWorkspaceState] = useState<TerminalWorkspaceState>(() => readTerminalWorkspaceState());
@@ -896,14 +897,18 @@ function App() {
                 <button className="workspace-action add-folder" type="button" aria-label="Add folders to workspace" title="Add folders" onClick={() => void addWorkspaceFolders()}>＋</button>
               </label>
             </div>
-            <div className="workspace-navigation-explorer">
-              <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} onOpenFile={(root, entry) => void openEditorFile({ id: "workspace:" + root + ":" + entry.path, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} />
-            </div>
           </section>
-          <section className="tool-content">{activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} /> : activeTool === "graph" ? <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } })} /> : <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} />}</section>
-          <nav className="tool-tabs" aria-label="Developer tools">
-            {tools.map((tool) => <button key={tool.id} className={`tool-tab ${activeTool === tool.id ? "selected" : ""}`} onClick={() => setActiveTool(tool.id)} type="button"><span className="tool-icon">{tool.icon}</span>{tool.label}</button>)}
-          </nav>
+          <div className="workspace-tool-layout">
+            <nav className="tool-sidebar" aria-label="Workspace tools">
+              {tools.map((tool) => <button key={tool.id} className={`tool-sidebar-item ${activeTool === tool.id ? "selected" : ""}`} onClick={() => setActiveTool(tool.id)} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={tool.label}>
+                <span className="tool-sidebar-icon" aria-hidden="true">{tool.icon}</span>
+                <span className="tool-sidebar-label">{tool.label}</span>
+              </button>)}
+            </nav>
+            <section className="tool-content" aria-label={tools.find((tool) => tool.id === activeTool)?.label}>
+              {activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} /> : <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } })} />}
+            </section>
+          </div>
         </Panel>
         <PanelResizeHandle className="resize-handle" aria-label="Resize developer tools" />
         <Panel minSize={35} className="terminal-panel">
