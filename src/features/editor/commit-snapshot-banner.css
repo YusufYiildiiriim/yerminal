@@ -1,0 +1,106 @@
+.commit-snapshot-banner {
+  min-height: 58px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 18px;
+  border-bottom: 1px solid #302d3d;
+  background: linear-gradient(90deg, #201e2c, #17181d 62%);
+}
+
+.commit-snapshot-mark {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #49425f;
+  border-radius: 7px;
+  background: #292538;
+  color: #c0b4ff;
+  font: 17px "Cascadia Code", Consolas, monospace;
+}
+
+.commit-snapshot-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.commit-snapshot-kicker,
+.commit-snapshot-meta {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  color: #8f8d9b;
+  font-size: 9px;
+}
+
+.commit-snapshot-kicker > span {
+  color: #b8aaff;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .09em;
+}
+
+.commit-snapshot-kicker code {
+  overflow: hidden;
+  padding: 2px 5px;
+  border: 1px solid #40394e;
+  border-radius: 4px;
+  background: #252230;
+  color: #d1c8f8;
+  font: 9px "Cascadia Code", Consolas, monospace;
+  text-overflow: ellipsis;
+}
+
+.commit-snapshot-message {
+  overflow: hidden;
+  color: #dbd9e4;
+  font-size: 10px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-snapshot-meta > span,
+.commit-snapshot-meta > time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-snapshot-badges {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.commit-snapshot-kind,
+.commit-snapshot-readonly {
+  padding: 4px 7px;
+  border: 1px solid #393741;
+  border-radius: 5px;
+  background: #1d1d23;
+  color: #a1a1ac;
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.commit-snapshot-kind.added { border-color: #315743; background: #1d3027; color: #9cd2af; }
+.commit-snapshot-kind.modified { border-color: #51492c; background: #302b1e; color: #d5c184; }
+.commit-snapshot-kind.deleted { border-color: #5b3940; background: #342328; color: #dda2aa; }
+.commit-snapshot-kind.renamed { border-color: #3a4960; background: #202a39; color: #a9bee3; }
+.commit-snapshot-readonly { border-color: #48425b; background: #252332; color: #c1b6eb; }
+
+@media (max-width: 700px) {
+  .commit-snapshot-banner { gap: 8px; padding-right: 10px; padding-left: 10px; }
+  .commit-snapshot-meta { display: none; }
+  .commit-snapshot-badges { flex-direction: column; align-items: flex-end; gap: 4px; }
+}
