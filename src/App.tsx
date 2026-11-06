@@ -202,7 +202,7 @@ const tools: { id: ToolId; label: string; icon: string }[] = [
 
 function App() {
   const [activeTool, setActiveTool] = useState<ToolId>("changes");
-  const [activeMainView, setActiveMainView] = useState<"code" | "terminals" | "graph">("terminals");
+  const [activeMainView, setActiveMainView] = useState<"code" | "terminals">("terminals");
   const [terminalLayoutMode, setTerminalLayoutMode] = useState<TerminalLayoutMode>("tiled");
   const [terminalWorkspaceState, setTerminalWorkspaceState] = useState<TerminalWorkspaceState>(() => readTerminalWorkspaceState());
   const [editorWorkspaces, setEditorWorkspaces] = useState<Record<string, EditorWorkspaceState>>({});
@@ -910,7 +910,6 @@ function App() {
             <nav className="workspace-view-tabs" role="tablist" aria-label="Workspace views">
               <button className={`workspace-view-tab ${activeMainView === "code" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "code"} onClick={() => setActiveMainView("code")} type="button"><span aria-hidden="true">⌘</span> Code{activeEditorWorkspace.tabs.length > 0 && <small>{activeEditorWorkspace.tabs.length}</small>}</button>
               <button className={`workspace-view-tab ${activeMainView === "terminals" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "terminals"} onClick={() => setActiveMainView("terminals")} type="button"><span aria-hidden="true">▣</span> Terminals{activeWorkspaceTerminals.length > 0 && <small>{activeWorkspaceTerminals.length}</small>}</button>
-              <button className={activeMainView === "graph" ? "workspace-view-tab selected" : "workspace-view-tab"} role="tab" aria-selected={activeMainView === "graph"} onClick={() => setActiveMainView("graph")} type="button"><span aria-hidden="true">▤</span> Graph{activeWorkspaceTerminals.length > 0 && <small>{activeWorkspaceTerminals.length}</small>}</button>
             </nav>
             {activeMainView === "terminals" && <div className="terminal-session-toolbar">
               <div className="terminal-tabs" role={layout || activeWorkspaceTerminalIds.length <= 1 ? undefined : "tablist"} aria-label={layout || activeWorkspaceTerminalIds.length <= 1 ? "Terminal workspace actions" : "Terminal sessions"}>
@@ -926,7 +925,6 @@ function App() {
               <div className="toolbar-actions"><FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={changeTerminalLayoutMode} /></div>
             </div>}
           </div>
-          {activeMainView === "graph" && <TerminalResourceGraph workspaceName={activeTerminalWorkspace?.name ?? "Workspace"} terminals={activeWorkspaceTerminals} activeTerminalId={activeTerminalId} />}
           {activeMainView === "code" && <CodeWorkspace
             key={activeTerminalWorkspace?.id ?? ""}
             workspaceId={activeTerminalWorkspace?.id ?? ""}
@@ -943,6 +941,7 @@ function App() {
             onCloseGroup={closeEditorGroup}
           />}
           <div className="terminal-workspace-view" hidden={activeMainView !== "terminals"}>
+          <TerminalResourceGraph enabled={activeMainView === "terminals"} workspaceName={activeTerminalWorkspace?.name ?? "Workspace"} terminals={activeWorkspaceTerminals} activeTerminalId={activeTerminalId} />
           <section className="terminal-surface" aria-label="Terminal workspace">
             <TerminalWorkspaceLayout layout={layout} terminals={terminals} visibleTerminalIds={activeWorkspaceTerminalIds} workspaceId={activeTerminalWorkspace?.id ?? ""} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} terminalNameInputRef={terminalNameInputRef} onRename={beginRenameTerminal} onNameChange={setTerminalNameDraft} onNameSave={saveTerminalName} onNameCancel={cancelTerminalRename} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
             {activeWorkspaceTerminals.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Welcome to <span>yerminal</span></div><p>Create a terminal to begin.</p><button className="primary-button" onClick={() => void createTerminal()} type="button">New Terminal</button></div>}
