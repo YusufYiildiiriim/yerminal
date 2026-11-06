@@ -32,7 +32,6 @@ function TerminalNameEditor({ terminalName, value, inputRef, compact = false, on
 type ToolId = "changes" | "graph" | "workspace";
 type ShellKind = "powershell" | "bash" | "zsh";
 type TerminalSession = { id: string; name: string; shell: ShellKind; shellLabel: string; profileId?: string; workingDirectory: string | null };
-type AgentProfile = { id: string; name: string };
 type LayoutNode = { type: "terminal"; sessionId: string } | { type: "split"; id: string; direction: "horizontal" | "vertical"; ratio: number; children: [LayoutNode, LayoutNode] };
 type RepositoryInfo = { root: string; branch: string; state: string };
 type FileChange = { path: string; kind: string; staged: boolean; unstaged: boolean };
@@ -171,7 +170,6 @@ function App() {
   const [editorWorkspaces, setEditorWorkspaces] = useState<Record<string, EditorWorkspaceState>>({});
 
   const [repoInfo, setRepoInfo] = useState<RepositoryInfo | null>(null);
-  const [agentProfiles, setAgentProfiles] = useState<AgentProfile[]>([]);
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
   const [editingTerminalId, setEditingTerminalId] = useState<string | null>(null);
   const [terminalNameDraft, setTerminalNameDraft] = useState("");
@@ -384,11 +382,6 @@ function App() {
     void createTerminal();
   }, [activeTerminalWorkspace?.id, activeWorkspaceTerminalIds.length, createTerminal]);
 
-  useEffect(() => {
-    if (!isTauri()) return;
-    void invoke<AgentProfile[]>("list_agent_profiles").then(setAgentProfiles).catch((reason: unknown) => showToast(String(reason)));
-  }, [showToast]);
-
   const closeTerminal = useCallback(async (id: string) => {
     if (isTauri()) {
       try { await invoke("close_terminal", { sessionId: id }); }
@@ -457,27 +450,6 @@ function App() {
       layout: workspace.layout ? updateSplitRatio(workspace.layout, splitId, ratio) : null,
     }));
   }, [activeTerminalWorkspace, updateTerminalWorkspace]);
-
-  const createAgentTerminal = useCallback((profile: AgentProfile) => {
-    if (!activeTerminalWorkspace) return;
-    const id = crypto.randomUUID();
-    const terminal: TerminalSession = {
-      id,
-      name: profile.name,
-      shell: navigator.userAgent.includes("Windows") ? "powershell" : "bash",
-      shellLabel: profile.name,
-      profileId: profile.id,
-      workingDirectory: repoPath || null,
-    };
-    setTerminals((current) => [...current, terminal]);
-    updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => ({
-      ...workspace,
-      terminalIds: [...workspace.terminalIds, id],
-      activeTerminalId: id,
-      layout: null,
-    }));
-    dismissToast();
-  }, [activeTerminalWorkspace, dismissToast, repoPath, updateTerminalWorkspace]);
 
   const beginRenameTerminal = useCallback((terminal: TerminalSession) => {
     setEditingTerminalId(terminal.id);
@@ -688,7 +660,7 @@ function App() {
                 </div>)}
                 <button className="icon-button new-terminal" aria-label="Add terminal to workspace" title="Add terminal pane" onClick={() => void addTerminalToWorkspace()} type="button">＋</button>
               </div>
-              <div className="toolbar-actions"><FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={changeTerminalLayoutMode} /><button className="toolbar-button" type="button" aria-label="Split horizontally" title="Split side by side" onClick={() => void splitActiveTerminal("horizontal")} disabled={!activeTerminal}>▤</button><button className="toolbar-button" type="button" aria-label="Split vertically" title="Split top and bottom" onClick={() => void splitActiveTerminal("vertical")} disabled={!activeTerminal}>▥</button>{agentProfiles.map((profile) => <button className="agent-launch" key={profile.id} type="button" title={`Launch ${profile.name}`} onClick={() => createAgentTerminal(profile)}>{profile.id === "claude" ? "Claude" : profile.id === "codex" ? "Codex" : profile.name}</button>)}<span className="toolbar-divider" /><button className="toolbar-button" type="button" aria-label="Terminal options" disabled>···</button></div>
+              <div className="toolbar-actions"><FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={changeTerminalLayoutMode} /></div>
             </div>}
           </div>
           {activeMainView === "code" && <CodeWorkspace tabs={activeEditorWorkspace.tabs} activeTabId={activeEditorWorkspace.activeTabId} onSelect={selectEditorTab} onClose={closeEditorTab} />}
