@@ -136,6 +136,16 @@ fn list_workspace_directory(root: String, path: String) -> Result<Vec<WorkspaceE
 fn read_workspace_text_file(root: String, path: String) -> Result<String, String> {
     workspace_fs::read_text_file(&root, &path)
 }
+
+#[tauri::command]
+fn write_workspace_text_file(
+    root: String,
+    path: String,
+    content: String,
+    expected_content: String,
+) -> Result<(), String> {
+    workspace_fs::write_text_file(&root, &path, &content, &expected_content)
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -156,7 +166,8 @@ pub fn run() {
             git_commit_file_diff,
             git_commit_file_content,
             list_workspace_directory,
-            read_workspace_text_file
+            read_workspace_text_file,
+            write_workspace_text_file
         ])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {

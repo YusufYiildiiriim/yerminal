@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::fs;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
 
 pub const MAX_PREVIEW_BYTES: u64 = 1024 * 1024;
@@ -96,7 +97,11 @@ pub fn list_directory(root: &str, path: &str) -> Result<Vec<WorkspaceEntry>, Str
             name,
             path: entry_path.to_string_lossy().into_owned(),
             is_dir: metadata.is_dir(),
-            size: if metadata.is_file() { Some(metadata.len()) } else { None },
+            size: if metadata.is_file() {
+                Some(metadata.len())
+            } else {
+                None
+            },
             extension,
         });
     }
@@ -127,4 +132,60 @@ pub fn read_text_file(root: &str, path: &str) -> Result<String, String> {
         return Err("Binary file preview is unavailable".to_owned());
     }
     String::from_utf8(bytes).map_err(|_| "This file is not valid UTF-8 text".to_owned())
+}
+
+pub fn write_text_file(
+    root: &str,
+    path: &str,
+    content: &str,
+    expected_content: &str,
+) -> Result<(), String> {
+    let bytes = content.as_bytes();
+    if bytes.len() as u64 > MAX_PREVIEW_BYTES {
+        return Err("File is too large to save (maximum 1 MiB)".to_owned());
+    }
+    if bytes.contains(&0) {
+        return Err("Binary file editing is unavailable".to_owned());
+    }
+
+    let root = canonical_root(root)?;
+    let file_path = canonical_scoped_path(&root, path)?;
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&file_path)
+        .map_err(|error| format!("Cannot open workspace file for saving: {error}"))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("Cannot inspect workspace file: {error}"))?;
+    if !metadata.is_file() {
+        return Err("Workspace item is not a file".to_owned());
+    }
+    if metadata.len() > MAX_PREVIEW_BYTES {
+        return Err("File is too large to save (maximum 1 MiB)".to_owned());
+    }
+
+    let mut existing_bytes = Vec::with_capacity(metadata.len() as usize);
+    file.read_to_end(&mut existing_bytes)
+        .map_err(|error| format!("Cannot read current workspace file: {error}"))?;
+    if existing_bytes.len() as u64 > MAX_PREVIEW_BYTES {
+        return Err("File is too large to save (maximum 1 MiB)".to_owned());
+    }
+    if existing_bytes.contains(&0) {
+        return Err("Binary file editing is unavailable".to_owned());
+    }
+    let existing_content = String::from_utf8(existing_bytes)
+        .map_err(|_| "Workspace file is not valid UTF-8 text".to_owned())?;
+    if existing_content != expected_content {
+        return Err("File changed on disk since it was opened. Reopen it to review the latest contents before saving.".to_owned());
+    }
+
+    file.seek(SeekFrom::Start(0))
+        .map_err(|error| format!("Cannot position workspace file for saving: {error}"))?;
+    file.set_len(0)
+        .map_err(|error| format!("Cannot truncate workspace file: {error}"))?;
+    file.write_all(bytes)
+        .map_err(|error| format!("Cannot save workspace file: {error}"))?;
+    file.sync_all()
+        .map_err(|error| format!("Cannot flush workspace file: {error}"))
 }

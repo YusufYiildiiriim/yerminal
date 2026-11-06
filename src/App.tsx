@@ -40,7 +40,8 @@ type CommitFileChange = { path: string; kind: string };
 type WorkspaceEntry = { name: string; path: string; isDir: boolean; size: number | null; extension: string | null };
 const WORKSPACE_FILE_PREVIEW_LIMIT = 1024 * 1024;
 type EditorWorkspaceState = { tabs: EditorFileTab[]; activeTabId: string | null };
-type EditorFileRequest = { id: string; root: string; path: string; name: string; size?: number; sourceCommitId?: string; sourceLabel?: string };
+type EditorSnapshot = { shortId: string; message: string; changeKind: string; author: string; timestamp: number };
+type EditorFileRequest = { id: string; root: string; path: string; name: string; size?: number; sourceCommitId?: string; sourceLabel?: string; snapshot?: EditorSnapshot };
 const COMMIT_PAGE_SIZE = 50;
 type PersistedWorkspace = { folders: string[]; activePath: string };
 type TerminalWorkspace = { id: string; name: string; rootPath: string; folderPaths: string[]; terminalIds: string[]; activeTerminalId: string | null; layout: LayoutNode | null };
@@ -156,6 +157,24 @@ function changeDirectoryCommand(shell: ShellKind, path: string): string {
   return `cd -- '${escapedPath}'\n`;
 }
 
+function editorOperationKey(workspaceId: string, tabId: string): string {
+  return JSON.stringify([workspaceId, tabId]);
+}
+
+function editorResourceKey(path: string): string {
+  const normalize = (value: string) => value.replace(/\\/g, "/").replace(/\/+$/, "");
+  const key = normalize(path);
+  return navigator.userAgent.includes("Windows") ? key.toLowerCase() : key;
+}
+
+function normalizeEditorNewlines(content: string | null): string {
+  return (content ?? "").replace(/\r\n/g, "\n");
+}
+
+function preserveEditorLineEndings(content: string, original: string): string {
+  return original.includes("\r\n") ? content.replace(/\r?\n/g, "\r\n") : content.replace(/\r\n/g, "\n");
+}
+
 const tools: { id: ToolId; label: string; icon: string }[] = [
   { id: "changes", label: "Git Changes", icon: "◫" },
   { id: "graph", label: "Git Graph", icon: "⌘" },
@@ -168,6 +187,10 @@ function App() {
   const [terminalLayoutMode, setTerminalLayoutMode] = useState<TerminalLayoutMode>("tiled");
   const [terminalWorkspaceState, setTerminalWorkspaceState] = useState<TerminalWorkspaceState>(() => readTerminalWorkspaceState());
   const [editorWorkspaces, setEditorWorkspaces] = useState<Record<string, EditorWorkspaceState>>({});
+  const editorOperationIdsRef = useRef(new Map<string, number>());
+  const nextEditorOperationIdRef = useRef(0);
+  const savingEditorFilesRef = useRef(new Set<string>());
+  const pendingEditorSavesRef = useRef(new Map<string, Promise<void>>());
 
   const [repoInfo, setRepoInfo] = useState<RepositoryInfo | null>(null);
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
@@ -191,22 +214,31 @@ function App() {
     const workspaceId = activeTerminalWorkspace?.id;
     if (!workspaceId) return;
     const tabId = request.id;
+    const operationKey = editorOperationKey(workspaceId, tabId);
+    const resourceKey = editorResourceKey(request.path);
     setActiveMainView("code");
     const workspace = editorWorkspaces[workspaceId] ?? { tabs: [], activeTabId: null };
     const existing = workspace.tabs.find((tab) => tab.id === tabId);
+    const shouldLoad = !existing || existing.status === "error";
+    const operationId = shouldLoad ? ++nextEditorOperationIdRef.current : null;
+    if (operationId !== null) editorOperationIdsRef.current.set(operationKey, operationId);
     setEditorWorkspaces((current) => ({
       ...current,
       [workspaceId]: existing
         ? { ...(current[workspaceId] ?? workspace), activeTabId: tabId, tabs: (current[workspaceId]?.tabs ?? workspace.tabs).map((tab) => tab.id === tabId && tab.status === "error" ? { ...tab, status: "loading", error: null } : tab) }
-        : { tabs: [...(current[workspaceId]?.tabs ?? workspace.tabs), { id: tabId, root: request.root, path: request.path, name: request.name, status: "loading", content: null, error: null, sourceLabel: request.sourceLabel ?? null }], activeTabId: tabId },
+        : { tabs: [...(current[workspaceId]?.tabs ?? workspace.tabs), { id: tabId, root: request.root, path: request.path, name: request.name, status: "loading", content: null, savedContent: null, error: null, sourceLabel: request.sourceLabel ?? null, sourceCommitId: request.sourceCommitId ?? null, snapshot: request.snapshot ?? null, isSaving: false, saveError: null }], activeTabId: tabId },
     }));
-    if (existing?.status === "ready" || existing?.status === "loading") return;
+    if (!shouldLoad || operationId === null) return;
 
-    const updateTab = (update: (tab: EditorFileTab) => EditorFileTab) => setEditorWorkspaces((current) => {
+    const isCurrentOperation = () => editorOperationIdsRef.current.get(operationKey) === operationId;
+    const updateTab = (update: (tab: EditorFileTab) => EditorFileTab) => {
+      if (!isCurrentOperation()) return;
+      setEditorWorkspaces((current) => {
       const workspace = current[workspaceId];
       if (!workspace) return current;
       return { ...current, [workspaceId]: { ...workspace, tabs: workspace.tabs.map((tab) => tab.id === tabId ? update(tab) : tab) } };
-    });
+      });
+    };
 
     if (request.size !== undefined && request.size > WORKSPACE_FILE_PREVIEW_LIMIT) {
       updateTab((tab) => ({ ...tab, status: "error", error: "This file exceeds the 1 MiB preview limit." }));
@@ -218,10 +250,13 @@ function App() {
     }
 
     try {
+      const pendingSave = pendingEditorSavesRef.current.get(resourceKey);
+      if (pendingSave) await pendingSave.catch(() => undefined);
+      if (!isCurrentOperation()) return;
       const result = request.sourceCommitId
         ? await invoke<{ content: string; sourceLabel: string }>("git_commit_file_content", { path: request.root, commitId: request.sourceCommitId, filePath: request.path })
         : { content: await invoke<string>("read_workspace_text_file", { root: request.root, path: request.path }), sourceLabel: "Workspace file" };
-      updateTab((tab) => ({ ...tab, status: "ready", content: result.content, sourceLabel: result.sourceLabel }));
+      updateTab((tab) => ({ ...tab, status: "ready", content: result.content, savedContent: result.content, sourceLabel: result.sourceLabel, sourceCommitId: request.sourceCommitId ?? null, snapshot: request.snapshot ?? null, saveError: null }));
     } catch (reason) {
       const message = String(reason);
       const normalized = message.toLowerCase();
@@ -233,6 +268,89 @@ function App() {
             ? "This file exceeds the 1 MiB preview limit."
             : message;
       updateTab((tab) => ({ ...tab, status: "error", error }));
+    }
+  }, [activeTerminalWorkspace?.id, editorWorkspaces]);
+
+  const updateEditorFileContent = useCallback((tabId: string, content: string) => {
+    const workspaceId = activeTerminalWorkspace?.id;
+    if (!workspaceId) return;
+    setEditorWorkspaces((current) => {
+      const workspace = current[workspaceId];
+      if (!workspace) return current;
+      return {
+        ...current,
+        [workspaceId]: {
+          ...workspace,
+          tabs: workspace.tabs.map((tab) => tab.id === tabId && !tab.sourceCommitId
+            ? { ...tab, content, saveError: null }
+            : tab),
+        },
+      };
+    });
+  }, [activeTerminalWorkspace?.id]);
+
+  const saveEditorFile = useCallback(async (tabId: string) => {
+    const workspaceId = activeTerminalWorkspace?.id;
+    if (!workspaceId || !isTauri()) return;
+    const tab = editorWorkspaces[workspaceId]?.tabs.find((candidate) => candidate.id === tabId);
+    if (!tab || tab.status !== "ready" || tab.sourceCommitId || tab.content === null || tab.savedContent === null) return;
+    if (normalizeEditorNewlines(tab.content) === normalizeEditorNewlines(tab.savedContent)) return;
+
+    const operationKey = editorOperationKey(workspaceId, tabId);
+    const resourceKey = editorResourceKey(tab.path);
+    if (savingEditorFilesRef.current.has(resourceKey)) return;
+    const operationId = ++nextEditorOperationIdRef.current;
+    editorOperationIdsRef.current.set(operationKey, operationId);
+    savingEditorFilesRef.current.add(resourceKey);
+    const contentToSave = preserveEditorLineEndings(tab.content, tab.savedContent);
+    const expectedContent = tab.savedContent;
+    const isCurrentOperation = () => editorOperationIdsRef.current.get(operationKey) === operationId;
+    setEditorWorkspaces((current) => {
+      const workspace = current[workspaceId];
+      if (!workspace) return current;
+      return { ...current, [workspaceId]: { ...workspace, tabs: workspace.tabs.map((item) => item.id === tabId ? { ...item, isSaving: true, saveError: null } : item) } };
+    });
+
+    let pendingSave: Promise<void> | null = null;
+    try {
+      pendingSave = invoke<void>("write_workspace_text_file", { root: tab.root, path: tab.path, content: contentToSave, expectedContent });
+      pendingEditorSavesRef.current.set(resourceKey, pendingSave);
+      await pendingSave;
+      if (!isCurrentOperation()) return;
+      setEditorWorkspaces((current) => {
+        const workspace = current[workspaceId];
+        if (!workspace) return current;
+        return {
+          ...current,
+          [workspaceId]: {
+            ...workspace,
+            tabs: workspace.tabs.map((item) => item.id === tabId ? { ...item, savedContent: contentToSave, isSaving: false, saveError: null } : item),
+          },
+        };
+      });
+    } catch (reason) {
+      if (!isCurrentOperation()) return;
+      const message = String(reason);
+      const normalized = message.toLowerCase();
+      const saveError = normalized.includes("changed on disk")
+        ? "The file changed on disk. Your edits remain here; copy them before closing the tab and reopening the latest version."
+        : normalized.includes("outside")
+          ? "This file is outside the included workspace folder and cannot be saved."
+          : normalized.includes("binary") || normalized.includes("utf-8")
+            ? "This file is not supported for text editing."
+            : normalized.includes("too large")
+              ? "This file exceeds the 1 MiB editing limit."
+              : message;
+      setEditorWorkspaces((current) => {
+        const workspace = current[workspaceId];
+        if (!workspace) return current;
+        return { ...current, [workspaceId]: { ...workspace, tabs: workspace.tabs.map((item) => item.id === tabId ? { ...item, isSaving: false, saveError } : item) } };
+      });
+    } finally {
+      savingEditorFilesRef.current.delete(resourceKey);
+      if (pendingSave && pendingEditorSavesRef.current.get(resourceKey) === pendingSave) {
+        pendingEditorSavesRef.current.delete(resourceKey);
+      }
     }
   }, [activeTerminalWorkspace?.id, editorWorkspaces]);
 
@@ -248,6 +366,10 @@ function App() {
   const closeEditorTab = useCallback((tabId: string) => {
     const workspaceId = activeTerminalWorkspace?.id;
     if (!workspaceId) return;
+    const tab = editorWorkspaces[workspaceId]?.tabs.find((item) => item.id === tabId);
+    const isDirty = Boolean(tab && tab.content !== null && normalizeEditorNewlines(tab.content) !== normalizeEditorNewlines(tab.savedContent));
+    if (isDirty && !window.confirm(`Discard unsaved changes to ${tab?.name ?? "this file"}?`)) return;
+    editorOperationIdsRef.current.delete(editorOperationKey(workspaceId, tabId));
     setEditorWorkspaces((current) => {
       const workspace = current[workspaceId];
       if (!workspace) return current;
@@ -258,7 +380,7 @@ function App() {
         : workspace.activeTabId;
       return { ...current, [workspaceId]: { tabs, activeTabId } };
     });
-  }, [activeTerminalWorkspace?.id]);
+  }, [activeTerminalWorkspace?.id, editorWorkspaces]);
 
   const updateTerminalWorkspace = useCallback((workspaceId: string, update: (workspace: TerminalWorkspace) => TerminalWorkspace) => {
     setTerminalWorkspaceState((current) => ({
@@ -637,7 +759,7 @@ function App() {
 
       <PanelGroup direction="horizontal" className="workspace">
         <Panel defaultSize={27} minSize={18} maxSize={46} className="tools-panel">
-          <section className="tool-content">{activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} /> : activeTool === "graph" ? <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}` })} /> : <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} />}</section>
+          <section className="tool-content">{activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} /> : activeTool === "graph" ? <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } })} /> : <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} />}</section>
           <nav className="tool-tabs" aria-label="Developer tools">
             {tools.map((tool) => <button key={tool.id} className={`tool-tab ${activeTool === tool.id ? "selected" : ""}`} onClick={() => setActiveTool(tool.id)} type="button"><span className="tool-icon">{tool.icon}</span>{tool.label}</button>)}
           </nav>
@@ -663,7 +785,7 @@ function App() {
               <div className="toolbar-actions"><FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={changeTerminalLayoutMode} /></div>
             </div>}
           </div>
-          {activeMainView === "code" && <CodeWorkspace tabs={activeEditorWorkspace.tabs} activeTabId={activeEditorWorkspace.activeTabId} onSelect={selectEditorTab} onClose={closeEditorTab} />}
+          {activeMainView === "code" && <CodeWorkspace tabs={activeEditorWorkspace.tabs} activeTabId={activeEditorWorkspace.activeTabId} onSelect={selectEditorTab} onClose={closeEditorTab} onChange={updateEditorFileContent} onSave={(tabId) => void saveEditorFile(tabId)} />}
           <div className="terminal-workspace-view" hidden={activeMainView !== "terminals"}>
           <section className="terminal-surface" aria-label="Terminal workspace">
             <TerminalWorkspaceLayout layout={layout} terminals={terminals} visibleTerminalIds={activeWorkspaceTerminalIds} workspaceId={activeTerminalWorkspace?.id ?? ""} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} terminalNameInputRef={terminalNameInputRef} onRename={beginRenameTerminal} onNameChange={setTerminalNameDraft} onNameSave={saveTerminalName} onNameCancel={cancelTerminalRename} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
