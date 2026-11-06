@@ -1,0 +1,222 @@
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+
+export type TerminalLayoutMode = "tiled" | "floating";
+export type TerminalDockEdge = "left" | "right" | "top" | "bottom";
+
+export type FloatingTerminalRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type FloatingLayoutSnapshot = {
+  workspaceId: string;
+  mode: TerminalLayoutMode;
+  positions: Record<string, FloatingTerminalRect>;
+};
+
+type DragState = {
+  sessionId: string;
+  pointerId: number;
+  offsetX: number;
+  offsetY: number;
+};
+
+export type FloatingTerminalLayoutController = {
+  mode: TerminalLayoutMode;
+  setMode: (mode: TerminalLayoutMode) => void;
+  positions: Record<string, FloatingTerminalRect>;
+  draggingSessionId: string | null;
+  dockTarget: TerminalDockEdge | null;
+  surfaceRef: RefObject<HTMLDivElement | null>;
+  getRect: (sessionId: string) => FloatingTerminalRect;
+  getWindowStyle: (sessionId: string) => CSSProperties;
+  startDrag: (sessionId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  moveDrag: (sessionId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  endDrag: (sessionId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  cancelDrag: (sessionId: string, event: ReactPointerEvent<HTMLElement>) => void;
+};
+
+const STORAGE_PREFIX = "yerminal:floating-terminal-layout:v1:";
+const EDGE_SNAP_DISTANCE = 36;
+
+function storageKey(workspaceId: string) {
+  return `${STORAGE_PREFIX}${workspaceId}`;
+}
+
+function isRect(value: unknown): value is FloatingTerminalRect {
+  if (!value || typeof value !== "object") return false;
+  const rect = value as Partial<FloatingTerminalRect>;
+  return [rect.x, rect.y, rect.width, rect.height].every((part) => typeof part === "number" && Number.isFinite(part));
+}
+
+function createDefaultPositions(sessionIds: string[]): Record<string, FloatingTerminalRect> {
+  const columns = Math.max(1, Math.ceil(Math.sqrt(sessionIds.length)));
+  const rows = Math.max(1, Math.ceil(sessionIds.length / columns));
+  const gap = 3;
+  const width = Math.min(56, (100 - gap * (columns + 1)) / columns);
+  const height = Math.min(58, (100 - gap * (rows + 1)) / rows);
+
+  return Object.fromEntries(sessionIds.map((sessionId, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    return [sessionId, { x: gap + column * (width + gap), y: gap + row * (height + gap), width, height }];
+  }));
+}
+
+function readSnapshot(workspaceId: string, sessionIds: string[]): FloatingLayoutSnapshot {
+  const defaults = createDefaultPositions(sessionIds);
+  try {
+    const stored = localStorage.getItem(storageKey(workspaceId));
+    if (stored) {
+      const value = JSON.parse(stored) as Partial<FloatingLayoutSnapshot>;
+      if (value.workspaceId === workspaceId) {
+        const positions: Record<string, FloatingTerminalRect> = { ...defaults };
+        for (const sessionId of sessionIds) {
+          if (isRect(value.positions?.[sessionId])) positions[sessionId] = value.positions[sessionId];
+        }
+        return { workspaceId, mode: value.mode === "floating" ? "floating" : "tiled", positions };
+      }
+    }
+  } catch {
+    // Ignore invalid persisted data and initialize a safe default layout.
+  }
+  return { workspaceId, mode: "tiled", positions: defaults };
+}
+
+function edgeAtPoint(clientX: number, clientY: number, bounds: DOMRect): TerminalDockEdge | null {
+  if (bounds.width <= 0 || bounds.height <= 0) return null;
+  const distances = [
+    { edge: "left" as const, distance: clientX - bounds.left },
+    { edge: "right" as const, distance: bounds.right - clientX },
+    { edge: "top" as const, distance: clientY - bounds.top },
+    { edge: "bottom" as const, distance: bounds.bottom - clientY },
+  ].sort((first, second) => first.distance - second.distance);
+  return distances[0].distance <= EDGE_SNAP_DISTANCE ? distances[0].edge : null;
+}
+
+export function useFloatingTerminalLayout(
+  workspaceId: string,
+  sessionIds: string[],
+  onDockToTiledLayout?: (sessionId: string, edge: TerminalDockEdge) => void,
+): FloatingTerminalLayoutController {
+  const [snapshot, setSnapshot] = useState<FloatingLayoutSnapshot>(() => readSnapshot(workspaceId, sessionIds));
+  const [draggingSessionId, setDraggingSessionId] = useState<string | null>(null);
+  const [dockTarget, setDockTarget] = useState<TerminalDockEdge | null>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const dockCallbackRef = useRef(onDockToTiledLayout);
+  dockCallbackRef.current = onDockToTiledLayout;
+  const sessionIdsKey = sessionIds.join("\u0000");
+
+  useEffect(() => {
+    setSnapshot(readSnapshot(workspaceId, sessionIds));
+    setDraggingSessionId(null);
+    setDockTarget(null);
+    dragRef.current = null;
+  }, [workspaceId]);
+
+  useEffect(() => {
+    const validIds = new Set(sessionIds);
+    setSnapshot((current) => {
+      if (current.workspaceId !== workspaceId) return readSnapshot(workspaceId, sessionIds);
+      const positions = Object.fromEntries(Object.entries(current.positions).filter(([sessionId]) => validIds.has(sessionId)));
+      const defaults = createDefaultPositions(sessionIds);
+      for (const sessionId of sessionIds) positions[sessionId] ??= defaults[sessionId];
+      return { ...current, positions };
+    });
+  }, [sessionIdsKey, workspaceId]);
+
+  useEffect(() => {
+    if (snapshot.workspaceId !== workspaceId) return;
+    const timeoutId = window.setTimeout(() => {
+      try {
+        localStorage.setItem(storageKey(workspaceId), JSON.stringify(snapshot));
+      } catch {
+        // The in-memory layout remains usable when browser storage is unavailable.
+      }
+    }, 120);
+    return () => window.clearTimeout(timeoutId);
+  }, [snapshot, workspaceId]);
+
+  const currentSnapshot = snapshot.workspaceId === workspaceId ? snapshot : readSnapshot(workspaceId, sessionIds);
+
+  const setMode = useCallback((mode: TerminalLayoutMode) => {
+    setSnapshot((current) => {
+      const target = current.workspaceId === workspaceId ? current : readSnapshot(workspaceId, sessionIds);
+      return { ...target, mode };
+    });
+  }, [sessionIdsKey, workspaceId]);
+
+  const getRect = useCallback((sessionId: string) => currentSnapshot.positions[sessionId] ?? createDefaultPositions(sessionIds)[sessionId] ?? { x: 4, y: 4, width: 50, height: 50 }, [currentSnapshot, sessionIdsKey]);
+
+  const getWindowStyle = useCallback((sessionId: string): CSSProperties => {
+    const rect = getRect(sessionId);
+    return {
+      left: `${rect.x}%`,
+      top: `${rect.y}%`,
+      width: `${rect.width}%`,
+      height: `${rect.height}%`,
+    };
+  }, [getRect]);
+
+  const startDrag = useCallback((sessionId: string, event: ReactPointerEvent<HTMLElement>) => {
+    if (event.button !== 0 || !surfaceRef.current) return;
+    const bounds = surfaceRef.current.getBoundingClientRect();
+    const rect = getRect(sessionId);
+    const windowLeft = bounds.left + bounds.width * rect.x / 100;
+    const windowTop = bounds.top + bounds.height * rect.y / 100;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      sessionId,
+      pointerId: event.pointerId,
+      offsetX: event.clientX - windowLeft,
+      offsetY: event.clientY - windowTop,
+    };
+    setDraggingSessionId(sessionId);
+  }, [getRect]);
+
+  const moveDrag = useCallback((sessionId: string, event: ReactPointerEvent<HTMLElement>) => {
+    const drag = dragRef.current;
+    const surface = surfaceRef.current;
+    if (!drag || drag.sessionId !== sessionId || drag.pointerId !== event.pointerId || !surface) return;
+    const bounds = surface.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+    const current = getRect(sessionId);
+    const x = Math.max(0, Math.min(100 - current.width, (event.clientX - drag.offsetX - bounds.left) / bounds.width * 100));
+    const y = Math.max(0, Math.min(100 - current.height, (event.clientY - drag.offsetY - bounds.top) / bounds.height * 100));
+    setSnapshot((value) => {
+      const target = value.workspaceId === workspaceId ? value : readSnapshot(workspaceId, sessionIds);
+      return { ...target, positions: { ...target.positions, [sessionId]: { ...current, x, y } } };
+    });
+    setDockTarget(edgeAtPoint(event.clientX, event.clientY, bounds));
+  }, [getRect, sessionIdsKey, workspaceId]);
+
+  const endDrag = useCallback((sessionId: string, event: ReactPointerEvent<HTMLElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.sessionId !== sessionId || drag.pointerId !== event.pointerId) return;
+    const surface = surfaceRef.current;
+    const edge = surface ? edgeAtPoint(event.clientX, event.clientY, surface.getBoundingClientRect()) : null;
+    dragRef.current = null;
+    setDraggingSessionId(null);
+    setDockTarget(null);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (edge && dockCallbackRef.current) {
+      setMode("tiled");
+      dockCallbackRef.current(sessionId, edge);
+    }
+  }, [setMode]);
+
+  const cancelDrag = useCallback((sessionId: string, event: ReactPointerEvent<HTMLElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.sessionId !== sessionId || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    setDraggingSessionId(null);
+    setDockTarget(null);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  }, []);
+
+  return { mode: currentSnapshot.mode, setMode, positions: currentSnapshot.positions, draggingSessionId, dockTarget, surfaceRef, getRect, getWindowStyle, startDrag, moveDrag, endDrag, cancelDrag };
+}

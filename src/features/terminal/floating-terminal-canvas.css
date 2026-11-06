@@ -1,0 +1,115 @@
+.floating-terminal-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid #303138;
+  border-radius: 7px;
+  background: #111216;
+}
+
+.floating-terminal-mode-toggle button {
+  min-width: 52px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: #858792;
+  font: 10px Inter, "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+
+.floating-terminal-mode-toggle button:hover {
+  color: #d2caff;
+}
+
+.floating-terminal-mode-toggle button[aria-pressed="true"] {
+  border-color: #47415f;
+  background: #292638;
+  color: #c0b4ff;
+}
+
+.floating-terminal-canvas[data-mode="floating"] {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.floating-terminal-window {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  min-width: 240px;
+  min-height: 160px;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #383943;
+  border-radius: 8px;
+  background: #101114;
+  box-shadow: 0 12px 34px #0007;
+  transition: border-color 100ms ease, box-shadow 100ms ease;
+}
+
+.floating-terminal-window[data-active="true"] {
+  border-color: #8172cf;
+  box-shadow: 0 12px 34px #0008, 0 0 0 1px #8e7ee755;
+}
+
+.floating-terminal-window[data-dragging="true"] {
+  z-index: 10;
+  border-color: #a99aff;
+  box-shadow: 0 20px 54px #000b, 0 0 0 1px #a99aff88;
+  transition: none;
+}
+
+.floating-terminal-window-handle {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.floating-terminal-window-handle:active {
+  cursor: grabbing;
+}
+
+.floating-terminal-dock-guides {
+  position: absolute;
+  z-index: 20;
+  pointer-events: none;
+  inset: 0;
+}
+
+.floating-terminal-dock-guide {
+  position: absolute;
+  border: 1px solid #a99aff;
+  background: #8f7de633;
+  opacity: 0.2;
+  transition: opacity 100ms ease, background 100ms ease;
+}
+
+.floating-terminal-dock-guide.active {
+  border-color: #c6bbff;
+  background: #9b88ff66;
+  box-shadow: 0 0 30px #9482ff33;
+  opacity: 1;
+}
+
+.floating-terminal-dock-guide.left,
+.floating-terminal-dock-guide.right {
+  top: 12%;
+  bottom: 12%;
+  width: 5%;
+}
+
+.floating-terminal-dock-guide.left { left: 0; border-left: 0; border-radius: 0 8px 8px 0; }
+.floating-terminal-dock-guide.right { right: 0; border-right: 0; border-radius: 8px 0 0 8px; }
+
+.floating-terminal-dock-guide.top,
+.floating-terminal-dock-guide.bottom {
+  left: 12%;
+  right: 12%;
+  height: 6%;
+}
+
+.floating-terminal-dock-guide.top { top: 0; border-top: 0; border-radius: 0 0 8px 8px; }
+.floating-terminal-dock-guide.bottom { bottom: 0; border-bottom: 0; border-radius: 8px 8px 0 0; }
