@@ -678,8 +678,8 @@ function App() {
               <button className={`workspace-view-tab ${activeMainView === "terminals" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "terminals"} onClick={() => setActiveMainView("terminals")} type="button"><span aria-hidden="true">▣</span> Terminals{activeWorkspaceTerminals.length > 0 && <small>{activeWorkspaceTerminals.length}</small>}</button>
             </nav>
             {activeMainView === "terminals" && <div className="terminal-session-toolbar">
-              <div className="terminal-tabs" role={layout ? undefined : "tablist"} aria-label={layout ? "Terminal workspace actions" : "Terminal sessions"}>
-                {!layout && activeWorkspaceTerminals.map((terminal) => <div key={terminal.id} className={`terminal-tab-item ${terminal.id === activeTerminalId ? "selected" : ""}`} role="presentation">
+              <div className="terminal-tabs" role={layout || activeWorkspaceTerminalIds.length <= 1 ? undefined : "tablist"} aria-label={layout || activeWorkspaceTerminalIds.length <= 1 ? "Terminal workspace actions" : "Terminal sessions"}>
+                {!layout && activeWorkspaceTerminalIds.length > 1 && activeWorkspaceTerminals.map((terminal) => <div key={terminal.id} className={`terminal-tab-item ${terminal.id === activeTerminalId ? "selected" : ""}`} role="presentation">
                   {editingTerminalId === terminal.id ? <TerminalNameEditor terminalName={terminal.name} value={terminalNameDraft} inputRef={terminalNameInputRef} compact onChange={setTerminalNameDraft} onSave={saveTerminalName} onCancel={cancelTerminalRename} /> : <>
                     <button className={`terminal-tab ${terminal.id === activeTerminalId ? "selected" : ""}`} onClick={() => focusTerminal(terminal.id)} onDoubleClick={() => beginRenameTerminal(terminal)} onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); void closeTerminal(terminal.id); } }} type="button" role="tab" aria-selected={terminal.id === activeTerminalId} aria-label={`${terminal.name}. Double-click to rename.`} title={terminal.name}><span className="terminal-dot" /><span className="terminal-tab-name">{terminal.name}</span>{terminal.id === activeTerminalId && <span className="terminal-active-label" aria-hidden="true">Active</span>}</button>
                     <button className="terminal-tab-rename" type="button" aria-label={`Rename ${terminal.name}`} title="Rename terminal" onClick={() => beginRenameTerminal(terminal)}>✎</button>
@@ -1212,12 +1212,14 @@ function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, worksp
     {terminals.map((terminal) => {
       const rect = geometry.panes.get(terminal.id);
       const isFloating = floatingLayout.mode === "floating" && visibleTerminalIds.includes(terminal.id);
+      const isSingleTerminal = !layout && floatingLayout.mode === "tiled" && visibleTerminalIds.length === 1 && visibleTerminalIds[0] === terminal.id;
+      const hasPaneHeader = Boolean(rect && (layout || isFloating || isSingleTerminal));
       const style: CSSProperties = rect
         ? { left: `${rect.x}%`, top: `${rect.y}%`, width: `${rect.width}%`, height: `${rect.height}%` }
         : { display: "none" };
       return <div
         key={terminal.id}
-        className={`terminal-pane-frame ${rect && layout ? "layout-pane" : ""} ${isFloating ? "floating-terminal-window" : ""}`}
+        className={`terminal-pane-frame ${rect && layout ? "layout-pane" : ""} ${isSingleTerminal ? "single-terminal-pane" : ""} ${isFloating ? "floating-terminal-window" : ""}`}
         style={style}
         ref={(element) => {
           if (element) paneRefs.current.set(terminal.id, element);
@@ -1228,8 +1230,8 @@ function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, worksp
         data-drag-source={draggingPaneId === terminal.id ? "true" : undefined}
         data-dragging={floatingLayout.draggingSessionId === terminal.id ? "true" : undefined}
       >
-        {rect && (layout || isFloating) && <header className="terminal-pane-header">
-          <button
+        {hasPaneHeader && <header className={`terminal-pane-header ${isSingleTerminal ? "single-terminal-pane-header" : ""}`}>
+          {(layout || isFloating) && <button
             className={`pane-drag-handle ${isFloating ? "floating-terminal-window-handle" : ""}`}
             type="button"
             aria-label={isFloating ? `Move ${terminal.name} around the free terminal canvas` : `Drag ${terminal.name} to swap pane positions`}
@@ -1270,9 +1272,9 @@ function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, worksp
               setDraggingPaneId(null);
               setDropTargetPaneId(null);
             }}
-          >⠿</button>
+          >⠿</button>}
           {editingTerminalId === terminal.id ? <TerminalNameEditor terminalName={terminal.name} value={terminalNameDraft} inputRef={terminalNameInputRef} compact onChange={onNameChange} onSave={onNameSave} onCancel={onNameCancel} /> : <><span className="terminal-pane-title" title={terminal.name}>{terminal.name}</span><button className="pane-rename" type="button" aria-label={`Rename ${terminal.name}`} title="Rename terminal" onClick={() => onRename(terminal)}>✎</button></>}{terminal.id === activeTerminalId && <span className="terminal-active-label pane-active-label" aria-hidden="true">Active</span>}
-          <button className="pane-close" type="button" aria-label={`Close ${terminal.name}`} onClick={() => onClose(terminal.id)}>×</button>
+          {visibleTerminalIds.length > 1 && <button className="pane-close" type="button" aria-label={`Close ${terminal.name}`} onClick={() => onClose(terminal.id)}>×</button>}
         </header>}
         <div className="terminal-pane-body">
           <Suspense key={terminal.id} fallback={<div className="terminal-placeholder">Loading terminal…</div>}>

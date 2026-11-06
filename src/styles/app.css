@@ -144,6 +144,8 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .toolbar-button:disabled { opacity: .35; cursor: default; }
 .terminal-layout-surface { position: absolute; inset: 0; overflow: hidden; }
 .terminal-pane-frame { position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: #101114; }
+.terminal-pane-frame.single-terminal-pane { border: 1px solid #292a30; }
+.terminal-pane-frame.single-terminal-pane[data-active="true"] { border-color: #71639c; }
 .terminal-pane-frame.layout-pane { border: 1px solid #292a30; }
 .terminal-pane-frame.layout-pane[data-active="true"] { z-index: 1; border-color: #b6a5ff; box-shadow: inset 0 0 0 1px #b6a5ff66; }
 .terminal-pane-frame[data-drag-over="true"] { z-index: 4; outline: 2px solid var(--accent); outline-offset: -2px; box-shadow: inset 0 0 0 999px rgb(93 156 255 / 7%); }
