@@ -576,8 +576,24 @@ fn resolve_working_directory(value: Option<String>) -> Result<PathBuf, String> {
             path.display()
         ));
     }
-    path.canonicalize()
-        .map_err(|error| format!("Could not open working directory: {error}"))
+    let canonical_path = path
+        .canonicalize()
+        .map_err(|error| format!("Could not open working directory: {error}"))?;
+    #[cfg(windows)]
+    let canonical_path = normalize_windows_working_directory(canonical_path);
+    Ok(canonical_path)
+}
+
+#[cfg(windows)]
+fn normalize_windows_working_directory(path: PathBuf) -> PathBuf {
+    let path_text = path.to_string_lossy().into_owned();
+    if let Some(unc_path) = path_text.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{unc_path}"))
+    } else if let Some(dos_path) = path_text.strip_prefix(r"\\?\") {
+        PathBuf::from(dos_path)
+    } else {
+        path
+    }
 }
 
 fn resolve_shell(shell: ShellKind) -> Result<String, String> {
