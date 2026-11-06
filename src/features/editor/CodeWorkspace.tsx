@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { highlightCode } from "./highlighter";
+import { CommitSnapshotBanner } from "./CommitSnapshotBanner";
 
 export type EditorFileTab = {
   id: string;
@@ -97,6 +98,7 @@ export function CodeWorkspace({ tabs, activeTabId, onSelect, onClose, onChange, 
       {tabs.length === 0 && <span className="editor-tabs-empty">No open files</span>}
     </nav>
     {activeTab ? <>
+      {isReadOnly && activeTab.snapshot && <CommitSnapshotBanner snapshot={activeTab.snapshot} filePath={activeTab.path} />}
       <header className="code-editor-header">
         <div className="code-editor-breadcrumb" title={activeTab.path}><span>{activeTab.root.split(/[\\/]/).filter(Boolean).pop() ?? activeTab.root}</span><span className="code-editor-separator">›</span><strong>{activeTab.path}</strong></div>
         <div className="code-editor-meta"><span>{language?.label ?? "Plain Text"}</span>{activeTab.sourceLabel && <span className="code-editor-source-label" title={activeTab.sourceLabel}>{activeTab.sourceLabel}</span>}{isReadOnly ? <span className="code-editor-readonly">Read only</span> : <><span className={`code-editor-editable-badge ${isDirty ? "dirty" : ""}`}>{isDirty ? "Unsaved changes" : "Editable"}</span><button className="code-editor-save" type="button" disabled={activeTab.status !== "ready" || !isDirty || activeTab.isSaving} onClick={() => onSave(activeTab.id)}>{activeTab.isSaving ? "Saving…" : "Save"}<kbd>Ctrl S</kbd></button></>}</div>

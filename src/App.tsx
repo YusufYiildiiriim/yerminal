@@ -1137,7 +1137,7 @@ function GitGraph({ repoPath, onError, onOpenInEditor }: { repoPath: string; onE
     }
   }, [onError, repoPath, selectedCommit]);
 
-  const closeCommitDetails = useCallback(() => {
+  const closeCommitDetails = useCallback((restoreFocus = true) => {
     detailRequestRef.current += 1;
     fileDiffRequestRef.current += 1;
     setSelectedCommit(null);
@@ -1148,6 +1148,7 @@ function GitGraph({ repoPath, onError, onOpenInEditor }: { repoPath: string; onE
     setFileDiffLoading(false);
     setDetailError(null);
     setFileDiffError(null);
+    if (restoreFocus) requestAnimationFrame(() => lastCommitButtonRef.current?.focus());
   }, []);
 
   const commitMessageParts = selectedCommit?.message.split(/\r?\n/) ?? [];
@@ -1174,7 +1175,6 @@ function GitGraph({ repoPath, onError, onOpenInEditor }: { repoPath: string; onE
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      lastCommitButtonRef.current?.focus();
     };
   }, [closeCommitDetails, selectedCommit]);
 
@@ -1206,7 +1206,7 @@ function GitGraph({ repoPath, onError, onOpenInEditor }: { repoPath: string; onE
               <div className="commit-preview-meta"><span>{selectedCommit.author}</span><span>{new Date(selectedCommit.timestamp * 1000).toLocaleString()}</span><code title={selectedCommit.id}>{selectedCommit.id}</code></div>
               {selectedCommit.branches.length > 0 && <div className="commit-preview-branches" aria-label="Branches">{selectedCommit.branches.map((branch) => <span className="branch-label" key={branch}>{branch}</span>)}</div>}
             </div>
-            <button ref={closeButtonRef} className="commit-preview-close" onClick={closeCommitDetails} aria-label="Close commit details" title="Close details (Esc)" type="button">×</button>
+            <button ref={closeButtonRef} className="commit-preview-close" onClick={() => closeCommitDetails()} aria-label="Close commit details" title="Close details (Esc)" type="button">×</button>
           </header>
           <div className="commit-preview-body">
             <aside className="commit-preview-files" aria-label="Changed files">
@@ -1220,7 +1220,7 @@ function GitGraph({ repoPath, onError, onOpenInEditor }: { repoPath: string; onE
             <section className="commit-preview-diff" aria-label="Selected file diff">
               <div className="commit-preview-file-heading">
                 {selectedFile ? <><span className={`change-kind ${commitFiles.find((file) => file.path === selectedFile)?.kind ?? "modified"}`}>{commitFiles.find((file) => file.path === selectedFile)?.kind === "deleted" ? "D" : commitFiles.find((file) => file.path === selectedFile)?.kind === "added" ? "A" : commitFiles.find((file) => file.path === selectedFile)?.kind === "renamed" ? "R" : "M"}</span><span title={selectedFile}>{selectedFile}</span></> : <span>Select a file to inspect its changes</span>}
-                {selectedFile && <button className="commit-open-editor" type="button" onClick={() => { const file = commitFiles.find((entry) => entry.path === selectedFile); if (file) onOpenInEditor(selectedCommit, file); }} title="Open this commit version in the Code view">Open in editor <span aria-hidden="true">↗</span></button>}
+                {selectedFile && <button className="commit-open-editor" type="button" onClick={() => { const file = commitFiles.find((entry) => entry.path === selectedFile); if (file) { onOpenInEditor(selectedCommit, file); closeCommitDetails(false); } }} title="Open this commit version in the Code view">Open in editor <span aria-hidden="true">↗</span></button>}
               </div>
               <div className="commit-preview-diff-content">
                 {detailLoading ? <div className="commit-preview-state" role="status">Loading commit details…</div> : !selectedFile ? <div className="commit-preview-state">Choose a changed file from the list to view its patch.</div> : fileDiffLoading ? <div className="commit-preview-state" role="status">Loading diff…</div> : fileDiffError ? <div className="commit-preview-state commit-preview-error" role="alert"><span>{fileDiffError}</span><button type="button" onClick={() => void selectFile(selectedFile)}>Retry loading diff</button></div> : <DiffViewer diff={fileDiff} emptyMessage="No diff available for this file in the selected commit." />}
