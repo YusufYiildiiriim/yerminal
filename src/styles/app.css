@@ -110,6 +110,11 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .code-editor-statusbar > span:first-child { min-width: 0; margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .code-editor-save-error { color: #e3a2aa; }
 .terminal-toolbar { height: 43px; flex: 0 0 43px; display: flex; align-items: stretch; border-bottom: 1px solid var(--border); background: #141519; }
+.terminal-toolbar { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+.workspace-view-tabs { grid-column: 2; grid-row: 1; justify-self: center; border-right: 0; border-left: 0; }
+.terminal-session-toolbar { display: contents; }
+.terminal-tabs { grid-column: 1; grid-row: 1; overflow-x: auto; scrollbar-color: #45434f #15161a; scrollbar-width: thin; }
+.toolbar-actions { grid-column: 3; grid-row: 1; justify-self: end; min-width: 0; }
 .titlebar-workspace-controls { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 0 1 auto; }
 .workspace-switcher { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 0 1 auto; }
 .workspace-switcher-icon { color: var(--accent); font-size: 12px; }
@@ -357,3 +362,10 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .workspace-tree-error span { min-width: 0; overflow: hidden; flex: 1; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-tree-error button { padding: 3px 6px; border: 1px solid #50333a; border-radius: 4px; background: #2b2025; color: #e6b0b4; font-size: 9px; }
 .workspace-explorer-footnote { color: #777984; }
+
+@media (max-width: 720px) {
+  .workspace-view-tabs { gap: 0; padding: 0 2px; }
+  .workspace-view-tab { min-width: 68px; gap: 5px; padding: 0 5px; font-size: 9px; }
+  .toolbar-actions { padding: 0 5px; }
+  .floating-terminal-mode-toggle button { min-width: 36px; padding: 3px 4px; font-size: 9px; }
+}
