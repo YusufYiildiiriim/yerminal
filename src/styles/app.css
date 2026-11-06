@@ -368,16 +368,16 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .load-more { margin: 6px 10px 10px; padding: 7px; border: 1px solid #34353c; border-radius: 5px; background: #1b1c21; color: #c3c4cc; font-size: 10px; }.load-more:hover { background: #24252b; }.load-more:disabled { opacity: .6; }
 .commit-row { width: 100%; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }.commit-row:hover, .commit-row.selected { background: #222329; }.commit-info { display: block; }.commit-details { min-height: 120px; max-height: 48%; display: flex; flex-direction: column; border-top: 1px solid var(--border); }.commit-file-list { flex: 0 0 auto; max-height: 120px; overflow: auto; }.commit-file-diff { flex: 1; min-height: 70px; overflow: auto; margin: 0; padding: 8px 10px; color: #c3c5cb; background: #101114; font: 10px/1.55 "Cascadia Code", Consolas, monospace; white-space: pre; }
 
-.tool-tabs { display: flex; flex: 0 0 42px; align-items: stretch; overflow-x: auto; overflow-y: hidden; border-top: 1px solid var(--border); background: var(--panel-raised); scrollbar-color: #45434f #191a1f; scrollbar-width: thin; }
-.tool-tabs::-webkit-scrollbar { height: 6px; }
+.tool-tabs { display: flex; flex: 0 0 42px; align-items: stretch; justify-content: flex-start; gap: 0; overflow-x: auto; overflow-y: hidden; padding: 0 5px; border-top: 1px solid var(--border); background: var(--panel-raised); overscroll-behavior-inline: contain; scroll-padding-inline: 5px; scrollbar-color: #45434f #191a1f; scrollbar-width: thin; }
+.tool-tabs::-webkit-scrollbar { height: 5px; }
 .tool-tabs::-webkit-scrollbar-track { background: #191a1f; }
 .tool-tabs::-webkit-scrollbar-thumb { border: 1px solid #191a1f; border-radius: 6px; background: #45434f; }
 .tool-tabs::-webkit-scrollbar-thumb:hover { background: #625c72; }
-.tool-tab { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; padding: 0 11px; border: 0; border-right: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 11px; white-space: nowrap; transition: background .15s, color .15s; }
+.tool-tab { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-start; gap: 5px; min-width: max-content; padding: 0 6px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 10px; text-align: left; white-space: nowrap; transition: background .15s, color .15s, border-color .15s; }
 .tool-tab:hover { background: #222329; color: #d6d5df; }
-.tool-tab.selected { background: #24212f; color: #e4e0ff; box-shadow: inset 0 2px 0 var(--accent); }
+.tool-tab.selected { border-bottom-color: var(--accent); background: transparent; color: #e4e0ff; }
 .tool-tab:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--accent); outline-offset: -2px; }
-.tool-icon { color: inherit; }
+.tool-icon { width: 12px; flex: 0 0 12px; color: inherit; text-align: center; }
 .add-tool { flex: 0 0 38px; padding: 0; }
 .workspace-folder-list { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
 .workspace-empty { height: 100%; min-height: 220px; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; text-align: center; }
@@ -476,4 +476,8 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .workspace-navigation .workspace-explorer-footnote { min-height: 31px; flex: 0 0 31px; }
 @media (max-height: 700px) {
   .workspace-navigation { flex-basis: 42%; min-height: 170px; }
+}
+@media (max-width: 420px) {
+  .tool-tabs { padding-inline: 3px; scroll-padding-inline: 3px; }
+  .tool-tab { gap: 4px; padding-inline: 5px; font-size: 9px; }
 }
