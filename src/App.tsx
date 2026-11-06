@@ -57,6 +57,7 @@ function createEmptyEditorWorkspaceState(): EditorWorkspaceState {
 
 const WORKSPACE_STORAGE_KEY = "yerminal.workspace";
 const TERMINAL_WORKSPACES_STORAGE_KEY = "yerminal.terminal-workspaces";
+const TOOL_SIDEBAR_AUTO_HIDE_KEY = "yerminal.tool-sidebar-auto-hide";
 const HELP_SHORTCUTS = [
   { keys: "Ctrl/⌘ + Shift + T", label: "New terminal" },
   { keys: "Ctrl/⌘ + Shift + W", label: "Close active terminal" },
@@ -204,6 +205,13 @@ const tools: { id: ToolId; label: string; icon: string }[] = [
 
 function App() {
   const [activeTool, setActiveTool] = useState<ToolId>("explorer");
+  const [toolSidebarAutoHide, setToolSidebarAutoHide] = useState(() => {
+    try {
+      return localStorage.getItem(TOOL_SIDEBAR_AUTO_HIDE_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
   const [activeMainView, setActiveMainView] = useState<"code" | "terminals">("terminals");
   const [terminalLayoutMode, setTerminalLayoutMode] = useState<TerminalLayoutMode>("tiled");
   const [terminalWorkspaceState, setTerminalWorkspaceState] = useState<TerminalWorkspaceState>(() => readTerminalWorkspaceState());
@@ -233,6 +241,14 @@ function App() {
   const activeTerminalId = activeTerminalWorkspace?.activeTerminalId ?? null;
   const layout = activeTerminalWorkspace?.layout ?? null;
   const activeEditorWorkspace = editorWorkspaces[activeTerminalWorkspace?.id ?? ""] ?? createEmptyEditorWorkspaceState();
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TOOL_SIDEBAR_AUTO_HIDE_KEY, String(toolSidebarAutoHide));
+    } catch {
+      // Keep the setting available for the current session when storage is unavailable.
+    }
+  }, [toolSidebarAutoHide]);
 
   useEffect(() => {
     if (!helpOpen) return;
@@ -899,11 +915,15 @@ function App() {
             </div>
           </section>
           <div className="workspace-tool-layout">
-            <nav className="tool-sidebar" aria-label="Workspace tools">
+            <nav className="tool-sidebar" aria-label="Workspace tools" data-auto-hide={toolSidebarAutoHide ? "true" : "false"}>
               {tools.map((tool) => <button key={tool.id} className={`tool-sidebar-item ${activeTool === tool.id ? "selected" : ""}`} onClick={() => setActiveTool(tool.id)} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={tool.label}>
                 <span className="tool-sidebar-icon" aria-hidden="true">{tool.icon}</span>
                 <span className="tool-sidebar-label">{tool.label}</span>
               </button>)}
+              <button className="tool-sidebar-autohide" type="button" aria-label={toolSidebarAutoHide ? "Disable automatic hiding of workspace tools" : "Automatically hide workspace tools"} aria-pressed={toolSidebarAutoHide} title={toolSidebarAutoHide ? "Keep workspace tools visible" : "Automatically hide workspace tools"} onClick={() => setToolSidebarAutoHide((enabled) => !enabled)}>
+                <span aria-hidden="true">{toolSidebarAutoHide ? "⌖" : "◧"}</span>
+                <span className="tool-sidebar-autohide-label">{toolSidebarAutoHide ? "Pinned" : "Auto-hide"}</span>
+              </button>
             </nav>
             <section className="tool-content" aria-label={tools.find((tool) => tool.id === activeTool)?.label}>
               {activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} /> : <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } })} />}

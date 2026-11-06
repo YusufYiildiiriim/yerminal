@@ -369,13 +369,18 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .commit-row { width: 100%; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }.commit-row:hover, .commit-row.selected { background: #222329; }.commit-info { display: block; }.commit-details { min-height: 120px; max-height: 48%; display: flex; flex-direction: column; border-top: 1px solid var(--border); }.commit-file-list { flex: 0 0 auto; max-height: 120px; overflow: auto; }.commit-file-diff { flex: 1; min-height: 70px; overflow: auto; margin: 0; padding: 8px 10px; color: #c3c5cb; background: #101114; font: 10px/1.55 "Cascadia Code", Consolas, monospace; white-space: pre; }
 
 .workspace-tool-layout { display: flex; min-width: 0; min-height: 0; flex: 1; overflow: hidden; }
-.tool-sidebar { width: 64px; flex: 0 0 64px; display: flex; flex-direction: column; align-items: stretch; gap: 4px; overflow-x: hidden; overflow-y: auto; padding: 7px 4px; border-right: 1px solid var(--border); background: var(--panel-raised); scrollbar-color: #45434f #191a1f; scrollbar-width: thin; }
-.tool-sidebar-item { min-height: 57px; flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 5px 2px; border: 0; border-left: 2px solid transparent; border-radius: 5px; background: transparent; color: var(--muted); transition: background .15s, color .15s, border-color .15s; }
+.tool-sidebar { width: 64px; flex: 0 0 64px; display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; overflow-x: hidden; overflow-y: auto; padding: 7px 4px; border-right: 1px solid var(--border); background: var(--panel-raised); scrollbar-color: #45434f #191a1f; scrollbar-width: thin; transition: width 140ms ease, flex-basis 140ms ease, padding 140ms ease; }
+.tool-sidebar-item { min-width: 0; min-height: 57px; flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; overflow: hidden; padding: 5px 2px; border: 0; border-left: 2px solid transparent; border-radius: 5px; background: transparent; color: var(--muted); transition: background .15s, color .15s, border-color .15s; }
 .tool-sidebar-item:hover { background: #222329; color: #d6d5df; }
 .tool-sidebar-item.selected { border-left-color: var(--accent); background: #252331; color: #e4e0ff; }
 .tool-sidebar-item:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--accent); outline-offset: -2px; }
 .tool-sidebar-icon { height: 19px; display: grid; place-items: center; color: inherit; font-size: 17px; line-height: 1; }
 .tool-sidebar-label { max-width: 56px; overflow-wrap: anywhere; color: inherit; font-size: 8px; line-height: 1.15; text-align: center; }
+.tool-sidebar-autohide { min-width: 0; min-height: 35px; flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; overflow: hidden; margin-top: auto; padding: 4px 2px; border: 0; border-top: 1px solid #2a2b32; background: transparent; color: #858792; font-size: 14px; }
+.tool-sidebar-autohide:hover, .tool-sidebar-autohide[aria-pressed="true"] { color: #d8d0ff; }
+.tool-sidebar-autohide-label { color: inherit; font-size: 7px; line-height: 1.1; text-align: center; }
+.tool-sidebar[data-auto-hide="true"] { width: 6px; flex-basis: 6px; gap: 0; overflow: hidden; padding: 0; }
+.tool-sidebar[data-auto-hide="true"]:hover, .tool-sidebar[data-auto-hide="true"]:focus-within { width: 64px; flex-basis: 64px; gap: 4px; padding: 7px 4px; }
 .tool-content { display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; }
 .add-tool { flex: 0 0 38px; padding: 0; }
 .workspace-folder-list { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
@@ -473,4 +478,5 @@ button { color: inherit; font: inherit; cursor: pointer; }
   .tool-sidebar { width: 56px; flex-basis: 56px; padding-inline: 3px; }
   .tool-sidebar-label { max-width: 48px; font-size: 7px; }
   .tool-sidebar-item { min-height: 53px; }
+  .tool-sidebar[data-auto-hide="true"]:hover, .tool-sidebar[data-auto-hide="true"]:focus-within { width: 56px; flex-basis: 56px; padding: 7px 3px; }
 }
