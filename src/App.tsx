@@ -4,6 +4,8 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { DiffViewer } from "./features/git/DiffViewer";
 import { CodeWorkspace, type EditorFileTab } from "./features/editor/CodeWorkspace";
+import { FloatingTerminalDockGuides, FloatingTerminalModeToggle } from "./features/terminal/FloatingTerminalLayoutControls";
+import { useFloatingTerminalLayout, type TerminalDockEdge, type TerminalLayoutMode } from "./features/terminal/floatingTerminalLayout";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import "./styles/app.css";
 
@@ -164,6 +166,7 @@ const tools: { id: ToolId; label: string; icon: string }[] = [
 function App() {
   const [activeTool, setActiveTool] = useState<ToolId>("changes");
   const [activeMainView, setActiveMainView] = useState<"code" | "terminals">("terminals");
+  const [terminalLayoutMode, setTerminalLayoutMode] = useState<TerminalLayoutMode>("tiled");
   const [terminalWorkspaceState, setTerminalWorkspaceState] = useState<TerminalWorkspaceState>(() => readTerminalWorkspaceState());
   const [editorWorkspaces, setEditorWorkspaces] = useState<Record<string, EditorWorkspaceState>>({});
 
@@ -175,6 +178,7 @@ function App() {
   const terminalNameInputRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<string | null>(null);
   const initializedWorkspaceIdsRef = useRef(new Set<string>());
+  const floatingModeSetterRef = useRef<((mode: TerminalLayoutMode) => void) | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeTerminalWorkspace = terminalWorkspaceState.workspaces.find((workspace) => workspace.id === terminalWorkspaceState.activeId) ?? terminalWorkspaceState.workspaces[0];
   const workspaceFolders = activeTerminalWorkspace?.folderPaths ?? [];
@@ -263,6 +267,38 @@ function App() {
       ...current,
       workspaces: current.workspaces.map((workspace) => workspace.id === workspaceId ? update(workspace) : workspace),
     }));
+  }, []);
+
+  const dockTerminalToTiledLayout = useCallback((sessionId: string, edge: TerminalDockEdge) => {
+    const workspaceId = activeTerminalWorkspace?.id;
+    if (!workspaceId) return;
+    updateTerminalWorkspace(workspaceId, (workspace) => {
+      if (!workspace.terminalIds.includes(sessionId)) return workspace;
+      const remainingIds = workspace.terminalIds.filter((id) => id !== sessionId);
+      const remainingLayout = workspace.layout
+        ? removeTerminal(workspace.layout, sessionId)
+        : remainingIds.length > 0 ? buildTerminalLayout(remainingIds) : null;
+      const terminalNode: LayoutNode = { type: "terminal", sessionId };
+      const direction = edge === "left" || edge === "right" ? "horizontal" : "vertical";
+      const before = edge === "left" || edge === "top";
+      const layout: LayoutNode = remainingLayout
+        ? { type: "split", id: crypto.randomUUID(), direction, ratio: 0.5, children: before ? [terminalNode, remainingLayout] : [remainingLayout, terminalNode] }
+        : terminalNode;
+      return { ...workspace, layout };
+    });
+  }, [activeTerminalWorkspace?.id, updateTerminalWorkspace]);
+
+  const changeTerminalLayoutMode = useCallback((mode: TerminalLayoutMode) => {
+    const workspace = activeTerminalWorkspace;
+    if (mode === "tiled" && workspace && !workspace.layout && workspace.terminalIds.length > 1) {
+      updateTerminalWorkspace(workspace.id, (current) => ({ ...current, layout: buildTerminalLayout(current.terminalIds) }));
+    }
+    floatingModeSetterRef.current?.(mode);
+  }, [activeTerminalWorkspace, updateTerminalWorkspace]);
+
+  const registerFloatingLayoutControl = useCallback((mode: TerminalLayoutMode, setMode: (mode: TerminalLayoutMode) => void) => {
+    setTerminalLayoutMode(mode);
+    floatingModeSetterRef.current = setMode;
   }, []);
 
   const dismissToast = useCallback(() => {
@@ -654,11 +690,11 @@ function App() {
                 </div>)}
                 <button className="icon-button new-terminal" aria-label="Add terminal to workspace" title="Add terminal pane" onClick={() => void addTerminalToWorkspace()} type="button">＋</button>
               </div>
-              <div className="toolbar-actions"><button className="toolbar-button" type="button" aria-label="Split horizontally" title="Split side by side" onClick={() => void splitActiveTerminal("horizontal")} disabled={!activeTerminal}>▤</button><button className="toolbar-button" type="button" aria-label="Split vertically" title="Split top and bottom" onClick={() => void splitActiveTerminal("vertical")} disabled={!activeTerminal}>▥</button>{agentProfiles.map((profile) => <button className="agent-launch" key={profile.id} type="button" title={`Launch ${profile.name}`} onClick={() => createAgentTerminal(profile)}>{profile.id === "claude" ? "Claude" : profile.id === "codex" ? "Codex" : profile.name}</button>)}<span className="toolbar-divider" /><button className="toolbar-button" type="button" aria-label="Terminal options" disabled>···</button></div>
+              <div className="toolbar-actions"><FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={changeTerminalLayoutMode} /><button className="toolbar-button" type="button" aria-label="Split horizontally" title="Split side by side" onClick={() => void splitActiveTerminal("horizontal")} disabled={!activeTerminal}>▤</button><button className="toolbar-button" type="button" aria-label="Split vertically" title="Split top and bottom" onClick={() => void splitActiveTerminal("vertical")} disabled={!activeTerminal}>▥</button>{agentProfiles.map((profile) => <button className="agent-launch" key={profile.id} type="button" title={`Launch ${profile.name}`} onClick={() => createAgentTerminal(profile)}>{profile.id === "claude" ? "Claude" : profile.id === "codex" ? "Codex" : profile.name}</button>)}<span className="toolbar-divider" /><button className="toolbar-button" type="button" aria-label="Terminal options" disabled>···</button></div>
             </div>
           </div>
           <section className="terminal-surface" aria-label="Terminal workspace">
-            <TerminalWorkspaceLayout layout={layout} terminals={terminals} activeTerminalId={activeTerminalId} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} terminalNameInputRef={terminalNameInputRef} onRename={beginRenameTerminal} onNameChange={setTerminalNameDraft} onNameSave={saveTerminalName} onNameCancel={cancelTerminalRename} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
+            <TerminalWorkspaceLayout layout={layout} terminals={terminals} visibleTerminalIds={activeWorkspaceTerminalIds} workspaceId={activeTerminalWorkspace?.id ?? ""} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} terminalNameInputRef={terminalNameInputRef} onRename={beginRenameTerminal} onNameChange={setTerminalNameDraft} onNameSave={saveTerminalName} onNameCancel={cancelTerminalRename} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
             {activeWorkspaceTerminals.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Welcome to <span>yerminal</span></div><p>Create a terminal to begin.</p><button className="primary-button" onClick={() => void createTerminal()} type="button">New Terminal</button></div>}
 
             <div className="terminal-status" aria-live="polite" aria-atomic="true"><span className="status-indicator" /><strong>{activeTerminal?.name ?? "No terminal"}</strong>{activeTerminal && <span className="terminal-status-active">Active</span>}<span className="status-separator">·</span><span>{activeTerminal?.shellLabel ?? "Ready"}</span></div>
@@ -1110,6 +1146,10 @@ type LayoutGeometry = { panes: Map<string, LayoutRect>; dividers: LayoutDividerI
 type TerminalWorkspaceLayoutProps = {
   layout: LayoutNode | null;
   terminals: TerminalSession[];
+  visibleTerminalIds: string[];
+  workspaceId: string;
+  onDockToTiledLayout: (sessionId: string, edge: TerminalDockEdge) => void;
+  onModeState: (mode: TerminalLayoutMode, setMode: (mode: TerminalLayoutMode) => void) => void;
   activeTerminalId: string | null;
   editingTerminalId: string | null;
   terminalNameDraft: string;
@@ -1125,18 +1165,28 @@ type TerminalWorkspaceLayoutProps = {
   onResize: (splitId: string, ratio: number) => void;
 };
 
-function TerminalWorkspaceLayout({ layout, terminals, activeTerminalId, editingTerminalId, terminalNameDraft, terminalNameInputRef, onRename, onNameChange, onNameSave, onNameCancel, onFocus, onExit, onClose, onMove, onResize }: TerminalWorkspaceLayoutProps) {
+function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, workspaceId, onDockToTiledLayout, onModeState, activeTerminalId, editingTerminalId, terminalNameDraft, terminalNameInputRef, onRename, onNameChange, onNameSave, onNameCancel, onFocus, onExit, onClose, onMove, onResize }: TerminalWorkspaceLayoutProps) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const paneRefs = useRef(new Map<string, HTMLDivElement>());
   const paneDragRef = useRef<{ sourceId: string; pointerId: number; startX: number; startY: number; started: boolean } | null>(null);
   const [draggingPaneId, setDraggingPaneId] = useState<string | null>(null);
   const [dropTargetPaneId, setDropTargetPaneId] = useState<string | null>(null);
+  const floatingLayout = useFloatingTerminalLayout(workspaceId, visibleTerminalIds, onDockToTiledLayout);
+  useEffect(() => onModeState(floatingLayout.mode, floatingLayout.setMode), [floatingLayout.mode, floatingLayout.setMode, onModeState]);
   const geometry = useMemo(() => {
+    if (floatingLayout.mode === "floating") {
+      const panes = new Map<string, LayoutRect>();
+      for (const terminalId of visibleTerminalIds) {
+        const rect = floatingLayout.positions[terminalId];
+        if (rect) panes.set(terminalId, rect);
+      }
+      return { panes, dividers: [] };
+    }
     if (layout) return getLayoutGeometry(layout);
     const panes = new Map<string, LayoutRect>();
     if (activeTerminalId) panes.set(activeTerminalId, { x: 0, y: 0, width: 100, height: 100 });
     return { panes, dividers: [] };
-  }, [activeTerminalId, layout]);
+  }, [activeTerminalId, floatingLayout.mode, floatingLayout.positions, layout, visibleTerminalIds.join("\u0000")]);
 
   const findPaneAtPoint = (clientX: number, clientY: number, sourceId: string) => {
     for (const [paneId, pane] of paneRefs.current) {
@@ -1158,15 +1208,16 @@ function TerminalWorkspaceLayout({ layout, terminals, activeTerminalId, editingT
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
-  return <div className="terminal-layout-surface" ref={surfaceRef} data-pane-dragging={draggingPaneId ? "true" : undefined}>
+  return <div className={`terminal-layout-surface ${floatingLayout.mode === "floating" ? "floating-terminal-canvas" : ""}`} ref={(element) => { surfaceRef.current = element; floatingLayout.surfaceRef.current = element; }} data-mode={floatingLayout.mode} data-pane-dragging={draggingPaneId || floatingLayout.draggingSessionId ? "true" : undefined}>
     {terminals.map((terminal) => {
       const rect = geometry.panes.get(terminal.id);
+      const isFloating = floatingLayout.mode === "floating" && visibleTerminalIds.includes(terminal.id);
       const style: CSSProperties = rect
         ? { left: `${rect.x}%`, top: `${rect.y}%`, width: `${rect.width}%`, height: `${rect.height}%` }
         : { display: "none" };
       return <div
         key={terminal.id}
-        className={`terminal-pane-frame ${rect && layout ? "layout-pane" : ""}`}
+        className={`terminal-pane-frame ${rect && layout ? "layout-pane" : ""} ${isFloating ? "floating-terminal-window" : ""}`}
         style={style}
         ref={(element) => {
           if (element) paneRefs.current.set(terminal.id, element);
@@ -1175,15 +1226,21 @@ function TerminalWorkspaceLayout({ layout, terminals, activeTerminalId, editingT
         data-active={terminal.id === activeTerminalId ? "true" : undefined}
         data-drag-over={dropTargetPaneId === terminal.id ? "true" : undefined}
         data-drag-source={draggingPaneId === terminal.id ? "true" : undefined}
+        data-dragging={floatingLayout.draggingSessionId === terminal.id ? "true" : undefined}
       >
-        {layout && rect && <header className="terminal-pane-header">
+        {rect && (layout || isFloating) && <header className="terminal-pane-header">
           <button
-            className="pane-drag-handle"
+            className={`pane-drag-handle ${isFloating ? "floating-terminal-window-handle" : ""}`}
             type="button"
-            aria-label={`Drag ${terminal.name} to swap pane positions`}
-            title="Drag onto another pane to swap positions"
+            aria-label={isFloating ? `Move ${terminal.name} around the free terminal canvas` : `Drag ${terminal.name} to swap pane positions`}
+            title={isFloating ? "Drag this terminal freely; drop near an edge to return to the split layout" : "Drag onto another pane to swap positions"}
             onMouseDown={() => onFocus(terminal.id)}
             onPointerDown={(event) => {
+              if (isFloating) {
+                onFocus(terminal.id);
+                floatingLayout.startDrag(terminal.id, event);
+                return;
+              }
               if (event.button !== 0 || !layout) return;
               event.preventDefault();
               onFocus(terminal.id);
@@ -1191,6 +1248,10 @@ function TerminalWorkspaceLayout({ layout, terminals, activeTerminalId, editingT
               event.currentTarget.setPointerCapture(event.pointerId);
             }}
             onPointerMove={(event) => {
+              if (isFloating) {
+                floatingLayout.moveDrag(terminal.id, event);
+                return;
+              }
               const drag = paneDragRef.current;
               if (!drag || drag.pointerId !== event.pointerId) return;
               if (!drag.started && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 5) return;
@@ -1198,8 +1259,12 @@ function TerminalWorkspaceLayout({ layout, terminals, activeTerminalId, editingT
               setDraggingPaneId(drag.sourceId);
               setDropTargetPaneId(findPaneAtPoint(event.clientX, event.clientY, drag.sourceId));
             }}
-            onPointerUp={finishPaneDrag}
+            onPointerUp={(event) => isFloating ? floatingLayout.endDrag(terminal.id, event) : finishPaneDrag(event)}
             onPointerCancel={(event) => {
+              if (isFloating) {
+                floatingLayout.cancelDrag(terminal.id, event);
+                return;
+              }
               if (paneDragRef.current?.pointerId !== event.pointerId) return;
               paneDragRef.current = null;
               setDraggingPaneId(null);
@@ -1216,7 +1281,8 @@ function TerminalWorkspaceLayout({ layout, terminals, activeTerminalId, editingT
         </div>
       </div>;
     })}
-    {geometry.dividers.map((divider) => <LayoutDivider key={divider.id} divider={divider} surfaceRef={surfaceRef} onResize={onResize} />)}
+    {floatingLayout.mode === "floating" && <FloatingTerminalDockGuides activeEdge={floatingLayout.dockTarget} />}
+    {floatingLayout.mode === "tiled" && geometry.dividers.map((divider) => <LayoutDivider key={divider.id} divider={divider} surfaceRef={surfaceRef} onResize={onResize} />)}
   </div>;
 }
 

@@ -30,7 +30,6 @@
 }
 
 .floating-terminal-canvas[data-mode="floating"] {
-  position: relative;
   isolation: isolate;
   overflow: hidden;
 }
@@ -55,7 +54,7 @@
   box-shadow: 0 12px 34px #0008, 0 0 0 1px #8e7ee755;
 }
 
-.floating-terminal-window[data-dragging="true"] {
+.terminal-pane-frame.floating-terminal-window[data-dragging="true"] {
   z-index: 10;
   border-color: #a99aff;
   box-shadow: 0 20px 54px #000b, 0 0 0 1px #a99aff88;
