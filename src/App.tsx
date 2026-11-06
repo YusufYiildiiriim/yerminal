@@ -1045,6 +1045,7 @@ function GitGraph({ repoPath, onError, onOpenInEditor }: { repoPath: string; onE
   repoPathRef.current = repoPath;
   onErrorRef.current = onError;
   const [selectedCommit, setSelectedCommit] = useState<CommitInfo | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [commitFiles, setCommitFiles] = useState<CommitFileChange[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileDiff, setFileDiff] = useState("");
@@ -1141,16 +1142,7 @@ function GitGraph({ repoPath, onError, onOpenInEditor }: { repoPath: string; onE
   }, [onError, repoPath, selectedCommit]);
 
   const closeCommitDetails = useCallback((restoreFocus = true) => {
-    detailRequestRef.current += 1;
-    fileDiffRequestRef.current += 1;
-    setSelectedCommit(null);
-    setCommitFiles([]);
-    setSelectedFile(null);
-    setFileDiff("");
-    setDetailLoading(false);
-    setFileDiffLoading(false);
-    setDetailError(null);
-    setFileDiffError(null);
+    setDetailsOpen(false);
     if (restoreFocus) requestAnimationFrame(() => lastCommitButtonRef.current?.focus());
   }, []);
 
@@ -1161,6 +1153,7 @@ function GitGraph({ repoPath, onError, onOpenInEditor }: { repoPath: string; onE
   useEffect(() => {
     detailRequestRef.current += 1;
     fileDiffRequestRef.current += 1;
+    setDetailsOpen(false);
     setSelectedCommit(null);
     setCommitFiles([]);
     setSelectedFile(null);
@@ -1170,7 +1163,7 @@ function GitGraph({ repoPath, onError, onOpenInEditor }: { repoPath: string; onE
   }, [repoPath]);
 
   useEffect(() => {
-    if (!selectedCommit) return;
+    if (!detailsOpen || !selectedCommit) return;
     closeButtonRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") closeCommitDetails();
@@ -1179,18 +1172,31 @@ function GitGraph({ repoPath, onError, onOpenInEditor }: { repoPath: string; onE
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [closeCommitDetails, selectedCommit]);
+  }, [closeCommitDetails, detailsOpen, selectedCommit]);
 
   return <div className="tool-view">
     <header className="tool-header"><div><h1>Git Graph</h1><p>{repoPath ? `${commits.length} commits loaded` : "Repository commit history"}</p></div><button className="icon-button refresh-button" aria-label="Refresh history" onClick={() => void load(false)} type="button">↻</button></header>
     {!repoPath ? <div className="empty-repository graph-empty"><div className="graph-preview"><span /><span /><span /></div><h2>History unavailable</h2><p>Open a Git repository to browse its commit graph.</p></div> : <>
-      <div className="commit-list">{commits.map((commit) => <button className={`commit-row ${selectedCommit?.id === commit.id ? "selected" : ""}`} key={commit.id} onClick={(event) => { lastCommitButtonRef.current = event.currentTarget; void selectCommit(commit); }} type="button" aria-pressed={selectedCommit?.id === commit.id}><span className="commit-rail"><svg aria-hidden="true"><line x1="10" y1="0" x2="10" y2="100%" className="commit-line" /></svg><span className="commit-node" /></span><span className="commit-info"><span className="commit-message" title={commit.message}>{commit.message}</span><span className="commit-meta"><code>{commit.shortId}</code><span>{commit.author}</span><time>{new Date(commit.timestamp * 1000).toLocaleDateString()}</time></span>{commit.branches.map((branch) => <span className="branch-label" key={branch}>{branch}</span>)}</span></button>)}
+      <div className="commit-list">{commits.map((commit) => <button className={`commit-row ${selectedCommit?.id === commit.id ? "selected" : ""}`} key={commit.id} onClick={(event) => { lastCommitButtonRef.current = event.currentTarget; setDetailsOpen(false); void selectCommit(commit); }} type="button" aria-pressed={selectedCommit?.id === commit.id}><span className="commit-rail"><svg aria-hidden="true"><line x1="10" y1="0" x2="10" y2="100%" className="commit-line" /></svg><span className="commit-node" /></span><span className="commit-info"><span className="commit-message" title={commit.message}>{commit.message}</span><span className="commit-meta"><code>{commit.shortId}</code><span>{commit.author}</span><time>{new Date(commit.timestamp * 1000).toLocaleDateString()}</time></span>{commit.branches.map((branch) => <span className="branch-label" key={branch}>{branch}</span>)}</span></button>)}
         {commits.length === 0 && !loading && <div className="change-empty">No commits found.</div>}
       </div>
       {commits.length > 0 && hasMore && <button className="load-more" onClick={() => void load(true)} disabled={loading} type="button">{loading ? "Loading…" : "Load more commits"}</button>}
+      {selectedCommit ? <section className="graph-change-panel" aria-label="Selected commit changed files">
+        <header className="graph-change-header">
+          <div className="graph-change-heading"><span>Commit <code>{selectedCommit.shortId}</code></span><strong title={commitSubject}>{commitSubject}</strong></div>
+          <button className="graph-change-details" type="button" onClick={() => setDetailsOpen(true)}>View details <span aria-hidden="true">↗</span></button>
+        </header>
+        <div className="graph-change-meta"><span>{selectedCommit.author}</span><time>{new Date(selectedCommit.timestamp * 1000).toLocaleString()}</time><span>{detailLoading ? "Loading files…" : detailError ? "Files unavailable" : `${commitFiles.length} changed ${commitFiles.length === 1 ? "file" : "files"}`}</span></div>
+        <div className="graph-change-files">
+          {detailLoading ? <div className="graph-change-state" role="status">Loading changed files…</div> : detailError ? <div className="graph-change-state graph-change-error" role="alert"><span>{detailError}</span><button type="button" onClick={() => void selectCommit(selectedCommit)}>Retry</button></div> : commitFiles.length === 0 ? <div className="graph-change-state">No files changed in this commit.</div> : commitFiles.map((file) => <div className="graph-change-file" key={file.path}>
+            <button className="graph-change-open" type="button" onClick={() => onOpenInEditor(selectedCommit, file)} title={`Open ${file.path} in the Code view`}><span className={`change-kind ${file.kind}`}>{file.kind === "deleted" ? "D" : file.kind === "added" ? "A" : file.kind === "renamed" ? "R" : "M"}</span><span className="graph-change-path" title={file.path}>{file.path}</span><span className="graph-change-kind">{file.kind}</span><span className="graph-change-open-icon" aria-hidden="true">↗</span></button>
+            <button className="graph-change-diff" type="button" onClick={() => { setDetailsOpen(true); void selectFile(file.path); }} title={`Review ${file.path} diff`} aria-label={`Review diff for ${file.path}`}>Diff</button>
+          </div>)}
+        </div>
+      </section> : <div className="graph-change-panel graph-change-empty"><span className="read-only-mark" aria-hidden="true">◉</span><span>Select a commit to see its changed files here.</span></div>}
     </>}
     <div className="panel-footnote"><span className="read-only-mark">◉</span> Incremental history loading</div>
-    {selectedCommit && createPortal(
+    {detailsOpen && selectedCommit && createPortal(
       <div className="commit-preview-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeCommitDetails(); }}>
         <section className="commit-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="commit-preview-title" aria-describedby="commit-preview-summary" onKeyDown={(event) => {
           if (event.key !== "Tab") return;
