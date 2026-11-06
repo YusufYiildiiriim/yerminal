@@ -380,7 +380,7 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .tool-sidebar-autohide:hover, .tool-sidebar-autohide[aria-pressed="true"] { color: #d8d0ff; }
 .tool-sidebar-autohide-label { color: inherit; font-size: 7px; line-height: 1.1; text-align: center; }
 .workspace-tool-layout[data-panel-auto-hide="true"] .tool-content { flex: 0 0 0; width: 0; opacity: 0; pointer-events: none; }
-.workspace-tool-layout[data-panel-auto-hide="true"]:hover .tool-content, .workspace-tool-layout[data-panel-auto-hide="true"]:focus-within .tool-content { flex: 1 1 auto; width: auto; opacity: 1; pointer-events: auto; }
+.workspace-tool-layout[data-panel-auto-hide="true"]:focus-within .tool-content { flex: 1 1 auto; width: auto; opacity: 1; pointer-events: auto; }
 .tool-content { display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; }
 .add-tool { flex: 0 0 38px; padding: 0; }
 .workspace-folder-list { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
