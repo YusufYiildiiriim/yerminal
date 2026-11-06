@@ -1562,19 +1562,19 @@ function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, worksp
         data-dragging={floatingLayout.draggingSessionId === terminal.id ? "true" : undefined}
         data-resizing={floatingLayout.resizingSessionId === terminal.id ? "true" : undefined}
       >
-        {isFloating && (["left", "right", "top", "bottom"] as const).map((direction) => <div
+      {isFloating && (["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right"] as const).map((direction) => <div
           key={direction}
-          className={`floating-terminal-resize-handle ${direction}`}
+        className={`floating-terminal-resize-handle ${direction.includes("-") ? "corner" : "edge"} ${direction}`}
           role="separator"
           tabIndex={0}
-          aria-orientation={direction === "left" || direction === "right" ? "vertical" : "horizontal"}
+        aria-orientation={direction === "left" || direction === "right" ? "vertical" : direction === "top" || direction === "bottom" ? "horizontal" : undefined}
           aria-label={`Resize ${terminal.name} ${direction}`}
           aria-keyshortcuts="Alt+Shift+ArrowLeft Alt+Shift+ArrowRight Alt+Shift+ArrowUp Alt+Shift+ArrowDown"
           title="Drag to resize · Alt+Shift+Arrow to adjust while focused"
           onFocus={() => onFocus(terminal.id)}
           onKeyDown={(event) => {
             if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey) return;
-            if (floatingLayout.nudgeResize(terminal.id, event.key)) {
+            if (floatingLayout.nudgeResize(terminal.id, direction, event.key)) {
               event.preventDefault();
               event.stopPropagation();
               onFocus(terminal.id);

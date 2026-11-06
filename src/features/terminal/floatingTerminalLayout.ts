@@ -23,12 +23,12 @@ type DragState = {
   offsetY: number;
 };
 
-type ResizeDirection = "left" | "right" | "top" | "bottom";
+export type TerminalResizeDirection = "left" | "right" | "top" | "bottom" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
 type ResizeState = {
   sessionId: string;
   pointerId: number;
-  direction: ResizeDirection;
+  direction: TerminalResizeDirection;
   startX: number;
   startY: number;
   startRect: FloatingTerminalRect;
@@ -48,11 +48,11 @@ export type FloatingTerminalLayoutController = {
   moveDrag: (sessionId: string, event: ReactPointerEvent<HTMLElement>) => void;
   endDrag: (sessionId: string, event: ReactPointerEvent<HTMLElement>) => void;
   cancelDrag: (sessionId: string, event: ReactPointerEvent<HTMLElement>) => void;
-  startResize: (sessionId: string, direction: ResizeDirection, event: ReactPointerEvent<HTMLElement>) => void;
+  startResize: (sessionId: string, direction: TerminalResizeDirection, event: ReactPointerEvent<HTMLElement>) => void;
   moveResize: (sessionId: string, event: ReactPointerEvent<HTMLElement>) => void;
   endResize: (sessionId: string, event: ReactPointerEvent<HTMLElement>) => void;
   cancelResize: (sessionId: string, event: ReactPointerEvent<HTMLElement>) => void;
-  nudgeResize: (sessionId: string, key: string) => boolean;
+  nudgeResize: (sessionId: string, direction: TerminalResizeDirection, key: string) => boolean;
 };
 
 const STORAGE_PREFIX = "yerminal:floating-terminal-layout:v1:";
@@ -250,7 +250,7 @@ export function useFloatingTerminalLayout(
     });
   }, [sessionIdsKey, workspaceId]);
 
-  const startResize = useCallback((sessionId: string, direction: ResizeDirection, event: ReactPointerEvent<HTMLElement>) => {
+  const startResize = useCallback((sessionId: string, direction: TerminalResizeDirection, event: ReactPointerEvent<HTMLElement>) => {
     if (currentSnapshot.mode !== "floating" || event.button !== 0 || !surfaceRef.current) return;
     const bounds = surfaceRef.current.getBoundingClientRect();
     if (bounds.width <= 0 || bounds.height <= 0) return;
@@ -280,14 +280,17 @@ export function useFloatingTerminalLayout(
     const minWidth = Math.min(100, Math.max(MIN_SIZE_PERCENT, MIN_WIDTH_PX / bounds.width * 100));
     const minHeight = Math.min(100, Math.max(MIN_SIZE_PERCENT, MIN_HEIGHT_PX / bounds.height * 100));
     let next = { ...start };
-    if (resize.direction === "right") next.width = Math.max(minWidth, Math.min(100 - start.x, start.width + deltaX));
-    else if (resize.direction === "left") {
+    if (resize.direction.includes("left")) {
       next.x = Math.max(0, Math.min(start.x + start.width - minWidth, start.x + deltaX));
       next.width = start.x + start.width - next.x;
-    } else if (resize.direction === "bottom") next.height = Math.max(minHeight, Math.min(100 - start.y, start.height + deltaY));
-    else {
+    } else if (resize.direction.includes("right")) {
+      next.width = Math.max(minWidth, Math.min(100 - start.x, start.width + deltaX));
+    }
+    if (resize.direction.includes("top")) {
       next.y = Math.max(0, Math.min(start.y + start.height - minHeight, start.y + deltaY));
       next.height = start.y + start.height - next.y;
+    } else if (resize.direction.includes("bottom")) {
+      next.height = Math.max(minHeight, Math.min(100 - start.y, start.height + deltaY));
     }
     updateRect(sessionId, next);
   }, [updateRect]);
@@ -304,18 +307,30 @@ export function useFloatingTerminalLayout(
     endResize(sessionId, event);
   }, [endResize]);
 
-  const nudgeResize = useCallback((sessionId: string, key: string) => {
+  const nudgeResize = useCallback((sessionId: string, direction: TerminalResizeDirection, key: string) => {
     if (currentSnapshot.mode !== "floating") return false;
     const rect = getRect(sessionId);
     const bounds = surfaceRef.current?.getBoundingClientRect();
     const minWidth = bounds && bounds.width > 0 ? Math.min(100, Math.max(MIN_SIZE_PERCENT, MIN_WIDTH_PX / bounds.width * 100)) : MIN_SIZE_PERCENT;
     const minHeight = bounds && bounds.height > 0 ? Math.min(100, Math.max(MIN_SIZE_PERCENT, MIN_HEIGHT_PX / bounds.height * 100)) : MIN_SIZE_PERCENT;
     const next = { ...rect };
-    if (key === "ArrowRight") next.width = Math.max(minWidth, Math.min(100 - rect.x, rect.width + KEYBOARD_RESIZE_STEP));
-    else if (key === "ArrowLeft") next.width = Math.max(minWidth, Math.min(100 - rect.x, rect.width - KEYBOARD_RESIZE_STEP));
-    else if (key === "ArrowDown") next.height = Math.max(minHeight, Math.min(100 - rect.y, rect.height + KEYBOARD_RESIZE_STEP));
-    else if (key === "ArrowUp") next.height = Math.max(minHeight, Math.min(100 - rect.y, rect.height - KEYBOARD_RESIZE_STEP));
-    else return false;
+    if ((key === "ArrowLeft" || key === "ArrowRight") && (direction.includes("left") || direction.includes("right"))) {
+      const delta = (key === "ArrowLeft" ? -1 : 1) * KEYBOARD_RESIZE_STEP;
+      if (direction.includes("left")) {
+        next.x = Math.max(0, Math.min(rect.x + rect.width - minWidth, rect.x + delta));
+        next.width = rect.x + rect.width - next.x;
+      } else {
+        next.width = Math.max(minWidth, Math.min(100 - rect.x, rect.width + delta));
+      }
+    } else if ((key === "ArrowUp" || key === "ArrowDown") && (direction.includes("top") || direction.includes("bottom"))) {
+      const delta = (key === "ArrowUp" ? -1 : 1) * KEYBOARD_RESIZE_STEP;
+      if (direction.includes("top")) {
+        next.y = Math.max(0, Math.min(rect.y + rect.height - minHeight, rect.y + delta));
+        next.height = rect.y + rect.height - next.y;
+      } else {
+        next.height = Math.max(minHeight, Math.min(100 - rect.y, rect.height + delta));
+      }
+    } else return false;
     updateRect(sessionId, next);
     return true;
   }, [currentSnapshot.mode, getRect, updateRect]);

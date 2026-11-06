@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     fs,
     io::{Read, Write},
     path::PathBuf,
@@ -60,9 +60,50 @@ pub struct AgentProfileInfo {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct TerminalOutput {
-    session_id: String,
-    data: String,
+pub struct TerminalOutput {
+    pub session_id: String,
+    pub sequence: u64,
+    pub data: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalOutputSnapshot {
+    pub through_sequence: u64,
+    pub events: Vec<TerminalOutput>,
+}
+
+#[derive(Default)]
+struct TerminalOutputHistory {
+    next_sequence: u64,
+    retained_bytes: usize,
+    events: VecDeque<TerminalOutput>,
+}
+
+impl TerminalOutputHistory {
+    fn append(&mut self, session_id: String, data: String) -> TerminalOutput {
+        self.next_sequence = self.next_sequence.saturating_add(1);
+        let event = TerminalOutput {
+            session_id,
+            sequence: self.next_sequence,
+            data,
+        };
+        self.retained_bytes = self.retained_bytes.saturating_add(event.data.len());
+        self.events.push_back(event.clone());
+        while self.retained_bytes > 256 * 1024 && self.events.len() > 1 {
+            if let Some(removed) = self.events.pop_front() {
+                self.retained_bytes = self.retained_bytes.saturating_sub(removed.data.len());
+            }
+        }
+        event
+    }
+
+    fn snapshot(&self) -> TerminalOutputSnapshot {
+        TerminalOutputSnapshot {
+            through_sequence: self.next_sequence,
+            events: self.events.iter().cloned().collect(),
+        }
+    }
 }
 
 struct TerminalSession {
@@ -73,6 +114,7 @@ struct TerminalSession {
     writer: Mutex<Box<dyn Write + Send>>,
     master: Mutex<Box<dyn MasterPty + Send>>,
     child: Mutex<Box<dyn Child + Send + Sync>>,
+    output_history: Arc<Mutex<TerminalOutputHistory>>,
 }
 
 pub(crate) struct TerminalProcessRoot {
@@ -265,6 +307,18 @@ impl SessionManager {
         })
     }
 
+    pub fn output_snapshot(&self, id: &str) -> Result<TerminalOutputSnapshot, String> {
+        let session = self
+            .sessions
+            .get(id)
+            .ok_or_else(|| "Terminal session was not found".to_owned())?;
+        let history = session
+            .output_history
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        Ok(history.snapshot())
+    }
+
     fn spawn_process(
         &mut self,
         app: AppHandle,
@@ -319,6 +373,7 @@ impl SessionManager {
         drop(pair.slave);
 
         let working_directory = cwd.to_string_lossy().into_owned();
+        let output_history = Arc::new(Mutex::new(TerminalOutputHistory::default()));
         let session = Arc::new(TerminalSession {
             process_id,
             process_start_time,
@@ -327,9 +382,10 @@ impl SessionManager {
             writer: Mutex::new(writer),
             master: Mutex::new(pair.master),
             child: Mutex::new(child),
+            output_history: Arc::clone(&output_history),
         });
         self.sessions.insert(id.clone(), Arc::clone(&session));
-        if let Err(error) = spawn_output_reader(app, id.clone(), reader) {
+        if let Err(error) = spawn_output_reader(app, id.clone(), reader, output_history) {
             let _ = self.close(&id);
             return Err(error);
         }
@@ -580,6 +636,7 @@ fn spawn_output_reader(
     app: AppHandle,
     session_id: String,
     mut reader: Box<dyn Read + Send>,
+    output_history: Arc<Mutex<TerminalOutputHistory>>,
 ) -> Result<(), String> {
     thread::Builder::new()
         .name(format!("pty-output-{session_id}"))
@@ -590,18 +647,11 @@ fn spawn_output_reader(
                     Ok(0) => break,
                     Ok(length) => {
                         let data = String::from_utf8_lossy(&buffer[..length]).into_owned();
-                        if app
-                            .emit(
-                                "terminal-output",
-                                TerminalOutput {
-                                    session_id: session_id.clone(),
-                                    data,
-                                },
-                            )
-                            .is_err()
-                        {
-                            break;
-                        }
+                        let event = output_history
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .append(session_id.clone(), data);
+                        let _ = app.emit("terminal-output", event);
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
                     Err(_) => break,

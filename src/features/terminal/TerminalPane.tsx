@@ -5,7 +5,8 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
-type TerminalOutput = { sessionId: string; data: string };
+type TerminalOutput = { sessionId: string; sequence: number; data: string };
+type TerminalOutputSnapshot = { throughSequence: number; events: TerminalOutput[] };
 type ShellKind = "powershell" | "bash" | "zsh";
 type TerminalPaneProps = { sessionId: string; shell: ShellKind; profileId?: string; workingDirectory: string | null; active: boolean; visible: boolean; onFocus: (sessionId: string) => void; onExit: (sessionId: string) => void };
 
@@ -63,6 +64,8 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
     hostRef.current.addEventListener("focusin", handleFocus);
 
     let disposed = false;
+    let replayingOutput = true;
+    const pendingOutput: TerminalOutput[] = [];
     let outputUnlisten: (() => void) | undefined;
     let exitUnlisten: (() => void) | undefined;
 
@@ -73,7 +76,9 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
         return;
       }
       outputUnlisten = await listen<TerminalOutput>("terminal-output", ({ payload }) => {
-        if (payload.sessionId === sessionId) terminal.write(payload.data);
+        if (payload.sessionId !== sessionId) return;
+        if (replayingOutput) pendingOutput.push(payload);
+        else terminal.write(payload.data);
       });
       if (disposed) {
         outputUnlisten();
@@ -101,6 +106,21 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
         onExitRef.current(sessionId);
         return;
       }
+      if (disposed) return;
+      let throughSequence = 0;
+      try {
+        const snapshot = await invoke<TerminalOutputSnapshot>("terminal_output_snapshot", { sessionId });
+        if (disposed) return;
+        for (const event of snapshot.events) terminal.write(event.data);
+        throughSequence = snapshot.throughSequence;
+      } catch (error) {
+        console.warn(`Could not restore terminal output for ${sessionId}:`, error);
+      }
+      for (const event of pendingOutput) {
+        if (event.sequence > throughSequence) terminal.write(event.data);
+      }
+      pendingOutput.length = 0;
+      replayingOutput = false;
       terminal.onData((data) => {
         void invoke("write_terminal", { sessionId, data }).catch((error: unknown) => {
           terminal.writeln(`\r\n[terminal input error: ${String(error)}]`);

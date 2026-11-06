@@ -6,8 +6,8 @@ use git::{CommitFileChange, CommitFileContent, CommitInfo, FileChange, Repositor
 use std::sync::Mutex;
 use tauri::{Manager, State};
 use terminal::{
-    AgentProfileInfo, SessionManager, ShellKind, TerminalInfo, TerminalResourceMonitor,
-    TerminalResourceUsage,
+    AgentProfileInfo, SessionManager, ShellKind, TerminalInfo, TerminalOutputSnapshot,
+    TerminalResourceMonitor, TerminalResourceUsage,
 };
 use workspace_fs::WorkspaceEntry;
 
@@ -25,6 +25,17 @@ fn terminal_resource_usage(
         .lock()
         .map_err(|_| "Terminal resource monitor is unavailable".to_owned())
         .map(|mut monitor| monitor.collect(roots))
+}
+
+#[tauri::command]
+fn terminal_output_snapshot(
+    manager: State<'_, Mutex<SessionManager>>,
+    session_id: String,
+) -> Result<TerminalOutputSnapshot, String> {
+    manager
+        .lock()
+        .map_err(|_| "Terminal manager is unavailable".to_owned())?
+        .output_snapshot(&session_id)
 }
 
 #[tauri::command]
@@ -199,6 +210,7 @@ pub fn run() {
             resize_terminal,
             close_terminal,
             terminal_resource_usage,
+            terminal_output_snapshot,
             git_repository_info,
             git_status,
             git_stage_file,

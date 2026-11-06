@@ -72,8 +72,8 @@
   z-index: 12;
   display: block;
   border: 0;
-  background: #a99aff12;
-  opacity: .2;
+  background: #a99aff24;
+  opacity: .5;
   outline: none;
   touch-action: none;
   transition: opacity 100ms ease, background 100ms ease;
@@ -83,7 +83,7 @@
 .floating-terminal-resize-handle.right {
   top: 34px;
   bottom: 10px;
-  width: 8px;
+  width: 10px;
   cursor: ew-resize;
 }
 
@@ -94,7 +94,7 @@
 .floating-terminal-resize-handle.bottom {
   right: 10px;
   left: 10px;
-  height: 8px;
+  height: 10px;
   cursor: ns-resize;
 }
 
@@ -111,6 +111,28 @@
   outline: 1px solid #d7ceff;
   outline-offset: -1px;
 }
+
+.floating-terminal-resize-handle.corner {
+  z-index: 13;
+  width: 20px;
+  height: 20px;
+  border: 1px solid #a99aff99;
+  border-radius: 6px;
+  background: #211e31;
+  opacity: .9;
+}
+
+.floating-terminal-resize-handle.corner:hover,
+.floating-terminal-resize-handle.corner:focus-visible {
+  border-color: #d7ceff;
+  background: #51487a;
+  opacity: 1;
+}
+
+.floating-terminal-resize-handle.top-left { top: 30px; left: 0; cursor: nwse-resize; }
+.floating-terminal-resize-handle.top-right { top: 30px; right: 0; cursor: nesw-resize; }
+.floating-terminal-resize-handle.bottom-left { bottom: 0; left: 0; cursor: nesw-resize; }
+.floating-terminal-resize-handle.bottom-right { right: 0; bottom: 0; cursor: nwse-resize; }
 
 .floating-terminal-window-handle {
   cursor: grab;
