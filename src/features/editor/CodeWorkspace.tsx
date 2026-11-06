@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { highlightCode } from "./highlighter";
 import { CommitSnapshotBanner } from "./CommitSnapshotBanner";
+import { useFloatingEditorLayout, type EditorLayoutMode } from "./floatingEditorLayout";
+import "./floating-editor-layout.css";
 
 export type EditorFileTab = {
   id: string;
@@ -26,6 +28,7 @@ export type EditorGroupState = {
 };
 
 type CodeWorkspaceProps = {
+  workspaceId: string;
   tabs: EditorFileTab[];
   groups: EditorGroupState[];
   activeGroupId: string;
@@ -40,6 +43,13 @@ type CodeWorkspaceProps = {
 };
 
 type EditorGroupPaneProps = {
+  layoutMode: EditorLayoutMode;
+  groupStyle: CSSProperties;
+  dragging: boolean;
+  onStartDrag: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  onMoveDrag: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  onEndDrag: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
+  onCancelDrag: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
   group: EditorGroupState;
   groups: EditorGroupState[];
   tabs: EditorFileTab[];
@@ -80,7 +90,7 @@ function detectLanguage(path: string): { id: string | null; label: string } {
   return languageByExtension[extension] ?? { id: null, label: "Plain Text" };
 }
 
-function EditorGroupPane({ group, groups, tabs, isActive, onSelect, onActivateGroup, onClose, onChange, onSave, onMoveTab, onCloseGroup }: EditorGroupPaneProps) {
+function EditorGroupPane({ layoutMode, groupStyle, dragging, onStartDrag, onMoveDrag, onEndDrag, onCancelDrag, group, groups, tabs, isActive, onSelect, onActivateGroup, onClose, onChange, onSave, onMoveTab, onCloseGroup }: EditorGroupPaneProps) {
   const groupTabs = group.tabIds.map((id) => tabs.find((tab) => tab.id === id)).filter((tab): tab is EditorFileTab => Boolean(tab));
   const activeTab = groupTabs.find((tab) => tab.id === group.activeTabId) ?? null;
   const language = useMemo(() => activeTab ? detectLanguage(activeTab.path) : null, [activeTab?.path]);
@@ -112,12 +122,20 @@ function EditorGroupPane({ group, groups, tabs, isActive, onSelect, onActivateGr
   }, [activeTab?.content, activeTab?.id, activeTab?.status, language?.id]);
 
   return <section
-    className={"editor-group-pane" + (isActive ? " active" : "")}
+    className={"editor-group-pane" + (isActive ? " active" : "") + (layoutMode === "free" ? " free" : "")}
+    style={layoutMode === "free" ? groupStyle : undefined}
+    data-dragging={dragging ? "true" : "false"}
     aria-label={group.name}
     onMouseDown={() => onActivateGroup(group.id)}
     onKeyDown={handleKeyDown}
   >
-    <header className="editor-group-heading">
+    <header
+      className={"editor-group-heading" + (layoutMode === "free" ? " free" : "")}
+      onPointerDown={layoutMode === "free" ? (event) => { onActivateGroup(group.id); onStartDrag(group.id, event); } : undefined}
+      onPointerMove={layoutMode === "free" ? (event) => onMoveDrag(group.id, event) : undefined}
+      onPointerUp={layoutMode === "free" ? (event) => onEndDrag(group.id, event) : undefined}
+      onPointerCancel={layoutMode === "free" ? (event) => onCancelDrag(group.id, event) : undefined}
+    >
       <div className="editor-group-title"><span className="editor-group-indicator" aria-hidden="true" />{group.name}<span className="editor-group-count">{groupTabs.length}</span></div>
       <div className="editor-group-actions">
         {activeTab && groups.length > 1 && <select className="editor-group-move" aria-label={"Move " + activeTab.name + " to editor group"} value="" onChange={(event) => { const targetGroupId = event.currentTarget.value; if (targetGroupId) onMoveTab(activeTab.id, targetGroupId); }}>
@@ -165,15 +183,33 @@ function EditorGroupPane({ group, groups, tabs, isActive, onSelect, onActivateGr
   </section>;
 }
 
-export function CodeWorkspace({ tabs, groups, activeGroupId, onSelect, onActivateGroup, onClose, onChange, onSave, onCreateGroup, onMoveTab, onCloseGroup }: CodeWorkspaceProps) {
+export function CodeWorkspace({ workspaceId, tabs, groups, activeGroupId, onSelect, onActivateGroup, onClose, onChange, onSave, onCreateGroup, onMoveTab, onCloseGroup }: CodeWorkspaceProps) {
+  const layout = useFloatingEditorLayout(workspaceId, groups.map((group) => group.id));
   return <section className="code-workspace" aria-label="Code editor">
     <header className="editor-groups-toolbar">
       <div className="editor-groups-title"><span aria-hidden="true">▤</span>Editor groups<span className="editor-groups-count">{groups.length}</span></div>
-      <button className="editor-create-group" type="button" onClick={onCreateGroup}><span aria-hidden="true">＋</span>New group</button>
+      <div className="editor-groups-toolbar-actions">
+        <div className="editor-layout-mode-toggle" role="group" aria-label="Editor group layout mode">
+          <button className={layout.mode === "tiled" ? "selected" : ""} type="button" aria-pressed={layout.mode === "tiled"} onClick={() => layout.setMode("tiled")} title="Use the default split editor layout">Split</button>
+          <button className={layout.mode === "free" ? "selected" : ""} type="button" aria-pressed={layout.mode === "free"} onClick={() => layout.setMode("free")} title="Move editor groups freely around the canvas">Free</button>
+        </div>
+        <button className="editor-create-group" type="button" onClick={onCreateGroup}><span aria-hidden="true">＋</span>New group</button>
+      </div>
     </header>
-    <div className="editor-groups-layout" style={{ "--editor-group-count": groups.length } as CSSProperties & { "--editor-group-count": number }}>
+    <div
+      ref={layout.surfaceRef}
+      className={"editor-groups-layout" + (layout.mode === "free" ? " free" : "")}
+      style={{ "--editor-group-count": groups.length } as CSSProperties & { "--editor-group-count": number }}
+    >
       {groups.map((group) => <EditorGroupPane
         key={group.id}
+        layoutMode={layout.mode}
+        groupStyle={layout.getWindowStyle(group.id)}
+        dragging={layout.draggingGroupId === group.id}
+        onStartDrag={layout.startDrag}
+        onMoveDrag={layout.moveDrag}
+        onEndDrag={layout.endDrag}
+        onCancelDrag={layout.cancelDrag}
         group={group}
         groups={groups}
         tabs={tabs}
@@ -186,6 +222,12 @@ export function CodeWorkspace({ tabs, groups, activeGroupId, onSelect, onActivat
         onMoveTab={onMoveTab}
         onCloseGroup={onCloseGroup}
       />)}
+      {layout.dockTarget && <div className="editor-group-dock-guides" aria-hidden="true">
+        <div className={"editor-group-dock-guide left" + (layout.dockTarget === "left" ? " active" : "")} />
+        <div className={"editor-group-dock-guide right" + (layout.dockTarget === "right" ? " active" : "")} />
+        <div className={"editor-group-dock-guide top" + (layout.dockTarget === "top" ? " active" : "")} />
+        <div className={"editor-group-dock-guide bottom" + (layout.dockTarget === "bottom" ? " active" : "")} />
+      </div>}
     </div>
   </section>;
 }

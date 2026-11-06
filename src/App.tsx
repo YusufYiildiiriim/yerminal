@@ -881,6 +881,8 @@ function App() {
           </div>
           {activeMainView === "graph" && <TerminalResourceGraph workspaceName={activeTerminalWorkspace?.name ?? "Workspace"} terminals={activeWorkspaceTerminals} activeTerminalId={activeTerminalId} />}
           {activeMainView === "code" && <CodeWorkspace
+            key={activeTerminalWorkspace?.id ?? ""}
+            workspaceId={activeTerminalWorkspace?.id ?? ""}
             tabs={activeEditorWorkspace.tabs}
             groups={activeEditorWorkspace.groups}
             activeGroupId={activeEditorWorkspace.activeGroupId}
