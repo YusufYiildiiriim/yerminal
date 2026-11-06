@@ -146,8 +146,8 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, onStartDrag, onMove
       </div>
     </header>
     <nav className="editor-file-tabs" role="tablist" aria-label={group.name + " open files"}>
-      {groupTabs.map((tab) => <div className={"editor-file-tab" + (group.activeTabId === tab.id ? " selected" : "")} key={tab.id}>
-        <button className="editor-file-tab-select" role="tab" aria-selected={group.activeTabId === tab.id} onClick={() => onSelect(group.id, tab.id)} type="button" title={tab.path}>
+      {groupTabs.map((tab) => <div className={"editor-file-tab" + (group.activeTabId === tab.id ? " selected" : "")} key={tab.id} onMouseDown={(event) => { if (event.button === 1) event.preventDefault(); }} onAuxClick={(event) => { if (event.button !== 1) return; event.preventDefault(); event.stopPropagation(); onClose(tab.id); }}>
+        <button className="editor-file-tab-select" role="tab" aria-selected={group.activeTabId === tab.id} onClick={() => onSelect(group.id, tab.id)} type="button" title={tab.path + " · Middle-click to close"}>
           <span className="editor-file-tab-icon" aria-hidden="true">{tab.name.split(".").pop()?.slice(0, 2).toUpperCase() ?? "·"}</span>
           <span>{tab.name}</span>
           {tab.sourceCommitId ? <span className="editor-file-tab-readonly-mark" aria-label="Read only" title="Commit snapshot">◉</span> : tab.content !== null && normalizeNewlines(tab.content) !== normalizeNewlines(tab.savedContent) ? <span className="editor-file-tab-dirty-mark" aria-label="Unsaved changes" title="Unsaved changes">●</span> : null}
