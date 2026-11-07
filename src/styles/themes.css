@@ -1,0 +1,99 @@
+/* Semantic theme tokens are intentionally independent of the selected preset. */
+.app-shell[data-theme] {
+  --theme-background: #101116;
+  --theme-surface: #13141a;
+  --theme-raised: #191a22;
+  --theme-chrome: #0d0e13;
+  --theme-editor: #101116;
+  --theme-terminal: #0d0e12;
+  --theme-text: #ecebf4;
+  --theme-muted: #85899a;
+  --theme-border: #302e3b;
+  --theme-accent: #b39aff;
+  --theme-success: #8ad6b0;
+  --bg: var(--theme-background);
+  --panel: var(--theme-surface);
+  --panel-raised: var(--theme-raised);
+  --border: var(--theme-border);
+  --muted: var(--theme-muted);
+  --accent: var(--theme-accent);
+  --green: var(--theme-success);
+  color: var(--theme-text);
+  background: var(--theme-background);
+}
+.app-shell[data-theme="nordic"] {
+  --theme-background: #11191a;
+  --theme-surface: #14201f;
+  --theme-raised: #1a2928;
+  --theme-chrome: #101719;
+  --theme-editor: #131d1e;
+  --theme-terminal: #101819;
+  --theme-text: #e4f0ed;
+  --theme-muted: #859995;
+  --theme-border: #29413e;
+  --theme-accent: #8edbd3;
+  --theme-success: #9ad8a7;
+}
+.app-shell[data-theme="foundry"] {
+  --theme-background: #131216;
+  --theme-surface: #19171a;
+  --theme-raised: #211e22;
+  --theme-chrome: #111015;
+  --theme-editor: #17161a;
+  --theme-terminal: #111015;
+  --theme-text: #f2eee8;
+  --theme-muted: #a29ba0;
+  --theme-border: #3d3333;
+  --theme-accent: #f2bd82;
+  --theme-success: #9dc8a1;
+}
+.app-shell[data-theme] :is(.titlebar, .statusbar) {
+  background: var(--theme-chrome);
+  border-color: var(--theme-border);
+}
+.app-shell[data-theme] .brand-mark { background: var(--theme-accent); color: var(--theme-chrome); }
+.app-shell[data-theme] :is(.tools-panel, .tool-sidebar, .tool-content, .workspace-navigation, .workspace-explorer-tree, .change-list) {
+  background: var(--theme-surface);
+  border-color: var(--theme-border);
+}
+.app-shell[data-theme] :is(.terminal-panel, .terminal-layout-surface, .code-workspace, .editor-groups-layout, .editor-group-pane) {
+  background: var(--theme-background);
+  border-color: var(--theme-border);
+}
+.app-shell[data-theme] :is(.editor-groups-toolbar, .editor-group-heading, .editor-file-tabs, .terminal-toolbar, .terminal-session-toolbar, .terminal-pane-header, .code-editor-header) {
+  background: var(--theme-raised);
+  border-color: var(--theme-border);
+}
+.app-shell[data-theme] :is(.code-editor-content, .code-editor-editable-surface, .code-editor-plain, .editor-file-tab.selected) {
+  background: var(--theme-editor);
+  color: var(--theme-text);
+}
+.app-shell[data-theme] :is(.terminal-surface, .terminal-pane-body, .terminal-instance) {
+  background: var(--theme-terminal);
+  border-color: var(--theme-border);
+}
+.app-shell[data-theme] :is(.workspace-view-tab.selected, .editor-file-tab.selected, .tool-sidebar-item.selected, .tool-sidebar-item.active) { color: var(--theme-text); }
+.app-shell[data-theme] .workspace-view-tab.selected::after { background: var(--theme-accent); }
+.app-shell[data-theme] .workspace-view-tab.selected > span,
+.app-shell[data-theme] :is(.editor-groups-title > span:first-child, .terminal-dot, .read-only-mark) { color: var(--theme-accent); }
+.app-shell[data-theme] .editor-file-tab.selected { box-shadow: inset 0 2px var(--theme-accent); }
+.app-shell[data-theme] :is(.editor-group-pane.active .editor-group-indicator, .terminal-dot) { background: var(--theme-accent); }
+.app-shell[data-theme] :is(.workspace-name-select, .workspace-root-picker, .editor-group-move) {
+  color: var(--theme-text);
+  background: var(--theme-raised);
+  border-color: var(--theme-border);
+}
+.app-shell[data-theme] :is(.primary-button, .git-commit-button) {
+  color: var(--theme-chrome);
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
+}
+.app-shell[data-theme] :is(.primary-button, .git-commit-button):hover { filter: brightness(1.12); }
+.app-shell[data-theme] :is(.resize-handle, .split-handle, .layout-divider) { background-color: var(--theme-border); }
+.app-shell[data-theme] :is(.resize-handle:hover, .resize-handle[data-resize-handle-active], .split-handle:hover) { background-color: var(--theme-accent); }
+/* Keep the editable text layer and highlighted overlay in identical metrics. */
+.app-shell[data-theme] :is(.code-editor-highlighted, .code-editor-plain, .code-editor-input) {
+  font-family: var(--editor-font-family, "Cascadia Code", Consolas, monospace);
+  font-size: var(--editor-font-size, 12px);
+}
+

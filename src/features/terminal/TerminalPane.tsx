@@ -55,6 +55,22 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
         brightWhite: "#f1f1f4",
       },
     });
+    const applyAppearance = () => {
+      const host = hostRef.current;
+      if (!host) return;
+      const style = getComputedStyle(host);
+      const value = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
+      const fontSize = Number.parseFloat(value("--terminal-font-size", "13"));
+      terminal.options.fontFamily = value("--terminal-font-family", '"Cascadia Code", Consolas, monospace');
+      terminal.options.fontSize = Number.isFinite(fontSize) ? Math.min(32, Math.max(8, fontSize)) : 13;
+      terminal.options.theme = {
+        ...terminal.options.theme,
+        background: value("--theme-terminal", "#101114"),
+        foreground: value("--theme-text", "#d7d7dc"),
+        cursor: value("--theme-accent", "#b2a4ff"),
+      };
+    };
+    applyAppearance();
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(hostRef.current);
@@ -139,10 +155,21 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
       void invoke("resize_terminal", { sessionId, cols: terminal.cols, rows: terminal.rows });
     });
     resizeObserver.observe(hostRef.current);
+    const appearanceRoot = hostRef.current.closest(".app-shell");
+    const appearanceObserver = new MutationObserver(() => {
+      if (disposed) return;
+      applyAppearance();
+      if (visibleRef.current) {
+        fit.fit();
+        if (isTauri()) void invoke("resize_terminal", { sessionId, cols: terminal.cols, rows: terminal.rows });
+      }
+    });
+    if (appearanceRoot) appearanceObserver.observe(appearanceRoot, { attributes: true, attributeFilter: ["style", "data-theme"] });
 
     return () => {
       disposed = true;
       resizeObserver.disconnect();
+      appearanceObserver.disconnect();
       outputUnlisten?.();
       exitUnlisten?.();
       hostRef.current?.removeEventListener("focusin", handleFocus);
@@ -168,6 +195,7 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
 }
 
 export default TerminalPane;
+
 
 
 
