@@ -233,6 +233,12 @@ function App() {
   });
   const toolsPanelRef = useRef<ImperativePanelHandle>(null);
   const [toolsPanelCollapsed, setToolsPanelCollapsed] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   const [activeMainView, setActiveMainView] = useState<"code" | "terminals">("terminals");
   const [terminalLayoutMode, setTerminalLayoutMode] = useState<TerminalLayoutMode>("tiled");
   const [terminalViews, setTerminalViews] = useState<Record<string, string | null>>({});
@@ -929,7 +935,7 @@ function App() {
       </header>
 
       <PanelGroup direction="horizontal" className="workspace">
-        <Panel ref={toolsPanelRef} defaultSize={19} minSize={16} maxSize={46} collapsible collapsedSize={4} className="tools-panel" data-autohide-collapsed={toolsPanelCollapsed ? "true" : "false"} onBlurCapture={(event) => {
+        <Panel ref={toolsPanelRef} defaultSize={19} minSize={16} maxSize={46} collapsible collapsedSize={5000 / Math.max(920, viewportWidth)} className="tools-panel" data-autohide-collapsed={toolsPanelCollapsed ? "true" : "false"} onBlurCapture={(event) => {
           if (!toolPanelAutoHide || event.currentTarget.contains(event.relatedTarget as Node | null)) return;
           toolsPanelRef.current?.collapse();
           setToolsPanelCollapsed(true);
