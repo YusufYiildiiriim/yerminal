@@ -34,12 +34,12 @@ type DragState = {
   moved: boolean;
 };
 
-type ResizeDirection = "left" | "right" | "top" | "bottom";
+export type EditorResizeDirection = "left" | "right" | "top" | "bottom" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
 type ResizeState = {
   groupId: string;
   pointerId: number;
-  direction: ResizeDirection;
+  direction: EditorResizeDirection;
   startX: number;
   startY: number;
   startRect: FloatingEditorRect;
@@ -58,11 +58,11 @@ export type FloatingEditorLayoutController = {
   moveDrag: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
   endDrag: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
   cancelDrag: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
-  startResize: (groupId: string, direction: ResizeDirection, event: ReactPointerEvent<HTMLElement>) => void;
+  startResize: (groupId: string, direction: EditorResizeDirection, event: ReactPointerEvent<HTMLElement>) => void;
   moveResize: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
   endResize: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
   cancelResize: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
-  nudgeResize: (groupId: string, key: string) => boolean;
+  nudgeResize: (groupId: string, direction: EditorResizeDirection, key: string) => boolean;
 };
 
 const STORAGE_PREFIX = "yerminal:floating-editor-layout:v1:";
@@ -305,7 +305,7 @@ export function useFloatingEditorLayout(workspaceId: string, groupIds: string[])
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
-  const startResize = (groupId: string, direction: ResizeDirection, event: ReactPointerEvent<HTMLElement>) => {
+  const startResize = (groupId: string, direction: EditorResizeDirection, event: ReactPointerEvent<HTMLElement>) => {
     if (currentSnapshot.mode !== "free" || event.button !== 0) return;
     const surface = surfaceRef.current;
     if (!surface) return;
@@ -342,14 +342,22 @@ export function useFloatingEditorLayout(workspaceId: string, groupIds: string[])
     const deltaY = (event.clientY - resize.startY) / bounds.height * 100;
     const start = resize.startRect;
     let next = { ...start };
-    if (resize.direction === "right") next.width = clamp(start.width + deltaX, MIN_EDITOR_SIZE, 100 - start.x);
-    else if (resize.direction === "left") {
-      next.x = clamp(start.x + deltaX, 0, start.x + start.width - MIN_EDITOR_SIZE);
-      next.width = start.x + start.width - next.x;
-    } else if (resize.direction === "bottom") next.height = clamp(start.height + deltaY, MIN_EDITOR_SIZE, 100 - start.y);
-    else {
-      next.y = clamp(start.y + deltaY, 0, start.y + start.height - MIN_EDITOR_SIZE);
-      next.height = start.y + start.height - next.y;
+    const resizesLeft = resize.direction === "left" || resize.direction.endsWith("-left");
+    const resizesRight = resize.direction === "right" || resize.direction.endsWith("-right");
+    const resizesTop = resize.direction === "top" || resize.direction.startsWith("top-");
+    const resizesBottom = resize.direction === "bottom" || resize.direction.startsWith("bottom-");
+
+    if (resizesRight) next.width = clamp(start.width + deltaX, MIN_EDITOR_SIZE, 100 - start.x);
+    else if (resizesLeft) {
+      const right = start.x + start.width;
+      next.x = clamp(start.x + deltaX, 0, right - MIN_EDITOR_SIZE);
+      next.width = right - next.x;
+    }
+    if (resizesBottom) next.height = clamp(start.height + deltaY, MIN_EDITOR_SIZE, 100 - start.y);
+    else if (resizesTop) {
+      const bottom = start.y + start.height;
+      next.y = clamp(start.y + deltaY, 0, bottom - MIN_EDITOR_SIZE);
+      next.height = bottom - next.y;
     }
     resizeGroupTo(groupId, next);
   };
@@ -366,15 +374,33 @@ export function useFloatingEditorLayout(workspaceId: string, groupIds: string[])
     endResize(groupId, event);
   };
 
-  const nudgeResize = (groupId: string, key: string) => {
+  const nudgeResize = (groupId: string, direction: EditorResizeDirection, key: string) => {
     if (currentSnapshot.mode !== "free") return false;
     const rect = getRect(groupId);
     let next = { ...rect };
-    if (key === "ArrowRight") next.width = clamp(rect.width + KEYBOARD_RESIZE_STEP, MIN_EDITOR_SIZE, 100 - rect.x);
-    else if (key === "ArrowLeft") next.width = clamp(rect.width - KEYBOARD_RESIZE_STEP, MIN_EDITOR_SIZE, 100 - rect.x);
-    else if (key === "ArrowDown") next.height = clamp(rect.height + KEYBOARD_RESIZE_STEP, MIN_EDITOR_SIZE, 100 - rect.y);
-    else if (key === "ArrowUp") next.height = clamp(rect.height - KEYBOARD_RESIZE_STEP, MIN_EDITOR_SIZE, 100 - rect.y);
-    else return false;
+    const resizesLeft = direction === "left" || direction.endsWith("-left");
+    const resizesTop = direction === "top" || direction.startsWith("top-");
+
+    if (key === "ArrowRight" || key === "ArrowLeft") {
+      const delta = key === "ArrowRight" ? KEYBOARD_RESIZE_STEP : -KEYBOARD_RESIZE_STEP;
+      if (resizesLeft) {
+        const right = rect.x + rect.width;
+        next.width = clamp(rect.width + delta, MIN_EDITOR_SIZE, right);
+        next.x = right - next.width;
+      } else {
+        next.width = clamp(rect.width + delta, MIN_EDITOR_SIZE, 100 - rect.x);
+      }
+    } else if (key === "ArrowDown" || key === "ArrowUp") {
+      const delta = key === "ArrowDown" ? KEYBOARD_RESIZE_STEP : -KEYBOARD_RESIZE_STEP;
+      if (resizesTop) {
+        const bottom = rect.y + rect.height;
+        next.height = clamp(rect.height + delta, MIN_EDITOR_SIZE, bottom);
+        next.y = bottom - next.height;
+      } else {
+        next.height = clamp(rect.height + delta, MIN_EDITOR_SIZE, 100 - rect.y);
+      }
+    } else return false;
+
     resizeGroupTo(groupId, next);
     return true;
   };

@@ -10,15 +10,20 @@
 .editor-group-pane.free[data-resizing="true"] { z-index: 9; border-color: #b5a5ff; box-shadow: 0 12px 34px rgb(0 0 0 / 42%), 0 0 0 1px #b5a5ff66; }
 .editor-group-heading.free { cursor: grab; touch-action: none; }
 .editor-group-pane.free[data-dragging="true"] .editor-group-heading { cursor: grabbing; }
-.editor-group-resize-handle { position: absolute; z-index: 10; display: block; border: 0; background: #a99aff12; opacity: .22; outline: none; touch-action: none; transition: opacity 100ms ease, background 100ms ease; }
+.editor-group-resize-handle { position: absolute; z-index: 10; display: block; border: 0; background: var(--theme-accent, #b39aff); opacity: .22; outline: none; touch-action: none; transition: opacity 100ms ease, background 100ms ease; }
 .editor-group-resize-handle.left, .editor-group-resize-handle.right { top: 10px; bottom: 10px; width: 7px; cursor: ew-resize; }
 .editor-group-resize-handle.left { left: 0; }
 .editor-group-resize-handle.right { right: 0; }
 .editor-group-resize-handle.top, .editor-group-resize-handle.bottom { right: 10px; left: 10px; height: 7px; }
 .editor-group-resize-handle.top { top: 0; cursor: ns-resize; }
 .editor-group-resize-handle.bottom { bottom: 0; cursor: ns-resize; }
-.editor-group-resize-handle:hover, .editor-group-resize-handle:focus-visible { background: #a99aff88; opacity: 1; }
-.editor-group-resize-handle:focus-visible { outline: 1px solid #d7ceff; outline-offset: -1px; }
+.editor-group-resize-handle.top-left, .editor-group-resize-handle.top-right, .editor-group-resize-handle.bottom-left, .editor-group-resize-handle.bottom-right { z-index: 11; width: 12px; height: 12px; border-radius: 3px; opacity: .62; }
+.editor-group-resize-handle.top-left { top: 0; left: 0; cursor: nwse-resize; }
+.editor-group-resize-handle.top-right { top: 0; right: 0; cursor: nesw-resize; }
+.editor-group-resize-handle.bottom-left { bottom: 0; left: 0; cursor: nesw-resize; }
+.editor-group-resize-handle.bottom-right { bottom: 0; right: 0; cursor: nwse-resize; }
+.editor-group-resize-handle:hover, .editor-group-resize-handle:focus-visible { background: var(--theme-accent, #b39aff); opacity: 1; }
+.editor-group-resize-handle:focus-visible { outline: 1px solid var(--theme-text, #ecebf4); outline-offset: -1px; }
 .editor-group-dock-guides { position: absolute; z-index: 12; inset: 0; overflow: hidden; pointer-events: none; }
 .editor-group-dock-guide { position: absolute; border: 1px solid transparent; background: transparent; opacity: 0; transition: opacity 90ms ease, background 90ms ease; }
 .editor-group-dock-guide.active { border-color: #a99affb8; background: rgb(169 154 255 / 12%); opacity: 1; box-shadow: inset 0 0 0 1px rgb(169 154 255 / 20%); }

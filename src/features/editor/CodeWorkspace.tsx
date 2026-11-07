@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState, type CSSProperties, type Keyboa
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { highlightCode } from "./highlighter";
 import { CommitSnapshotBanner } from "./CommitSnapshotBanner";
-import { useFloatingEditorLayout, type EditorLayoutMode } from "./floatingEditorLayout";
+import { useFloatingEditorLayout, type EditorLayoutMode, type EditorResizeDirection } from "./floatingEditorLayout";
 import "./floating-editor-layout.css";
 
 export type EditorFileTab = {
@@ -52,11 +52,11 @@ type EditorGroupPaneProps = {
   onMoveDrag: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
   onEndDrag: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
   onCancelDrag: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
-  onStartResize: (groupId: string, direction: "left" | "right" | "top" | "bottom", event: ReactPointerEvent<HTMLElement>) => void;
+  onStartResize: (groupId: string, direction: EditorResizeDirection, event: ReactPointerEvent<HTMLElement>) => void;
   onMoveResize: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
   onEndResize: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
   onCancelResize: (groupId: string, event: ReactPointerEvent<HTMLElement>) => void;
-  onNudgeResize: (groupId: string, key: string) => boolean;
+  onNudgeResize: (groupId: string, direction: EditorResizeDirection, key: string) => boolean;
   group: EditorGroupState;
   groups: EditorGroupState[];
   tabs: EditorFileTab[];
@@ -107,9 +107,10 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
   const isDirty = Boolean(activeTab && activeTab.content !== null && normalizeNewlines(activeTab.content) !== normalizeNewlines(activeTab.savedContent));
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    const resizeHandle = event.target instanceof HTMLElement && event.target.closest(".editor-group-resize-handle");
-    if (layoutMode === "free" && resizeHandle && event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey) {
-      if (onNudgeResize(group.id, event.key)) {
+    const resizeHandle = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>(".editor-group-resize-handle") : null;
+    const resizeDirection = resizeHandle?.dataset.direction as EditorResizeDirection | undefined;
+    if (layoutMode === "free" && resizeHandle && resizeDirection && event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey) {
+      if (onNudgeResize(group.id, resizeDirection, event.key)) {
         event.preventDefault();
         event.stopPropagation();
       }
@@ -145,12 +146,13 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
     onMouseDown={() => onActivateGroup(group.id)}
     onKeyDown={handleKeyDown}
   >
-    {layoutMode === "free" && (["left", "right", "top", "bottom"] as const).map((direction) => <div
+    {layoutMode === "free" && (["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right"] as const).map((direction) => <div
       key={direction}
+      data-direction={direction}
       className={`editor-group-resize-handle ${direction}`}
       role="separator"
       tabIndex={0}
-      aria-orientation={direction === "left" || direction === "right" ? "vertical" : "horizontal"}
+      aria-orientation={direction.includes("-") ? undefined : direction === "left" || direction === "right" ? "vertical" : "horizontal"}
       aria-label={`Resize ${group.name} ${direction}`}
       aria-keyshortcuts="Alt+Shift+ArrowLeft Alt+Shift+ArrowRight Alt+Shift+ArrowUp Alt+Shift+ArrowDown"
       title="Drag to resize · Alt+Shift+Arrow to adjust while focused"
