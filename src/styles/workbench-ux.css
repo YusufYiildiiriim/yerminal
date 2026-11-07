@@ -118,3 +118,7 @@
 .app-shell[data-theme] .terminal-usage-toggle { margin-left: auto; border: 0; background: transparent; color: var(--theme-muted); font: inherit; }
 .app-shell[data-theme] .terminal-usage-toggle[aria-pressed="true"] { color: var(--theme-text); }
 .app-shell[data-theme] .terminal-usage-toggle:focus-visible { outline: 2px solid var(--theme-accent); }
+
+/* Keep the rename input usable when its tab normally sizes to its content. */
+.app-shell[data-theme] .terminal-tab-item.editing { flex: 0 0 220px; min-width: 220px; }
+.app-shell[data-theme] .terminal-tab-item.editing .terminal-name-editor input { min-width: 0; }
