@@ -1608,7 +1608,7 @@ function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visible
       const rect = geometry.panes.get(terminal.id);
       const isFloating = !focusedTerminalId && floatingLayout.mode === "floating" && visibleTerminalIds.includes(terminal.id);
       const isSingleTerminal = focusedTerminalId === terminal.id || (!layout && floatingLayout.mode === "tiled" && visibleTerminalIds.length === 1 && visibleTerminalIds[0] === terminal.id);
-      const hasPaneHeader = Boolean(rect && !focusedTerminalId && visibleTerminalIds.length > 1 && (layout || isFloating));
+      const hasPaneHeader = Boolean(rect && !focusedTerminalId && (isFloating || (visibleTerminalIds.length > 1 && layout)));
       const style: CSSProperties = rect
         ? { left: `${rect.x}%`, top: `${rect.y}%`, width: `${rect.width}%`, height: `${rect.height}%` }
         : { display: "none" };
