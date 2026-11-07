@@ -8,7 +8,10 @@ import { CodeWorkspace, type EditorFileTab, type EditorGroupState } from "./feat
 import { FloatingTerminalDockGuides, FloatingTerminalModeToggle } from "./features/terminal/FloatingTerminalLayoutControls";
 import { useFloatingTerminalLayout, type TerminalDockEdge, type TerminalLayoutMode } from "./features/terminal/floatingTerminalLayout";
 import { ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { SettingsDialog, type AppSettings } from "./features/settings/SettingsDialog";
+import { WorkspaceViewLayout, useWorkspacePanelPreferences } from "./features/workspace/WorkspaceViewLayout";
 import "./styles/app.css";
+import "./styles/themes.css";
 
 const TerminalPane = lazy(() => import("./features/terminal/TerminalPane"));
 
@@ -203,6 +206,20 @@ const tools: { id: ToolId; label: string; icon: string }[] = [
   { id: "graph", label: "Git Graph", icon: "⌘" },
 ];
 
+const SETTINGS_KEY = "yerminal.app-settings.v1";
+const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13 };
+function readAppSettings(): AppSettings {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}");
+    return {
+      theme: raw.theme === "nordic" || raw.theme === "foundry" ? raw.theme : "obsidian",
+      editorFontFamily: typeof raw.editorFontFamily === "string" && raw.editorFontFamily.trim() ? raw.editorFontFamily : DEFAULT_SETTINGS.editorFontFamily,
+      terminalFontFamily: typeof raw.terminalFontFamily === "string" && raw.terminalFontFamily.trim() ? raw.terminalFontFamily : DEFAULT_SETTINGS.terminalFontFamily,
+      editorFontSize: typeof raw.editorFontSize === "number" && Number.isFinite(raw.editorFontSize) ? Math.max(8, Math.min(40, raw.editorFontSize)) : DEFAULT_SETTINGS.editorFontSize,
+      terminalFontSize: typeof raw.terminalFontSize === "number" && Number.isFinite(raw.terminalFontSize) ? Math.max(8, Math.min(40, raw.terminalFontSize)) : DEFAULT_SETTINGS.terminalFontSize,
+    };
+  } catch { return DEFAULT_SETTINGS; }
+}
 function App() {
   const [activeTool, setActiveTool] = useState<ToolId>("explorer");
   const [toolPanelAutoHide, setToolPanelAutoHide] = useState(() => {
@@ -229,13 +246,14 @@ function App() {
   const [terminalNameDraft, setTerminalNameDraft] = useState("");
   const terminalNameInputRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [helpOpen, setHelpOpen] = useState(false);
-  const helpAreaRef = useRef<HTMLDivElement>(null);
-  const helpButtonRef = useRef<HTMLButtonElement>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const [settings, setSettings] = useState<AppSettings>(readAppSettings);
   const initializedWorkspaceIdsRef = useRef(new Set<string>());
   const floatingModeSetterRef = useRef<((mode: TerminalLayoutMode) => void) | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeTerminalWorkspace = terminalWorkspaceState.workspaces.find((workspace) => workspace.id === terminalWorkspaceState.activeId) ?? terminalWorkspaceState.workspaces[0];
+  const { preferences: workspacePanelPreferences, updatePreferences: updateWorkspacePanelPreferences } = useWorkspacePanelPreferences(activeTerminalWorkspace?.id ?? "");
   const workspaceFolders = activeTerminalWorkspace?.folderPaths ?? [];
   const activeWorkspaceTerminalIds = activeTerminalWorkspace?.terminalIds ?? [];
   const activeWorkspaceTerminals = terminals.filter((terminal) => activeWorkspaceTerminalIds.includes(terminal.id));
@@ -263,22 +281,14 @@ function App() {
   }, [toolPanelAutoHide]);
 
   useEffect(() => {
-    if (!helpOpen) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      if (event.target instanceof Node && !helpAreaRef.current?.contains(event.target)) setHelpOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setHelpOpen(false);
-      helpButtonRef.current?.focus();
-    };
-    document.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [helpOpen]);
+    const root = document.documentElement;
+    root.dataset.theme = settings.theme;
+    root.style.setProperty("--editor-font-family", settings.editorFontFamily);
+    root.style.setProperty("--editor-font-size", settings.editorFontSize + "px");
+    root.style.setProperty("--terminal-font-family", settings.terminalFontFamily);
+    root.style.setProperty("--terminal-font-size", settings.terminalFontSize + "px");
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* Retain settings in memory. */ }
+  }, [settings]);
 
   const openEditorFile = useCallback(async (request: EditorFileRequest) => {
     const workspaceId = activeTerminalWorkspace?.id;
@@ -885,20 +895,12 @@ function App() {
   );
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" data-theme={settings.theme} style={{ "--editor-font-family": settings.editorFontFamily, "--editor-font-size": settings.editorFontSize + "px", "--terminal-font-family": settings.terminalFontFamily, "--terminal-font-size": settings.terminalFontSize + "px" } as CSSProperties}>
       <header className="titlebar">
         <div className="brand-mark">y</div>
         <span className="brand-name">yerminal</span>
         <span className="title-divider" />
-        <div className="titlebar-help" ref={helpAreaRef}>
-          <button ref={helpButtonRef} className="titlebar-help-button" type="button" aria-haspopup="dialog" aria-expanded={helpOpen} aria-controls="titlebar-shortcuts" onClick={() => setHelpOpen((open) => !open)}>
-            <span aria-hidden="true">?</span> Help
-          </button>
-          {helpOpen && <section className="titlebar-help-popover" id="titlebar-shortcuts" role="dialog" aria-label="Shortcuts">
-            <header className="titlebar-help-header"><h2>Shortcuts</h2><button className="titlebar-help-close" type="button" aria-label="Close shortcuts" onClick={() => { setHelpOpen(false); helpButtonRef.current?.focus(); }}>×</button></header>
-            <div className="titlebar-shortcut-list">{HELP_SHORTCUTS.map((shortcut) => <div className="titlebar-shortcut" key={shortcut.keys}><span>{shortcut.label}</span><kbd>{shortcut.keys}</kbd></div>)}</div>
-          </section>}
-        </div>
+        <button className="titlebar-help-button" type="button" onClick={() => setSettingsOpen(true)} aria-haspopup="dialog"><span aria-hidden="true">⚙</span> Settings</button>
         <div className="titlebar-spacer" />
         <span className="window-caption">Agent Workspace</span>
       </header>
@@ -953,7 +955,7 @@ function App() {
               <button className={`workspace-view-tab ${activeMainView === "code" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "code"} onClick={() => setActiveMainView("code")} type="button"><span aria-hidden="true">⌘</span> Code{activeEditorWorkspace.tabs.length > 0 && <small>{activeEditorWorkspace.tabs.length}</small>}</button>
               <button className={`workspace-view-tab ${activeMainView === "terminals" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "terminals"} onClick={() => setActiveMainView("terminals")} type="button"><span aria-hidden="true">▣</span> Terminals{activeWorkspaceTerminals.length > 0 && <small>{activeWorkspaceTerminals.length}</small>}</button>
             </nav>
-            {activeMainView === "terminals" && <div className="terminal-session-toolbar">
+            {(activeMainView === "terminals" || workspacePanelPreferences.terminalPanel === "bottom") && <div className="terminal-session-toolbar">
               <div className="terminal-tabs" role={layout || activeWorkspaceTerminalIds.length <= 1 ? undefined : "tablist"} aria-label={layout || activeWorkspaceTerminalIds.length <= 1 ? "Terminal workspace actions" : "Terminal sessions"}>
                 {!layout && activeWorkspaceTerminalIds.length > 1 && activeWorkspaceTerminals.map((terminal) => <div key={terminal.id} className={`terminal-tab-item ${terminal.id === activeTerminalId ? "selected" : ""}`} role="presentation">
                   {editingTerminalId === terminal.id ? <TerminalNameEditor terminalName={terminal.name} value={terminalNameDraft} inputRef={terminalNameInputRef} compact onChange={setTerminalNameDraft} onSave={saveTerminalName} onCancel={cancelTerminalRename} /> : <>
@@ -967,7 +969,7 @@ function App() {
               <div className="toolbar-actions"><FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={changeTerminalLayoutMode} /></div>
             </div>}
           </div>
-          {activeMainView === "code" && <CodeWorkspace
+          <WorkspaceViewLayout activeView={activeMainView} preferences={workspacePanelPreferences} onHeightChange={(terminalPanelHeight) => updateWorkspacePanelPreferences({ terminalPanelHeight })} code={<CodeWorkspace
             key={activeTerminalWorkspace?.id ?? ""}
             workspaceId={activeTerminalWorkspace?.id ?? ""}
             tabs={activeEditorWorkspace.tabs}
@@ -981,19 +983,19 @@ function App() {
             onCreateGroup={createEditorGroup}
             onMoveTab={moveEditorTab}
             onCloseGroup={closeEditorGroup}
-          />}
-          <div className="terminal-workspace-view" hidden={activeMainView !== "terminals"}>
-          <TerminalResourceGraph enabled={activeMainView === "terminals"} workspaceName={activeTerminalWorkspace?.name ?? "Workspace"} terminals={activeWorkspaceTerminals} activeTerminalId={activeTerminalId} />
+          />} terminal={<div className="terminal-workspace-view">
+          {activeMainView === "terminals" && <TerminalResourceGraph enabled={true} workspaceName={activeTerminalWorkspace?.name ?? "Workspace"} terminals={activeWorkspaceTerminals} activeTerminalId={activeTerminalId} />}
           <section className="terminal-surface" aria-label="Terminal workspace">
             <TerminalWorkspaceLayout layout={layout} terminals={terminals} visibleTerminalIds={activeWorkspaceTerminalIds} workspaceId={activeTerminalWorkspace?.id ?? ""} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} terminalNameInputRef={terminalNameInputRef} onRename={beginRenameTerminal} onNameChange={setTerminalNameDraft} onNameSave={saveTerminalName} onNameCancel={cancelTerminalRename} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
             {activeWorkspaceTerminals.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Welcome to <span>yerminal</span></div><p>Create a terminal to begin.</p><button className="primary-button" onClick={() => void createTerminal()} type="button">New Terminal</button></div>}
 
             <div className="terminal-status" aria-live="polite" aria-atomic="true"><span className="status-indicator" /><strong>{activeTerminal?.name ?? "No terminal"}</strong>{activeTerminal && <span className="terminal-status-active">Active</span>}<span className="status-separator">·</span><span>{activeTerminal?.shellLabel ?? "Ready"}</span></div>
           </section>
-          <footer className="statusbar"><span><span className="status-indicator" />{repoInfo ? `${repoInfo.branch} · ${repoInfo.state}` : "No folder opened"}</span><span>UTF-8</span><span>{navigator.userAgent.includes("Windows") ? "Windows" : navigator.platform}</span></footer>
-          </div>
+          {activeMainView === "terminals" && <footer className="statusbar"><span><span className="status-indicator" />{repoInfo ? `${repoInfo.branch} · ${repoInfo.state}` : "No folder opened"}</span><span>UTF-8</span><span>{navigator.userAgent.includes("Windows") ? "Windows" : navigator.platform}</span></footer>}
+          </div>} />
         </Panel>
       </PanelGroup>
+      {settingsOpen && <SettingsDialog settings={settings} workspaceSettings={workspacePanelPreferences} shortcuts={HELP_SHORTCUTS} onSettingsChange={setSettings} onWorkspaceSettingsChange={updateWorkspacePanelPreferences} onClose={closeSettings} />}
       {toast && <div className="app-toast" role="alert" aria-live="assertive" aria-atomic="true"><span>{toast}</span><button aria-label="Dismiss notification" onClick={dismissToast} type="button">×</button></div>}
     </main>
   );
