@@ -1,0 +1,92 @@
+/* Sidebar interaction hierarchy and sizing follow the workbench UX concept. */
+.app-shell[data-theme] .tool-sidebar {
+  width: 68px;
+  flex-basis: 68px;
+  padding: 10px 5px;
+  gap: 6px;
+  background: var(--theme-chrome);
+  border-color: var(--theme-border);
+}
+.app-shell[data-theme] .tools-panel[data-autohide-collapsed="true"] { min-width: 68px; }
+.app-shell[data-theme] .tool-sidebar-item {
+  min-height: 58px;
+  border-left-width: 3px;
+  border-radius: 5px;
+  gap: 4px;
+  color: var(--theme-muted);
+}
+.app-shell[data-theme] .tool-sidebar-item.selected {
+  color: var(--theme-text);
+  border-left-color: var(--theme-accent);
+  background: color-mix(in srgb, var(--theme-accent) 16%, var(--theme-surface));
+}
+.app-shell[data-theme] .tool-sidebar-icon { font-size: 18px; }
+.app-shell[data-theme] .tool-sidebar-label {
+  max-width: 58px;
+  font-size: 11px;
+  line-height: 1.15;
+  overflow-wrap: normal;
+}
+.app-shell[data-theme] .tool-sidebar-autohide { min-height: 50px; color: var(--theme-muted); border-color: var(--theme-border); }
+.app-shell[data-theme] .tool-sidebar-autohide-label { font-size: 10px; }
+.app-shell[data-theme] .workspace-navigation-controls { padding: 14px; gap: 12px; }
+.app-shell[data-theme] .workspace-switcher, .app-shell[data-theme] .workspace-root-picker { flex-wrap: wrap; gap: 6px; }
+.app-shell[data-theme] .workspace-switcher::before,
+.app-shell[data-theme] .workspace-root-picker::before { display: block; flex: 0 0 100%; color: var(--theme-muted); font-size: 12px; font-weight: 600; line-height: 1.25; }
+.app-shell[data-theme] .workspace-switcher::before { content: "Workspace"; }
+.app-shell[data-theme] .workspace-root-picker::before { content: "Project folder"; }
+.app-shell[data-theme] .workspace-switcher-icon,
+.app-shell[data-theme] .workspace-root-label { display: none; }
+.app-shell[data-theme] .workspace-name-select,
+.app-shell[data-theme] .workspace-root-picker select {
+  min-height: 37px;
+  min-width: 0;
+  padding: 0 9px;
+  border: 1px solid var(--theme-border);
+  border-radius: 5px;
+  background: var(--theme-raised);
+  color: var(--theme-text);
+  font-size: 14px;
+  text-overflow: ellipsis;
+}
+.app-shell[data-theme] .workspace-action {
+  width: 30px;
+  height: 37px;
+  flex-basis: 30px;
+  border: 1px solid var(--theme-border);
+  border-radius: 5px;
+  color: var(--theme-text);
+  font-size: 15px;
+}
+.app-shell[data-theme] .workspace-action.add-folder { margin-left: 0; }
+.app-shell[data-theme] .workspace-explorer-header { padding: 16px 15px 10px; }
+.app-shell[data-theme] .workspace-explorer-header h1 { font-size: 15px; }
+.app-shell[data-theme] .workspace-explorer-header p { max-width: none; margin-top: 5px; font-size: 12px; color: var(--theme-muted); }
+.app-shell[data-theme] .workspace-explorer-header .refresh-button { display: flex; align-items: center; justify-content: center; width: auto; min-width: 74px; padding: 0 8px; color: var(--theme-accent); font-size: 17px; }
+.app-shell[data-theme] .workspace-explorer-header .refresh-button::after { content: "Add folder"; margin-left: 4px; font-size: 12px; }
+.app-shell[data-theme] .workspace-explorer-tree { padding: 4px 8px 12px; font-size: 14px; color: var(--theme-text); }
+.app-shell[data-theme] .workspace-root { margin: 0; border-color: transparent; border-radius: 4px; }
+.app-shell[data-theme] .workspace-root.selected { background: transparent; border-color: transparent; }
+.app-shell[data-theme] .workspace-root-row { min-height: 40px; }
+.app-shell[data-theme] .workspace-root-row .workspace-folder-label strong { font-size: 13px; color: var(--theme-text); }
+.app-shell[data-theme] .workspace-root-row .workspace-folder-label small { font-size: 11px; color: var(--theme-muted); }
+.app-shell[data-theme] .workspace-tree-row { height: 35px; }
+.app-shell[data-theme] .workspace-tree-entry { height: 33px; font-size: 14px; color: var(--theme-text); }
+.app-shell[data-theme] .workspace-tree-toggle { width: 24px; height: 30px; flex-basis: 24px; color: var(--theme-muted); }
+.app-shell[data-theme] .workspace-tree-toggle-spacer { width: 24px; flex-basis: 24px; }
+.app-shell[data-theme] .workspace-tree-file-icon { width: 20px; flex-basis: 20px; font-size: 10px; }
+.app-shell[data-theme] .workspace-tree-size { font-size: 11px; color: var(--theme-muted); }
+.app-shell[data-theme] .workspace-tree-message,
+.app-shell[data-theme] .workspace-tree-error { font-size: 12px; color: var(--theme-muted); }
+.app-shell[data-theme] .workspace-tree-error { color: #e7a5a9; }
+.app-shell[data-theme] .workspace-tree-error button { font-size: 12px; }
+.app-shell[data-theme] .workspace-explorer-footnote { padding: 12px 15px; color: var(--theme-muted); font-size: 12px; border-color: var(--theme-border); }
+.app-shell[data-theme] :is(.workspace-action, .workspace-name-select, .workspace-root-picker select, .workspace-tree-toggle, .workspace-tree-entry, .workspace-folder-select, .workspace-folder-remove, .tool-sidebar-item, .tool-sidebar-autohide):focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }
+@media (max-width: 900px) {
+  .app-shell[data-theme] .tool-sidebar { width: 60px; flex-basis: 60px; padding-inline: 3px; }
+  .app-shell[data-theme] .tools-panel[data-autohide-collapsed="true"] { min-width: 60px; }
+  .app-shell[data-theme] .workspace-navigation-controls { padding: 10px; }
+  .app-shell[data-theme] .workspace-action { width: 26px; flex-basis: 26px; }
+  .app-shell[data-theme] .workspace-tree-size { display: none; }
+}
+
