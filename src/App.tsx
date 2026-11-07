@@ -987,7 +987,7 @@ function App() {
                 <button className="icon-button new-terminal" aria-label="Add terminal to workspace" title="Add terminal pane" onClick={() => { selectTerminalView(null); void addTerminalToWorkspace(); }} type="button">＋</button>
               </div>
             </div>}
-            {activeMainView === "terminals" && <div className="terminal-layout-toolbar"><span>{focusedTerminalView ? activeTerminal?.name : "All terminals"}</span><div className="toolbar-actions"><FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={changeTerminalLayoutMode} /></div></div>}
+            {activeMainView === "terminals" && <div className="terminal-layout-toolbar"><span>Layout</span><div className="toolbar-actions"><FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={changeTerminalLayoutMode} /></div></div>}
           </div>
           <WorkspaceViewLayout activeView={activeMainView} code={<CodeWorkspace
             key={activeTerminalWorkspace?.id ?? ""}
@@ -1006,7 +1006,7 @@ function App() {
           />} terminal={<div className="terminal-workspace-view">
           {activeMainView === "terminals" && terminalUsageOpen && <TerminalResourceGraph enabled={true} workspaceName={activeTerminalWorkspace?.name ?? "Workspace"} terminals={activeWorkspaceTerminals} activeTerminalId={activeTerminalId} />}
           <section className="terminal-surface" aria-label="Terminal workspace">
-            <TerminalWorkspaceLayout layout={layout} focusedTerminalId={focusedTerminalView} terminals={terminals} visibleTerminalIds={activeWorkspaceTerminalIds} workspaceId={activeTerminalWorkspace?.id ?? ""} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} terminalNameInputRef={terminalNameInputRef} onRename={beginRenameTerminal} onNameChange={setTerminalNameDraft} onNameSave={saveTerminalName} onNameCancel={cancelTerminalRename} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
+            <TerminalWorkspaceLayout layout={layout} focusedTerminalId={focusedTerminalView} terminals={terminals} visibleTerminalIds={activeWorkspaceTerminalIds} workspaceId={activeTerminalWorkspace?.id ?? ""} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
             {activeWorkspaceTerminals.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Welcome to <span>yerminal</span></div><p>Create a terminal to begin.</p><button className="primary-button" onClick={() => void createTerminal()} type="button">New Terminal</button></div>}
 
             <div className="terminal-status" aria-live="polite" aria-atomic="true"><span className="status-indicator" /><strong>{activeTerminal?.name ?? "No terminal"}</strong>{activeTerminal && <span className="terminal-status-active">Active</span>}<span className="status-separator">·</span><span>{activeTerminal?.shellLabel ?? "Ready"}</span></div>
@@ -1546,13 +1546,6 @@ type TerminalWorkspaceLayoutProps = {
   onDockToTiledLayout: (sessionId: string, edge: TerminalDockEdge) => void;
   onModeState: (mode: TerminalLayoutMode, setMode: (mode: TerminalLayoutMode) => void) => void;
   activeTerminalId: string | null;
-  editingTerminalId: string | null;
-  terminalNameDraft: string;
-  terminalNameInputRef: React.RefObject<HTMLInputElement | null>;
-  onRename: (terminal: TerminalSession) => void;
-  onNameChange: (value: string) => void;
-  onNameSave: () => void;
-  onNameCancel: () => void;
   onFocus: (sessionId: string) => void;
   onExit: (sessionId: string) => void;
   onClose: (sessionId: string) => void;
@@ -1560,7 +1553,7 @@ type TerminalWorkspaceLayoutProps = {
   onResize: (splitId: string, ratio: number) => void;
 };
 
-function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visibleTerminalIds, workspaceId, onDockToTiledLayout, onModeState, activeTerminalId, editingTerminalId, terminalNameDraft, terminalNameInputRef, onRename, onNameChange, onNameSave, onNameCancel, onFocus, onExit, onClose, onMove, onResize }: TerminalWorkspaceLayoutProps) {
+function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visibleTerminalIds, workspaceId, onDockToTiledLayout, onModeState, activeTerminalId, onFocus, onExit, onClose, onMove, onResize }: TerminalWorkspaceLayoutProps) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const paneRefs = useRef(new Map<string, HTMLDivElement>());
   const paneDragRef = useRef<{ sourceId: string; pointerId: number; startX: number; startY: number; started: boolean } | null>(null);
@@ -1609,7 +1602,7 @@ function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visible
       const rect = geometry.panes.get(terminal.id);
       const isFloating = !focusedTerminalId && floatingLayout.mode === "floating" && visibleTerminalIds.includes(terminal.id);
       const isSingleTerminal = focusedTerminalId === terminal.id || (!layout && floatingLayout.mode === "tiled" && visibleTerminalIds.length === 1 && visibleTerminalIds[0] === terminal.id);
-      const hasPaneHeader = Boolean(rect && (layout || isFloating || isSingleTerminal));
+      const hasPaneHeader = Boolean(rect && !focusedTerminalId && visibleTerminalIds.length > 1 && (layout || isFloating));
       const style: CSSProperties = rect
         ? { left: `${rect.x}%`, top: `${rect.y}%`, width: `${rect.width}%`, height: `${rect.height}%` }
         : { display: "none" };
@@ -1710,7 +1703,7 @@ function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visible
               setDropTargetPaneId(null);
             }}
           >⠿</button>}
-          {editingTerminalId === terminal.id ? <TerminalNameEditor terminalName={terminal.name} value={terminalNameDraft} inputRef={terminalNameInputRef} compact onChange={onNameChange} onSave={onNameSave} onCancel={onNameCancel} /> : <><span className="terminal-pane-title" title={terminal.name}>{terminal.name}</span><button className="pane-rename" type="button" aria-label={`Rename ${terminal.name}`} title="Rename terminal" onClick={() => onRename(terminal)}>✎</button></>}{terminal.id === activeTerminalId && <span className="terminal-active-label pane-active-label" aria-hidden="true">Active</span>}
+          <span className="terminal-pane-title" title={terminal.name}>{terminal.name}</span>
           {visibleTerminalIds.length > 1 && <button className="pane-close" type="button" aria-label={`Close ${terminal.name}`} onClick={() => onClose(terminal.id)}>×</button>}
         </header>}
         <div className="terminal-pane-body">
