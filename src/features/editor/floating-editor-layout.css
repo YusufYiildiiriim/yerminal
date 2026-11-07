@@ -5,7 +5,7 @@
 .editor-layout-mode-toggle button.selected { background: #39334c; color: #e2dcff; box-shadow: inset 0 0 0 1px #665b87; }
 .editor-groups-layout.free { position: relative; display: block; overflow: hidden; }
 .editor-group-pane.free { position: absolute; z-index: 1; overflow: hidden; border: 1px solid #34343d; border-radius: 5px; box-shadow: 0 8px 24px rgb(0 0 0 / 24%); }
-.editor-group-pane.free.active { border-color: #7466a0; }
+.editor-group-pane.free.active { z-index: 2; border-color: var(--theme-accent, #b39aff); }
 .editor-group-pane.free[data-dragging="true"] { z-index: 8; opacity: .92; border-color: #b5a5ff; box-shadow: 0 12px 34px rgb(0 0 0 / 42%), 0 0 0 1px #b5a5ff66; }
 .editor-group-pane.free[data-resizing="true"] { z-index: 9; border-color: #b5a5ff; box-shadow: 0 12px 34px rgb(0 0 0 / 42%), 0 0 0 1px #b5a5ff66; }
 .editor-group-heading.free { cursor: grab; touch-action: none; }
