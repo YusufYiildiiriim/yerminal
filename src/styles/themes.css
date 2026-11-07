@@ -83,12 +83,12 @@
   background: var(--theme-raised);
   border-color: var(--theme-border);
 }
-.app-shell[data-theme] :is(.primary-button, .git-commit-button) {
+.app-shell[data-theme] :is(.primary-button, .git-commit-button:not(:disabled)) {
   color: var(--theme-chrome);
   background: var(--theme-accent);
   border-color: var(--theme-accent);
 }
-.app-shell[data-theme] :is(.primary-button, .git-commit-button):hover { filter: brightness(1.12); }
+.app-shell[data-theme] :is(.primary-button, .git-commit-button:not(:disabled)):hover { filter: brightness(1.12); }
 .app-shell[data-theme] :is(.resize-handle, .split-handle, .layout-divider) { background-color: var(--theme-border); }
 .app-shell[data-theme] :is(.resize-handle:hover, .resize-handle[data-resize-handle-active], .split-handle:hover) { background-color: var(--theme-accent); }
 /* Keep the editable text layer and highlighted overlay in identical metrics. */
@@ -97,3 +97,89 @@
   font-size: var(--editor-font-size, 12px);
 }
 
+
+
+/* Shared workspace visual language across presets. */
+.app-shell[data-theme] {
+  font-family: Inter, "Segoe UI", sans-serif;
+  letter-spacing: .005em;
+}
+.app-shell[data-theme] .titlebar {
+  gap: 12px;
+  padding-inline: 15px;
+}
+.app-shell[data-theme] .brand-mark { border-radius: 8px; }
+.app-shell[data-theme] .tool-sidebar { padding: 10px 5px; gap: 5px; }
+.app-shell[data-theme] .tool-sidebar-item {
+  border-radius: 9px;
+  min-height: 48px;
+}
+.app-shell[data-theme] .tool-sidebar-item.selected {
+  background: color-mix(in srgb, var(--theme-accent) 12%, var(--theme-surface));
+  color: var(--theme-text);
+  border-left-color: var(--theme-accent);
+}
+.app-shell[data-theme] :is(.tool-sidebar-item:hover, .workspace-tree-row:hover, .workspace-root-row:hover, .change-row:hover) {
+  background: color-mix(in srgb, var(--theme-accent) 7%, var(--theme-surface));
+  color: var(--theme-text);
+}
+.app-shell[data-theme] :is(.tool-header h1, .workspace-explorer-header h1, .git-commit-box-heading) {
+  color: var(--theme-text);
+  letter-spacing: -.015em;
+}
+.app-shell[data-theme] :is(.workspace-name-select, .workspace-root-picker select) {
+  min-height: 29px;
+  border: 1px solid var(--theme-border);
+  border-radius: 7px;
+  background: var(--theme-raised);
+  color: var(--theme-text);
+}
+.app-shell[data-theme] :is(.workspace-view-tab, .editor-file-tab) {
+  transition: color .15s ease, background-color .15s ease;
+}
+.app-shell[data-theme] .workspace-view-tab.selected {
+  color: var(--theme-text);
+}
+.app-shell[data-theme] .workspace-view-tab.selected small {
+  color: var(--theme-accent);
+  background: color-mix(in srgb, var(--theme-accent) 16%, var(--theme-raised));
+}
+.app-shell[data-theme] :is(.floating-terminal-mode-toggle, .floating-editor-mode-toggle) {
+  border-color: var(--theme-border);
+  border-radius: 8px;
+  background: var(--theme-chrome);
+}
+.app-shell[data-theme] :is(.floating-terminal-mode-toggle, .floating-editor-mode-toggle) button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--theme-accent) 35%, var(--theme-border));
+  background: color-mix(in srgb, var(--theme-accent) 14%, var(--theme-raised));
+  color: var(--theme-accent);
+}
+.app-shell[data-theme] :is(.floating-terminal-window, .floating-editor-window) {
+  border-color: var(--theme-border);
+  border-radius: 10px;
+  background: var(--theme-editor);
+  box-shadow: 0 16px 42px #0008;
+}
+.app-shell[data-theme] :is(.floating-terminal-window, .floating-editor-window)[data-active="true"] {
+  border-color: color-mix(in srgb, var(--theme-accent) 65%, var(--theme-border));
+}
+.app-shell[data-theme] :is(.terminal-pane-frame, .git-commit-box, .workspace-root) {
+  border-color: var(--theme-border);
+}
+.app-shell[data-theme] :is(.pane-active-label, .terminal-active-label, .terminal-status-active) {
+  background: color-mix(in srgb, var(--theme-accent) 17%, var(--theme-raised));
+  border-color: color-mix(in srgb, var(--theme-accent) 50%, var(--theme-border));
+  color: var(--theme-accent);
+}
+.app-shell[data-theme] :is(.git-confirm-dialog, .diff-preview-dialog, .commit-preview-dialog, .titlebar-help-popover) {
+  background: var(--theme-surface);
+  border-color: var(--theme-border);
+  border-radius: 12px;
+  box-shadow: 0 24px 70px #000a;
+}
+.app-shell[data-theme] :is(.git-commit-box textarea, .git-confirm-path) {
+  background: var(--theme-chrome);
+  border-color: var(--theme-border);
+  color: var(--theme-text);
+  border-radius: 7px;
+}
