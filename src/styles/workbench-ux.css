@@ -84,3 +84,37 @@
 .app-shell[data-theme] .toolbar-actions { flex: none; }
 
 .app-shell[data-theme] .terminal-tabs > .terminal-tab { flex: 0 0 auto; white-space: nowrap; padding-inline: 14px; }
+
+/* Match the approved terminal-first layout. */
+.app-shell[data-theme] .titlebar { height: 48px; flex: 0 0 48px; gap: 14px; padding: 0 16px; }
+.app-shell[data-theme] .brand-name { font-size: 14px; font-weight: 600; }
+.app-shell[data-theme] .titlebar .workspace-switcher { flex-wrap: nowrap; gap: 4px; }
+.app-shell[data-theme] .titlebar .workspace-switcher::before { display: none; }
+.app-shell[data-theme] .titlebar .workspace-switcher-icon { display: none; }
+.app-shell[data-theme] .titlebar .workspace-name-select { width: 145px; max-width: 20vw; min-height: 30px; border-color: transparent; background: transparent; font-size: 13px; }
+.app-shell[data-theme] .titlebar .workspace-action { width: 27px; height: 27px; flex-basis: 27px; border-color: transparent; background: transparent; }
+.app-shell[data-theme] .titlebar-help-button { color: var(--theme-muted); font-size: 12px; }
+.app-shell[data-theme] .terminal-toolbar { border-bottom: 0; background: var(--theme-background); }
+.app-shell[data-theme] .workspace-view-tabs { flex: 0 0 49px; padding: 0 12px; background: var(--theme-surface); }
+.app-shell[data-theme] .workspace-view-tab { min-width: 0; padding: 0 13px; font-weight: 400; }
+.app-shell[data-theme] .workspace-view-tab.selected { font-weight: 500; }
+.app-shell[data-theme] .workspace-view-tab.selected::after { height: 2px; }
+.app-shell[data-theme] .terminal-session-toolbar { min-height: 49px; flex: 0 0 49px; padding: 0 12px; border-bottom: 1px solid var(--theme-border); background: var(--theme-surface); }
+.app-shell[data-theme] .terminal-tabs { height: 100%; overflow-x: auto; }
+.app-shell[data-theme] .terminal-tab-item { flex: 0 0 auto; min-width: 0; max-width: 210px; border: 0; }
+.app-shell[data-theme] .terminal-tab-item.selected { box-shadow: inset 0 -2px var(--theme-accent); background: transparent; }
+.app-shell[data-theme] .terminal-tab, .app-shell[data-theme] .terminal-tab.selected { background: transparent; }
+.app-shell[data-theme] .terminal-tab.selected { color: var(--theme-text); }
+.app-shell[data-theme] .terminal-tabs > .terminal-tab.selected { box-shadow: inset 0 -2px var(--theme-accent); }
+.app-shell[data-theme] .terminal-tabs .terminal-active-label { display: none; }
+.app-shell[data-theme] .terminal-tab-name { max-width: 140px; }
+.app-shell[data-theme] .new-terminal { margin-left: auto; flex: 0 0 30px; }
+.app-shell[data-theme] .terminal-layout-toolbar { min-height: 46px; display: flex; align-items: center; padding: 0 16px; color: var(--theme-muted); border-bottom: 1px solid var(--theme-border); }
+.app-shell[data-theme] .terminal-layout-toolbar .toolbar-actions { margin-left: auto; padding: 0; }
+.app-shell[data-theme] .terminal-pane-header { min-height: 43px; background: var(--theme-surface); }
+.app-shell[data-theme] .terminal-pane-frame[data-active="true"] .terminal-pane-header { background: var(--theme-surface); border-color: var(--theme-border); }
+.app-shell[data-theme] .terminal-pane-frame.layout-pane[data-active="true"] { box-shadow: none; border-color: var(--theme-border); }
+.app-shell[data-theme] .terminal-status { display: none; }
+.app-shell[data-theme] .terminal-usage-toggle { margin-left: auto; border: 0; background: transparent; color: var(--theme-muted); font: inherit; }
+.app-shell[data-theme] .terminal-usage-toggle[aria-pressed="true"] { color: var(--theme-text); }
+.app-shell[data-theme] .terminal-usage-toggle:focus-visible { outline: 2px solid var(--theme-accent); }

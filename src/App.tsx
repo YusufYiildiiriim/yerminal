@@ -250,6 +250,7 @@ function App() {
   const terminalNameInputRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [terminalUsageOpen, setTerminalUsageOpen] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const [settings, setSettings] = useState<AppSettings>(readAppSettings);
   const initializedWorkspaceIdsRef = useRef(new Set<string>());
@@ -912,16 +913,23 @@ function App() {
   return (
     <main className="app-shell" data-theme={settings.theme} style={{ "--editor-font-family": settings.editorFontFamily, "--editor-font-size": settings.editorFontSize + "px", "--terminal-font-family": settings.terminalFontFamily, "--terminal-font-size": settings.terminalFontSize + "px" } as CSSProperties}>
       <header className="titlebar">
-        <div className="brand-mark">y</div>
         <span className="brand-name">yerminal</span>
         <span className="title-divider" />
-        <button className="titlebar-help-button" type="button" onClick={() => setSettingsOpen(true)} aria-haspopup="dialog"><span aria-hidden="true">⚙</span> Settings</button>
+        <div className="workspace-switcher">
+                <span className="workspace-switcher-icon" aria-hidden="true">▣</span>
+                <select className="workspace-name-select" aria-label="Active terminal workspace" value={activeTerminalWorkspace?.id ?? ""} onChange={(event) => activateWorkspace(event.currentTarget.value)}>
+                  {terminalWorkspaceState.workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+                </select>
+                <button className="workspace-action" type="button" aria-label="Create workspace" title="Create workspace" onClick={createWorkspace}>＋</button>
+                <button className="workspace-action" type="button" aria-label="Rename workspace" title="Rename workspace" onClick={renameWorkspace} disabled={!activeTerminalWorkspace}>✎</button>
+                <button className="workspace-action delete" type="button" aria-label="Delete workspace" title={terminalWorkspaceState.workspaces.length <= 1 ? "Keep at least one workspace" : "Delete workspace"} onClick={() => void deleteWorkspace()} disabled={terminalWorkspaceState.workspaces.length <= 1}>×</button>
+              </div>
         <div className="titlebar-spacer" />
-        <span className="window-caption">Agent Workspace</span>
+        <button className="titlebar-help-button" type="button" onClick={() => setSettingsOpen(true)} aria-haspopup="dialog">Help &amp; Settings</button>
       </header>
 
       <PanelGroup direction="horizontal" className="workspace">
-        <Panel ref={toolsPanelRef} defaultSize={27} minSize={18} maxSize={46} collapsible collapsedSize={4} className="tools-panel" data-autohide-collapsed={toolsPanelCollapsed ? "true" : "false"} onBlurCapture={(event) => {
+        <Panel ref={toolsPanelRef} defaultSize={19} minSize={16} maxSize={46} collapsible collapsedSize={4} className="tools-panel" data-autohide-collapsed={toolsPanelCollapsed ? "true" : "false"} onBlurCapture={(event) => {
           if (!toolPanelAutoHide || event.currentTarget.contains(event.relatedTarget as Node | null)) return;
           toolsPanelRef.current?.collapse();
           setToolsPanelCollapsed(true);
@@ -943,15 +951,6 @@ function App() {
             <div className="workspace-sidebar-content">
           <section className="workspace-navigation" aria-label="Workspace navigation">
             <div className="workspace-navigation-controls">
-              <div className="workspace-switcher">
-                <span className="workspace-switcher-icon" aria-hidden="true">▣</span>
-                <select className="workspace-name-select" aria-label="Active terminal workspace" value={activeTerminalWorkspace?.id ?? ""} onChange={(event) => activateWorkspace(event.currentTarget.value)}>
-                  {terminalWorkspaceState.workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
-                </select>
-                <button className="workspace-action" type="button" aria-label="Create workspace" title="Create workspace" onClick={createWorkspace}>＋</button>
-                <button className="workspace-action" type="button" aria-label="Rename workspace" title="Rename workspace" onClick={renameWorkspace} disabled={!activeTerminalWorkspace}>✎</button>
-                <button className="workspace-action delete" type="button" aria-label="Delete workspace" title={terminalWorkspaceState.workspaces.length <= 1 ? "Keep at least one workspace" : "Delete workspace"} onClick={() => void deleteWorkspace()} disabled={terminalWorkspaceState.workspaces.length <= 1}>×</button>
-              </div>
               <label className="workspace-root-picker" title={repoInfo ? repoInfo.root + " · " + repoInfo.branch : repoPath || "Set a project folder for this workspace"}>
                 <span className="workspace-root-label" aria-hidden="true">⌂</span>
                 <select aria-label="Workspace project folder" value={repoPath} onChange={(event) => void activateWorkspaceFolder(event.currentTarget.value)}>
@@ -972,8 +971,8 @@ function App() {
         <Panel minSize={35} className="terminal-panel">
           <div className="terminal-toolbar">
             <nav className="workspace-view-tabs" role="tablist" aria-label="Workspace views">
-              <button className={`workspace-view-tab ${activeMainView === "terminals" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "terminals"} onClick={() => setActiveMainView("terminals")} type="button"><span aria-hidden="true">▣</span> Terminals{activeWorkspaceTerminals.length > 0 && <small>{activeWorkspaceTerminals.length}</small>}</button>
-              <button className={`workspace-view-tab ${activeMainView === "code" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "code"} onClick={() => setActiveMainView("code")} type="button"><span aria-hidden="true">⌘</span> Editor{activeEditorWorkspace.tabs.length > 0 && <small>{activeEditorWorkspace.tabs.length}</small>}</button>
+              <button className={`workspace-view-tab ${activeMainView === "terminals" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "terminals"} onClick={() => setActiveMainView("terminals")} type="button">Terminal</button>
+              <button className={`workspace-view-tab ${activeMainView === "code" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "code"} onClick={() => setActiveMainView("code")} type="button">Editor</button>
             </nav>
             {activeMainView === "terminals" && <div className="terminal-session-toolbar">
               <div className="terminal-tabs" role="tablist" aria-label="Terminal sessions">
@@ -987,8 +986,8 @@ function App() {
                 </div>)}
                 <button className="icon-button new-terminal" aria-label="Add terminal to workspace" title="Add terminal pane" onClick={() => { selectTerminalView(null); void addTerminalToWorkspace(); }} type="button">＋</button>
               </div>
-              <div className="toolbar-actions"><FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={changeTerminalLayoutMode} /></div>
             </div>}
+            {activeMainView === "terminals" && <div className="terminal-layout-toolbar"><span>{focusedTerminalView ? activeTerminal?.name : "All terminals"}</span><div className="toolbar-actions"><FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={changeTerminalLayoutMode} /></div></div>}
           </div>
           <WorkspaceViewLayout activeView={activeMainView} code={<CodeWorkspace
             key={activeTerminalWorkspace?.id ?? ""}
@@ -1005,14 +1004,14 @@ function App() {
             onMoveTab={moveEditorTab}
             onCloseGroup={closeEditorGroup}
           />} terminal={<div className="terminal-workspace-view">
-          {activeMainView === "terminals" && <TerminalResourceGraph enabled={true} workspaceName={activeTerminalWorkspace?.name ?? "Workspace"} terminals={activeWorkspaceTerminals} activeTerminalId={activeTerminalId} />}
+          {activeMainView === "terminals" && terminalUsageOpen && <TerminalResourceGraph enabled={true} workspaceName={activeTerminalWorkspace?.name ?? "Workspace"} terminals={activeWorkspaceTerminals} activeTerminalId={activeTerminalId} />}
           <section className="terminal-surface" aria-label="Terminal workspace">
             <TerminalWorkspaceLayout layout={layout} focusedTerminalId={focusedTerminalView} terminals={terminals} visibleTerminalIds={activeWorkspaceTerminalIds} workspaceId={activeTerminalWorkspace?.id ?? ""} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} terminalNameInputRef={terminalNameInputRef} onRename={beginRenameTerminal} onNameChange={setTerminalNameDraft} onNameSave={saveTerminalName} onNameCancel={cancelTerminalRename} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
             {activeWorkspaceTerminals.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Welcome to <span>yerminal</span></div><p>Create a terminal to begin.</p><button className="primary-button" onClick={() => void createTerminal()} type="button">New Terminal</button></div>}
 
             <div className="terminal-status" aria-live="polite" aria-atomic="true"><span className="status-indicator" /><strong>{activeTerminal?.name ?? "No terminal"}</strong>{activeTerminal && <span className="terminal-status-active">Active</span>}<span className="status-separator">·</span><span>{activeTerminal?.shellLabel ?? "Ready"}</span></div>
           </section>
-          {activeMainView === "terminals" && <footer className="statusbar"><span><span className="status-indicator" />{repoInfo ? `${repoInfo.branch} · ${repoInfo.state}` : "No folder opened"}</span><span>UTF-8</span><span>{navigator.userAgent.includes("Windows") ? "Windows" : navigator.platform}</span></footer>}
+          {activeMainView === "terminals" && <footer className="statusbar"><span><span className="status-indicator" />{repoInfo ? `${repoInfo.branch} · ${repoInfo.state}` : "No folder opened"}</span><button type="button" className="terminal-usage-toggle" aria-pressed={terminalUsageOpen} onClick={() => setTerminalUsageOpen((open) => !open)}>Terminal resource usage</button></footer>}
           </div>} />
         </Panel>
       </PanelGroup>
