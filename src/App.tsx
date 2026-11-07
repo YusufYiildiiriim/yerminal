@@ -911,6 +911,18 @@ function App() {
           toolsPanelRef.current?.collapse();
           setToolsPanelCollapsed(true);
         }}>
+          <div className="workspace-tool-layout">
+            <nav className="tool-sidebar" aria-label="Workspace tools">
+              {tools.map((tool) => <button key={tool.id} className={`tool-sidebar-item ${activeTool === tool.id ? "selected" : ""}`} onClick={() => { setActiveTool(tool.id); if (toolPanelAutoHide) { toolsPanelRef.current?.expand(); setToolsPanelCollapsed(false); } }} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={tool.label}>
+                <span className="tool-sidebar-icon" aria-hidden="true">{tool.icon}</span>
+                <span className="tool-sidebar-label">{tool.label}</span>
+              </button>)}
+              <button className="tool-sidebar-autohide" type="button" aria-label={toolPanelAutoHide ? "Disable automatic hiding of workspace panel" : "Automatically hide workspace panel"} aria-pressed={toolPanelAutoHide} title={toolPanelAutoHide ? "Keep workspace panel visible" : "Automatically hide workspace panel"} onClick={() => setToolPanelAutoHide((enabled) => !enabled)}>
+                <span aria-hidden="true">{toolPanelAutoHide ? "⌖" : "◧"}</span>
+                <span className="tool-sidebar-autohide-label">{toolPanelAutoHide ? "Pinned" : "Auto-hide"}</span>
+              </button>
+            </nav>
+            <div className="workspace-sidebar-content">
           <section className="workspace-navigation" aria-label="Workspace navigation">
             <div className="workspace-navigation-controls">
               <div className="workspace-switcher">
@@ -932,20 +944,10 @@ function App() {
               </label>
             </div>
           </section>
-          <div className="workspace-tool-layout" data-panel-auto-hide={toolPanelAutoHide ? "true" : "false"}>
-            <nav className="tool-sidebar" aria-label="Workspace tools">
-              {tools.map((tool) => <button key={tool.id} className={`tool-sidebar-item ${activeTool === tool.id ? "selected" : ""}`} onClick={() => { setActiveTool(tool.id); if (toolPanelAutoHide) { toolsPanelRef.current?.expand(); setToolsPanelCollapsed(false); } }} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={tool.label}>
-                <span className="tool-sidebar-icon" aria-hidden="true">{tool.icon}</span>
-                <span className="tool-sidebar-label">{tool.label}</span>
-              </button>)}
-              <button className="tool-sidebar-autohide" type="button" aria-label={toolPanelAutoHide ? "Disable automatic hiding of workspace panel" : "Automatically hide workspace panel"} aria-pressed={toolPanelAutoHide} title={toolPanelAutoHide ? "Keep workspace panel visible" : "Automatically hide workspace panel"} onClick={() => setToolPanelAutoHide((enabled) => !enabled)}>
-                <span aria-hidden="true">{toolPanelAutoHide ? "⌖" : "◧"}</span>
-                <span className="tool-sidebar-autohide-label">{toolPanelAutoHide ? "Pinned" : "Auto-hide"}</span>
-              </button>
-            </nav>
             <section className="tool-content" aria-label={tools.find((tool) => tool.id === activeTool)?.label}>
               {activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} /> : <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } })} />}
             </section>
+            </div>
           </div>
         </Panel>
         <PanelResizeHandle className="resize-handle" aria-label="Resize developer tools" />
