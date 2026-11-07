@@ -1,0 +1,76 @@
+/* Workbench readability and task hierarchy. Theme and editor fonts remain configurable. */
+.app-shell[data-theme] .terminal-toolbar {
+  min-width: 0;
+  height: 50px;
+  flex-basis: 50px;
+  border-color: var(--theme-border);
+  background: var(--theme-surface);
+}
+.app-shell[data-theme] .workspace-view-tabs { min-width: 0; padding: 0 6px; }
+.app-shell[data-theme] .workspace-view-tab {
+  min-width: 92px;
+  padding: 0 12px;
+  color: var(--theme-muted);
+  font-size: 13px;
+}
+.app-shell[data-theme] .workspace-view-tab.selected { color: var(--theme-text); font-weight: 650; }
+.app-shell[data-theme] .workspace-view-tab.selected::after { right: 0; left: 0; height: 3px; background: var(--theme-accent); }
+.app-shell[data-theme] .workspace-view-tab small { font-size: 11px; color: var(--theme-text); background: var(--theme-raised); }
+.app-shell[data-theme] .terminal-tabs { min-width: 0; overflow-x: auto; }
+.app-shell[data-theme] .terminal-tab { font-size: 13px; }
+.app-shell[data-theme] .terminal-tab-item.selected { background: var(--theme-raised); box-shadow: inset 0 2px var(--theme-accent); }
+.app-shell[data-theme] .terminal-tab.selected { color: var(--theme-text); background: var(--theme-raised); }
+.app-shell[data-theme] .terminal-active-label { font-size: 10px; letter-spacing: 0; }
+.app-shell[data-theme] .terminal-tab-rename,
+.app-shell[data-theme] .tab-close { width: 26px; min-height: 28px; flex-basis: 26px; font-size: 13px; }
+.app-shell[data-theme] .toolbar-actions { min-width: 0; overflow-x: auto; }
+.app-shell[data-theme] .editor-groups-toolbar { height: 40px; flex-basis: 40px; gap: 8px; padding: 0 12px; }
+.app-shell[data-theme] .editor-groups-title { color: var(--theme-text); font-size: 12px; font-weight: 600; }
+.app-shell[data-theme] .editor-groups-count { font-size: 11px; }
+.app-shell[data-theme] .editor-create-group { min-height: 28px; padding: 4px 9px; font-size: 12px; }
+.app-shell[data-theme] .editor-group-title { color: var(--theme-text); font-size: 12px; }
+.app-shell[data-theme] .editor-group-count { color: var(--theme-muted); font-size: 11px; }
+.app-shell[data-theme] .editor-group-move { min-height: 24px; max-width: 150px; font-size: 11px; }
+.app-shell[data-theme] .editor-file-tabs { height: 43px; flex-basis: 43px; background: var(--theme-surface); border-color: var(--theme-border); }
+.app-shell[data-theme] .editor-file-tab { min-width: 125px; max-width: 240px; border-color: var(--theme-border); }
+.app-shell[data-theme] .editor-file-tab-select { gap: 8px; padding: 0 11px; font-size: 13px; }
+.app-shell[data-theme] .editor-file-tab-icon { font-size: 11px; }
+.app-shell[data-theme] .editor-file-tab-dirty-mark,
+.app-shell[data-theme] .editor-file-tab-readonly-mark { font-size: 11px; }
+.app-shell[data-theme] .editor-file-tab.selected { box-shadow: inset 0 2px var(--theme-accent); }
+.app-shell[data-theme] .editor-tabs-empty { color: var(--theme-muted); font-size: 12px; }
+.app-shell[data-theme] .editor-group-pane .code-editor-header { padding: 8px 12px; }
+.app-shell[data-theme] .code-editor-breadcrumb { max-width: 100%; color: var(--theme-muted); font: 12px "Segoe UI", sans-serif; }
+.app-shell[data-theme] .code-editor-breadcrumb strong { color: var(--theme-text); }
+.app-shell[data-theme] .code-editor-meta { min-width: 0; font-size: 12px; color: var(--theme-muted); }
+.app-shell[data-theme] .code-editor-save { min-height: 28px; font-size: 12px; }
+.app-shell[data-theme] .code-editor-save kbd { font-size: 10px; }
+.app-shell[data-theme] .code-editor-message { color: var(--theme-muted); font-size: 13px; }
+.app-shell[data-theme] .code-editor-empty h2 { color: var(--theme-text); font-size: 15px; }
+.app-shell[data-theme] .code-editor-empty p { color: var(--theme-muted); font-size: 13px; }
+.app-shell[data-theme] .code-editor-statusbar { height: 28px; flex-basis: 28px; color: var(--theme-muted); font-size: 11px; }
+.app-shell[data-theme] .terminal-pane-title { color: var(--theme-text); font-size: 12px; }
+.app-shell[data-theme] .terminal-pane-frame[data-active="true"] .terminal-pane-header { background: var(--theme-raised); border-color: var(--theme-accent); }
+.app-shell[data-theme] .terminal-status { color: var(--theme-text); font-size: 11px; }
+.app-shell[data-theme] .terminal-status strong { font-size: 11px; }
+.app-shell[data-theme] .terminal-status-active { font-size: 10px; letter-spacing: 0; }
+.app-shell[data-theme] .terminal-placeholder p { color: var(--theme-muted); font-size: 13px; }
+.app-shell[data-theme] .statusbar { height: 28px; flex-basis: 28px; color: var(--theme-muted); font-size: 11px; }
+.app-shell[data-theme] .terminal-resource-strip-header,
+.app-shell[data-theme] .terminal-resource-terminal-name strong { font-size: 12px; }
+.app-shell[data-theme] .terminal-resource-terminal-name span,
+.app-shell[data-theme] .terminal-resource-session-count,
+.app-shell[data-theme] .terminal-resource-live,
+.app-shell[data-theme] .terminal-resource-state,
+.app-shell[data-theme] .terminal-resource-process-count { font-size: 11px; }
+.app-shell[data-theme] :is(.workspace-view-tab, .editor-create-group, .editor-file-tab-select, .editor-file-tab-close, .code-editor-save, .terminal-tab, .terminal-tab-rename, .tab-close, .pane-rename, .pane-close):focus-visible {
+  outline: 2px solid var(--theme-accent);
+  outline-offset: -2px;
+}
+@media (max-width: 900px) {
+  .app-shell[data-theme] .terminal-toolbar { grid-template-columns: minmax(36px, 1fr) auto minmax(36px, 1fr); }
+  .app-shell[data-theme] .workspace-view-tab { min-width: 76px; padding-inline: 8px; }
+  .app-shell[data-theme] .editor-groups-toolbar { padding-inline: 8px; }
+  .app-shell[data-theme] .code-editor-meta { flex-wrap: wrap; }
+  .app-shell[data-theme] .statusbar { gap: 10px; overflow-x: auto; white-space: nowrap; }
+}
