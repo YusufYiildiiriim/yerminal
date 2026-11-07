@@ -74,3 +74,13 @@
   .app-shell[data-theme] .code-editor-meta { flex-wrap: wrap; }
   .app-shell[data-theme] .statusbar { gap: 10px; overflow-x: auto; white-space: nowrap; }
 }
+
+/* Primary navigation and terminal sessions occupy separate rows. */
+.app-shell[data-theme] .terminal-toolbar { display: flex; flex-direction: column; align-items: stretch; height: auto; flex-basis: auto; }
+.app-shell[data-theme] .workspace-view-tabs { flex: 0 0 48px; justify-content: flex-start; border-bottom: 1px solid var(--theme-border); }
+.app-shell[data-theme] .terminal-session-toolbar { position: static; width: 100%; min-height: 44px; display: flex; padding: 0 10px; }
+.app-shell[data-theme] .terminal-tabs { flex: 1; }
+.app-shell[data-theme] .terminal-tab { min-height: 40px; }
+.app-shell[data-theme] .toolbar-actions { flex: none; }
+
+.app-shell[data-theme] .terminal-tabs > .terminal-tab { flex: 0 0 auto; white-space: nowrap; padding-inline: 14px; }

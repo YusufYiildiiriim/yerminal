@@ -9,9 +9,11 @@ import { FloatingTerminalDockGuides, FloatingTerminalModeToggle } from "./featur
 import { useFloatingTerminalLayout, type TerminalDockEdge, type TerminalLayoutMode } from "./features/terminal/floatingTerminalLayout";
 import { ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { SettingsDialog, type AppSettings } from "./features/settings/SettingsDialog";
-import { WorkspaceViewLayout, useWorkspacePanelPreferences } from "./features/workspace/WorkspaceViewLayout";
+import { WorkspaceViewLayout } from "./features/workspace/WorkspaceViewLayout";
 import "./styles/app.css";
 import "./styles/themes.css";
+import "./styles/sidebar-ux.css";
+import "./styles/workbench-ux.css";
 
 const TerminalPane = lazy(() => import("./features/terminal/TerminalPane"));
 
@@ -233,6 +235,7 @@ function App() {
   const [toolsPanelCollapsed, setToolsPanelCollapsed] = useState(false);
   const [activeMainView, setActiveMainView] = useState<"code" | "terminals">("terminals");
   const [terminalLayoutMode, setTerminalLayoutMode] = useState<TerminalLayoutMode>("tiled");
+  const [terminalViews, setTerminalViews] = useState<Record<string, string | null>>({});
   const [terminalWorkspaceState, setTerminalWorkspaceState] = useState<TerminalWorkspaceState>(() => readTerminalWorkspaceState());
   const [editorWorkspaces, setEditorWorkspaces] = useState<Record<string, EditorWorkspaceState>>({});
   const editorOperationIdsRef = useRef(new Map<string, number>());
@@ -253,7 +256,17 @@ function App() {
   const floatingModeSetterRef = useRef<((mode: TerminalLayoutMode) => void) | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeTerminalWorkspace = terminalWorkspaceState.workspaces.find((workspace) => workspace.id === terminalWorkspaceState.activeId) ?? terminalWorkspaceState.workspaces[0];
-  const { preferences: workspacePanelPreferences, updatePreferences: updateWorkspacePanelPreferences } = useWorkspacePanelPreferences(activeTerminalWorkspace?.id ?? "");
+  const selectedTerminalView = terminalViews[activeTerminalWorkspace?.id ?? ""] ?? null;
+  const focusedTerminalView = selectedTerminalView && activeTerminalWorkspace?.terminalIds.includes(selectedTerminalView) ? selectedTerminalView : null;
+  const selectTerminalView = (id: string | null) => {
+    if (activeTerminalWorkspace) {
+      setTerminalViews((current) => ({ ...current, [activeTerminalWorkspace.id]: id }));
+      if (!id && !activeTerminalWorkspace.layout && activeTerminalWorkspace.terminalIds.length > 1) {
+        updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => ({ ...workspace, layout: workspace.layout ?? buildTerminalLayout(workspace.terminalIds) }));
+      }
+    }
+    if (id) focusTerminal(id);
+  };
   const workspaceFolders = activeTerminalWorkspace?.folderPaths ?? [];
   const activeWorkspaceTerminalIds = activeTerminalWorkspace?.terminalIds ?? [];
   const activeWorkspaceTerminals = terminals.filter((terminal) => activeWorkspaceTerminalIds.includes(terminal.id));
@@ -654,7 +667,7 @@ function App() {
         ...workspace,
         terminalIds: [...workspace.terminalIds, id],
         activeTerminalId: id,
-        layout: showInTabs ? null : workspace.layout,
+        layout: showInTabs && workspace.terminalIds.length > 0 ? buildTerminalLayout([...workspace.terminalIds, id]) : workspace.layout,
       }));
       return terminal;
     } catch (reason) {
@@ -882,12 +895,14 @@ function App() {
         const index = activeWorkspaceTerminals.findIndex((terminal) => terminal.id === activeTerminalId);
         const direction = event.shiftKey ? -1 : 1;
         const next = (index + direction + activeWorkspaceTerminals.length) % activeWorkspaceTerminals.length;
-        focusTerminal(activeWorkspaceTerminals[next].id);
+        const nextId = activeWorkspaceTerminals[next].id;
+        focusTerminal(nextId);
+        if (focusedTerminalView && activeTerminalWorkspace) setTerminalViews((current) => ({ ...current, [activeTerminalWorkspace.id]: nextId }));
       }
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [activeTerminalId, activeWorkspaceTerminals, closeTerminal, createTerminal, focusTerminal, splitActiveTerminal]);
+  }, [activeTerminalId, activeTerminalWorkspace, activeWorkspaceTerminals, closeTerminal, createTerminal, focusTerminal, focusedTerminalView, splitActiveTerminal]);
 
   const activeTerminal = useMemo(
     () => terminals.find((terminal) => terminal.id === activeTerminalId),
@@ -913,10 +928,13 @@ function App() {
         }}>
           <div className="workspace-tool-layout">
             <nav className="tool-sidebar" aria-label="Workspace tools">
-              {tools.map((tool) => <button key={tool.id} className={`tool-sidebar-item ${activeTool === tool.id ? "selected" : ""}`} onClick={() => { setActiveTool(tool.id); if (toolPanelAutoHide) { toolsPanelRef.current?.expand(); setToolsPanelCollapsed(false); } }} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={tool.label}>
+              {tools.map((tool) => <button key={tool.id} className={`tool-sidebar-item ${activeTool === tool.id ? "selected" : ""}`} onClick={() => { setActiveTool(tool.id); if (toolsPanelCollapsed) { toolsPanelRef.current?.expand(); setToolsPanelCollapsed(false); } }} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={tool.label}>
                 <span className="tool-sidebar-icon" aria-hidden="true">{tool.icon}</span>
                 <span className="tool-sidebar-label">{tool.label}</span>
               </button>)}
+              <button className="tool-sidebar-visibility" type="button" aria-label={toolsPanelCollapsed ? "Show workspace panel" : "Hide workspace panel"} aria-expanded={!toolsPanelCollapsed} title={toolsPanelCollapsed ? "Show workspace panel" : "Hide workspace panel"} onClick={() => { if (toolsPanelCollapsed) { toolsPanelRef.current?.expand(); setToolsPanelCollapsed(false); } else { toolsPanelRef.current?.collapse(); setToolsPanelCollapsed(true); } }}>
+                <span aria-hidden="true">{toolsPanelCollapsed ? "»" : "«"}</span><span className="tool-sidebar-autohide-label">{toolsPanelCollapsed ? "Show" : "Hide"}</span>
+              </button>
               <button className="tool-sidebar-autohide" type="button" aria-label={toolPanelAutoHide ? "Disable automatic hiding of workspace panel" : "Automatically hide workspace panel"} aria-pressed={toolPanelAutoHide} title={toolPanelAutoHide ? "Keep workspace panel visible" : "Automatically hide workspace panel"} onClick={() => setToolPanelAutoHide((enabled) => !enabled)}>
                 <span aria-hidden="true">{toolPanelAutoHide ? "⌖" : "◧"}</span>
                 <span className="tool-sidebar-autohide-label">{toolPanelAutoHide ? "Pinned" : "Auto-hide"}</span>
@@ -954,24 +972,25 @@ function App() {
         <Panel minSize={35} className="terminal-panel">
           <div className="terminal-toolbar">
             <nav className="workspace-view-tabs" role="tablist" aria-label="Workspace views">
-              <button className={`workspace-view-tab ${activeMainView === "code" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "code"} onClick={() => setActiveMainView("code")} type="button"><span aria-hidden="true">⌘</span> Code{activeEditorWorkspace.tabs.length > 0 && <small>{activeEditorWorkspace.tabs.length}</small>}</button>
               <button className={`workspace-view-tab ${activeMainView === "terminals" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "terminals"} onClick={() => setActiveMainView("terminals")} type="button"><span aria-hidden="true">▣</span> Terminals{activeWorkspaceTerminals.length > 0 && <small>{activeWorkspaceTerminals.length}</small>}</button>
+              <button className={`workspace-view-tab ${activeMainView === "code" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "code"} onClick={() => setActiveMainView("code")} type="button"><span aria-hidden="true">⌘</span> Editor{activeEditorWorkspace.tabs.length > 0 && <small>{activeEditorWorkspace.tabs.length}</small>}</button>
             </nav>
-            {(activeMainView === "terminals" || workspacePanelPreferences.terminalPanel === "bottom") && <div className="terminal-session-toolbar">
-              <div className="terminal-tabs" role={layout || activeWorkspaceTerminalIds.length <= 1 ? undefined : "tablist"} aria-label={layout || activeWorkspaceTerminalIds.length <= 1 ? "Terminal workspace actions" : "Terminal sessions"}>
-                {!layout && activeWorkspaceTerminalIds.length > 1 && activeWorkspaceTerminals.map((terminal) => <div key={terminal.id} className={`terminal-tab-item ${terminal.id === activeTerminalId ? "selected" : ""}`} role="presentation">
+            {activeMainView === "terminals" && <div className="terminal-session-toolbar">
+              <div className="terminal-tabs" role="tablist" aria-label="Terminal sessions">
+                <button className={`terminal-tab ${!focusedTerminalView ? "selected" : ""}`} type="button" role="tab" aria-selected={!focusedTerminalView} onClick={() => selectTerminalView(null)}>All terminals</button>
+                {activeWorkspaceTerminals.map((terminal) => <div key={terminal.id} className={`terminal-tab-item ${terminal.id === focusedTerminalView ? "selected" : ""}`} role="presentation">
                   {editingTerminalId === terminal.id ? <TerminalNameEditor terminalName={terminal.name} value={terminalNameDraft} inputRef={terminalNameInputRef} compact onChange={setTerminalNameDraft} onSave={saveTerminalName} onCancel={cancelTerminalRename} /> : <>
-                    <button className={`terminal-tab ${terminal.id === activeTerminalId ? "selected" : ""}`} onClick={() => focusTerminal(terminal.id)} onDoubleClick={() => beginRenameTerminal(terminal)} onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); void closeTerminal(terminal.id); } }} type="button" role="tab" aria-selected={terminal.id === activeTerminalId} aria-label={`${terminal.name}. Double-click to rename.`} title={terminal.name}><span className="terminal-dot" /><span className="terminal-tab-name">{terminal.name}</span>{terminal.id === activeTerminalId && <span className="terminal-active-label" aria-hidden="true">Active</span>}</button>
+                    <button className={`terminal-tab ${terminal.id === focusedTerminalView ? "selected" : ""}`} onClick={() => selectTerminalView(terminal.id)} onDoubleClick={() => beginRenameTerminal(terminal)} onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); void closeTerminal(terminal.id); } }} type="button" role="tab" aria-selected={terminal.id === focusedTerminalView} aria-label={`${terminal.name}. Double-click to rename.`} title={terminal.name}><span className="terminal-dot" /><span className="terminal-tab-name">{terminal.name}</span>{terminal.id === activeTerminalId && <span className="terminal-active-label" aria-hidden="true">Active</span>}</button>
                     <button className="terminal-tab-rename" type="button" aria-label={`Rename ${terminal.name}`} title="Rename terminal" onClick={() => beginRenameTerminal(terminal)}>✎</button>
                     {activeWorkspaceTerminals.length > 1 && <button className="tab-close" type="button" aria-label={`Close ${terminal.name}`} title={`Close ${terminal.name}`} onClick={() => void closeTerminal(terminal.id)}>×</button>}
                   </>}
                 </div>)}
-                <button className="icon-button new-terminal" aria-label="Add terminal to workspace" title="Add terminal pane" onClick={() => void addTerminalToWorkspace()} type="button">＋</button>
+                <button className="icon-button new-terminal" aria-label="Add terminal to workspace" title="Add terminal pane" onClick={() => { selectTerminalView(null); void addTerminalToWorkspace(); }} type="button">＋</button>
               </div>
               <div className="toolbar-actions"><FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={changeTerminalLayoutMode} /></div>
             </div>}
           </div>
-          <WorkspaceViewLayout activeView={activeMainView} preferences={workspacePanelPreferences} onHeightChange={(terminalPanelHeight) => updateWorkspacePanelPreferences({ terminalPanelHeight })} code={<CodeWorkspace
+          <WorkspaceViewLayout activeView={activeMainView} code={<CodeWorkspace
             key={activeTerminalWorkspace?.id ?? ""}
             workspaceId={activeTerminalWorkspace?.id ?? ""}
             tabs={activeEditorWorkspace.tabs}
@@ -988,7 +1007,7 @@ function App() {
           />} terminal={<div className="terminal-workspace-view">
           {activeMainView === "terminals" && <TerminalResourceGraph enabled={true} workspaceName={activeTerminalWorkspace?.name ?? "Workspace"} terminals={activeWorkspaceTerminals} activeTerminalId={activeTerminalId} />}
           <section className="terminal-surface" aria-label="Terminal workspace">
-            <TerminalWorkspaceLayout layout={layout} terminals={terminals} visibleTerminalIds={activeWorkspaceTerminalIds} workspaceId={activeTerminalWorkspace?.id ?? ""} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} terminalNameInputRef={terminalNameInputRef} onRename={beginRenameTerminal} onNameChange={setTerminalNameDraft} onNameSave={saveTerminalName} onNameCancel={cancelTerminalRename} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
+            <TerminalWorkspaceLayout layout={layout} focusedTerminalId={focusedTerminalView} terminals={terminals} visibleTerminalIds={activeWorkspaceTerminalIds} workspaceId={activeTerminalWorkspace?.id ?? ""} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} terminalNameInputRef={terminalNameInputRef} onRename={beginRenameTerminal} onNameChange={setTerminalNameDraft} onNameSave={saveTerminalName} onNameCancel={cancelTerminalRename} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
             {activeWorkspaceTerminals.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Welcome to <span>yerminal</span></div><p>Create a terminal to begin.</p><button className="primary-button" onClick={() => void createTerminal()} type="button">New Terminal</button></div>}
 
             <div className="terminal-status" aria-live="polite" aria-atomic="true"><span className="status-indicator" /><strong>{activeTerminal?.name ?? "No terminal"}</strong>{activeTerminal && <span className="terminal-status-active">Active</span>}<span className="status-separator">·</span><span>{activeTerminal?.shellLabel ?? "Ready"}</span></div>
@@ -997,7 +1016,7 @@ function App() {
           </div>} />
         </Panel>
       </PanelGroup>
-      {settingsOpen && <SettingsDialog settings={settings} workspaceSettings={workspacePanelPreferences} shortcuts={HELP_SHORTCUTS} onSettingsChange={setSettings} onWorkspaceSettingsChange={updateWorkspacePanelPreferences} onClose={closeSettings} />}
+      {settingsOpen && <SettingsDialog settings={settings} shortcuts={HELP_SHORTCUTS} onSettingsChange={setSettings} onClose={closeSettings} />}
       {toast && <div className="app-toast" role="alert" aria-live="assertive" aria-atomic="true"><span>{toast}</span><button aria-label="Dismiss notification" onClick={dismissToast} type="button">×</button></div>}
     </main>
   );
@@ -1521,6 +1540,7 @@ type LayoutDividerInfo = { id: string; direction: "horizontal" | "vertical"; rat
 type LayoutGeometry = { panes: Map<string, LayoutRect>; dividers: LayoutDividerInfo[] };
 type TerminalWorkspaceLayoutProps = {
   layout: LayoutNode | null;
+  focusedTerminalId: string | null;
   terminals: TerminalSession[];
   visibleTerminalIds: string[];
   workspaceId: string;
@@ -1541,7 +1561,7 @@ type TerminalWorkspaceLayoutProps = {
   onResize: (splitId: string, ratio: number) => void;
 };
 
-function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, workspaceId, onDockToTiledLayout, onModeState, activeTerminalId, editingTerminalId, terminalNameDraft, terminalNameInputRef, onRename, onNameChange, onNameSave, onNameCancel, onFocus, onExit, onClose, onMove, onResize }: TerminalWorkspaceLayoutProps) {
+function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visibleTerminalIds, workspaceId, onDockToTiledLayout, onModeState, activeTerminalId, editingTerminalId, terminalNameDraft, terminalNameInputRef, onRename, onNameChange, onNameSave, onNameCancel, onFocus, onExit, onClose, onMove, onResize }: TerminalWorkspaceLayoutProps) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const paneRefs = useRef(new Map<string, HTMLDivElement>());
   const paneDragRef = useRef<{ sourceId: string; pointerId: number; startX: number; startY: number; started: boolean } | null>(null);
@@ -1550,6 +1570,7 @@ function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, worksp
   const floatingLayout = useFloatingTerminalLayout(workspaceId, visibleTerminalIds, onDockToTiledLayout);
   useEffect(() => onModeState(floatingLayout.mode, floatingLayout.setMode), [floatingLayout.mode, floatingLayout.setMode, onModeState]);
   const geometry = useMemo(() => {
+    if (focusedTerminalId && visibleTerminalIds.includes(focusedTerminalId)) return { panes: new Map([[focusedTerminalId, { x: 0, y: 0, width: 100, height: 100 }]]), dividers: [] };
     if (floatingLayout.mode === "floating") {
       const panes = new Map<string, LayoutRect>();
       for (const terminalId of visibleTerminalIds) {
@@ -1562,7 +1583,7 @@ function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, worksp
     const panes = new Map<string, LayoutRect>();
     if (activeTerminalId) panes.set(activeTerminalId, { x: 0, y: 0, width: 100, height: 100 });
     return { panes, dividers: [] };
-  }, [activeTerminalId, floatingLayout.mode, floatingLayout.positions, layout, visibleTerminalIds.join("\u0000")]);
+  }, [activeTerminalId, focusedTerminalId, floatingLayout.mode, floatingLayout.positions, layout, visibleTerminalIds.join("\u0000")]);
 
   const findPaneAtPoint = (clientX: number, clientY: number, sourceId: string) => {
     for (const [paneId, pane] of paneRefs.current) {
@@ -1587,8 +1608,8 @@ function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, worksp
   return <div className={`terminal-layout-surface ${floatingLayout.mode === "floating" ? "floating-terminal-canvas" : ""}`} ref={(element) => { surfaceRef.current = element; floatingLayout.surfaceRef.current = element; }} data-mode={floatingLayout.mode} data-pane-dragging={draggingPaneId || floatingLayout.draggingSessionId ? "true" : undefined}>
     {terminals.map((terminal) => {
       const rect = geometry.panes.get(terminal.id);
-      const isFloating = floatingLayout.mode === "floating" && visibleTerminalIds.includes(terminal.id);
-      const isSingleTerminal = !layout && floatingLayout.mode === "tiled" && visibleTerminalIds.length === 1 && visibleTerminalIds[0] === terminal.id;
+      const isFloating = !focusedTerminalId && floatingLayout.mode === "floating" && visibleTerminalIds.includes(terminal.id);
+      const isSingleTerminal = focusedTerminalId === terminal.id || (!layout && floatingLayout.mode === "tiled" && visibleTerminalIds.length === 1 && visibleTerminalIds[0] === terminal.id);
       const hasPaneHeader = Boolean(rect && (layout || isFloating || isSingleTerminal));
       const style: CSSProperties = rect
         ? { left: `${rect.x}%`, top: `${rect.y}%`, width: `${rect.width}%`, height: `${rect.height}%` }
@@ -1654,7 +1675,7 @@ function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, worksp
             onClose(terminal.id);
           }}
         >
-          {(layout || isFloating) && <button
+          {((layout && !focusedTerminalId) || isFloating) && <button
             className={`pane-drag-handle ${isFloating ? "floating-terminal-window-handle" : ""}`}
             type="button"
             aria-label={isFloating ? `Move ${terminal.name} around the free terminal canvas` : `Drag ${terminal.name} to swap pane positions`}
@@ -1700,7 +1721,7 @@ function TerminalWorkspaceLayout({ layout, terminals, visibleTerminalIds, worksp
         </div>
       </div>;
     })}
-    {floatingLayout.mode === "floating" && <FloatingTerminalDockGuides activeEdge={floatingLayout.dockTarget} />}
+    {!focusedTerminalId && floatingLayout.mode === "floating" && <FloatingTerminalDockGuides activeEdge={floatingLayout.dockTarget} />}
     {floatingLayout.mode === "tiled" && geometry.dividers.map((divider) => <LayoutDivider key={divider.id} divider={divider} surfaceRef={surfaceRef} onResize={onResize} />)}
   </div>;
 }
