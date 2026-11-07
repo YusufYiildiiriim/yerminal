@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { Fragment, useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { highlightCode } from "./highlighter";
 import { CommitSnapshotBanner } from "./CommitSnapshotBanner";
 import { useFloatingEditorLayout, type EditorLayoutMode } from "./floatingEditorLayout";
@@ -220,24 +221,18 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
 
 export function CodeWorkspace({ workspaceId, tabs, groups, activeGroupId, onSelect, onActivateGroup, onClose, onChange, onSave, onCreateGroup, onMoveTab, onCloseGroup }: CodeWorkspaceProps) {
   const layout = useFloatingEditorLayout(workspaceId, groups.map((group) => group.id));
-  return <section className="code-workspace" aria-label="Code editor">
-    <header className="editor-groups-toolbar">
-      <div className="editor-groups-title"><span aria-hidden="true">▤</span>Editor groups<span className="editor-groups-count">{groups.length}</span></div>
-      <div className="editor-groups-toolbar-actions">
-        <div className="editor-layout-mode-toggle" role="group" aria-label="Editor group layout mode">
-          <button className={layout.mode === "tiled" ? "selected" : ""} type="button" aria-pressed={layout.mode === "tiled"} onClick={() => layout.setMode("tiled")} title="Use the default split editor layout">Split</button>
-          <button className={layout.mode === "free" ? "selected" : ""} type="button" aria-pressed={layout.mode === "free"} onClick={() => layout.setMode("free")} title="Move editor groups freely around the canvas">Free</button>
-        </div>
-        <button className="editor-create-group" type="button" onClick={onCreateGroup}><span aria-hidden="true">＋</span>New group</button>
-      </div>
-    </header>
-    <div
-      ref={layout.surfaceRef}
-      className={"editor-groups-layout" + (layout.mode === "free" ? " free" : "")}
-      style={{ "--editor-group-count": groups.length } as CSSProperties & { "--editor-group-count": number }}
-    >
-      {groups.map((group) => <EditorGroupPane
-        key={group.id}
+  const [surfaceWidth, setSurfaceWidth] = useState(0);
+  useEffect(() => {
+    const surface = layout.surfaceRef.current;
+    if (!surface) return;
+    const observer = new ResizeObserver(([entry]) => setSurfaceWidth(entry.contentRect.width));
+    observer.observe(surface);
+    return () => observer.disconnect();
+  }, [layout.surfaceRef]);
+  const minGroupWidth = 320;
+  const minPanelSize = 100 * minGroupWidth / Math.max(surfaceWidth, groups.length * minGroupWidth, 1);
+  const groupViews = groups.map((group, index) => {
+    const pane = <EditorGroupPane
         layoutMode={layout.mode}
         groupStyle={layout.getWindowStyle(group.id)}
         dragging={layout.draggingGroupId === group.id}
@@ -262,7 +257,35 @@ export function CodeWorkspace({ workspaceId, tabs, groups, activeGroupId, onSele
         onSave={onSave}
         onMoveTab={onMoveTab}
         onCloseGroup={onCloseGroup}
-      />)}
+      />;
+    return layout.mode === "tiled" ? <Fragment key={group.id}>
+      <Panel id={group.id} order={index} minSize={minPanelSize} defaultSize={100 / groups.length} className="editor-split-panel">{pane}</Panel>
+      {index < groups.length - 1 && <PanelResizeHandle className="editor-split-resize" aria-label={`Resize between ${group.name} and ${groups[index + 1].name}`} />}
+    </Fragment> : <Fragment key={group.id}>{pane}</Fragment>;
+  });
+  return <section className="code-workspace" aria-label="Code editor">
+    <header className="editor-groups-toolbar">
+      <div className="editor-groups-title"><span aria-hidden="true">▤</span>Editor groups<span className="editor-groups-count">{groups.length}</span></div>
+      <div className="editor-groups-toolbar-actions">
+        <div className="editor-layout-mode-toggle" role="group" aria-label="Editor group layout mode">
+          <button className={layout.mode === "tiled" ? "selected" : ""} type="button" aria-pressed={layout.mode === "tiled"} onClick={() => layout.setMode("tiled")} title="Use the default split editor layout">Split</button>
+          <button className={layout.mode === "free" ? "selected" : ""} type="button" aria-pressed={layout.mode === "free"} onClick={() => layout.setMode("free")} title="Move editor groups freely around the canvas">Free</button>
+        </div>
+        <button className="editor-create-group" type="button" onClick={onCreateGroup}><span aria-hidden="true">＋</span>New group</button>
+      </div>
+    </header>
+    <div
+      ref={layout.surfaceRef}
+      className={"editor-groups-layout" + (layout.mode === "free" ? " free" : "")}
+      style={{ "--editor-group-count": groups.length } as CSSProperties & { "--editor-group-count": number }}
+    >
+      {layout.mode === "tiled" ? <PanelGroup
+        key={workspaceId}
+        direction="horizontal"
+        className="editor-split-group"
+        autoSaveId={`yerminal.editor-split.${workspaceId}.${groups.map((group) => group.id).join(".")}`}
+        style={{ minWidth: groups.length * minGroupWidth }}
+      >{groupViews}</PanelGroup> : groupViews}
       {layout.dockTarget && <div className="editor-group-dock-guides" aria-hidden="true">
         <div className={"editor-group-dock-guide left" + (layout.dockTarget === "left" ? " active" : "")} />
         <div className={"editor-group-dock-guide right" + (layout.dockTarget === "right" ? " active" : "")} />

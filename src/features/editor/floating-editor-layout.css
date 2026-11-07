@@ -33,3 +33,11 @@
   .editor-layout-mode-toggle button { min-width: 38px; padding: 3px 5px; }
   .editor-create-group { padding: 4px 6px; }
 }
+
+/* Split editor groups have a visible, keyboard-accessible divider. */
+.editor-groups-layout:not(.free) { display: block; }
+.editor-split-group { height: 100%; min-height: 0; }
+.editor-split-panel { display: flex; min-height: 0; overflow: hidden; }
+.editor-split-panel > .editor-group-pane { flex: 1; }
+.editor-split-resize { flex: 0 0 6px; cursor: col-resize; touch-action: none; background: var(--theme-border, #302e3b); }
+.editor-split-resize:hover, .editor-split-resize:focus-visible, .editor-split-resize[data-resize-handle-active] { background: var(--theme-accent, #b39aff); outline: none; }
