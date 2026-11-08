@@ -213,7 +213,7 @@ const tools: { id: ToolId; label: string; icon: string }[] = [
 ];
 
 const SETTINGS_KEY = "yerminal.app-settings.v1";
-const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13, quickOpenScope: "active", collapseOtherFolders: false };
+const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13, quickOpenScope: "active", collapseOtherFolders: false, autoSave: false };
 function readAppSettings(): AppSettings {
   try {
     const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}");
@@ -225,6 +225,7 @@ function readAppSettings(): AppSettings {
       terminalFontSize: typeof raw.terminalFontSize === "number" && Number.isFinite(raw.terminalFontSize) ? Math.max(8, Math.min(40, raw.terminalFontSize)) : DEFAULT_SETTINGS.terminalFontSize,
       quickOpenScope: raw.quickOpenScope === "all" ? "all" : "active",
       collapseOtherFolders: raw.collapseOtherFolders === true,
+      autoSave: raw.autoSave === true,
     };
   } catch { return DEFAULT_SETTINGS; }
 }
@@ -256,6 +257,7 @@ function App() {
   const nextEditorOperationIdRef = useRef(0);
   const savingEditorFilesRef = useRef(new Set<string>());
   const pendingEditorSavesRef = useRef(new Map<string, Promise<void>>());
+  const autoSaveTimersRef = useRef(new Map<string, { content: string; timer: ReturnType<typeof setTimeout> | null }>());
 
   const [repoInfo, setRepoInfo] = useState<RepositoryInfo | null>(null);
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
@@ -474,8 +476,8 @@ function App() {
     });
   }, [activeTerminalWorkspace?.id]);
 
-  const saveEditorFile = useCallback(async (tabId: string) => {
-    const workspaceId = activeTerminalWorkspace?.id;
+  const saveEditorFile = useCallback(async (tabId: string, targetWorkspaceId?: string) => {
+    const workspaceId = targetWorkspaceId ?? activeTerminalWorkspace?.id;
     if (!workspaceId || !isTauri()) return;
     const tab = editorWorkspaces[workspaceId]?.tabs.find((candidate) => candidate.id === tabId);
     if (!tab || tab.status !== "ready" || tab.sourceCommitId || tab.content === null || tab.savedContent === null) return;
@@ -538,6 +540,49 @@ function App() {
       }
     }
   }, [activeTerminalWorkspace?.id, editorWorkspaces]);
+
+  const saveEditorFileRef = useRef(saveEditorFile);
+  saveEditorFileRef.current = saveEditorFile;
+
+  useEffect(() => {
+    const timers = autoSaveTimersRef.current;
+    if (!settings.autoSave || !isTauri()) {
+      for (const entry of timers.values()) if (entry.timer) clearTimeout(entry.timer);
+      timers.clear();
+      return;
+    }
+
+    const dirtyFiles = new Map<string, { workspaceId: string; tabId: string; content: string }>();
+    for (const [workspaceId, workspace] of Object.entries(editorWorkspaces)) {
+      for (const tab of workspace.tabs) {
+        if (tab.status !== "ready" || tab.sourceCommitId || tab.content === null || tab.savedContent === null) continue;
+        if (normalizeEditorNewlines(tab.content) === normalizeEditorNewlines(tab.savedContent)) continue;
+        dirtyFiles.set(editorOperationKey(workspaceId, tab.id), { workspaceId, tabId: tab.id, content: tab.content });
+      }
+    }
+
+    for (const [key, entry] of timers) {
+      if (dirtyFiles.has(key)) continue;
+      if (entry.timer) clearTimeout(entry.timer);
+      timers.delete(key);
+    }
+    for (const [key, file] of dirtyFiles) {
+      const existing = timers.get(key);
+      if (existing?.content === file.content) continue;
+      if (existing?.timer) clearTimeout(existing.timer);
+      const entry = { content: file.content, timer: null as ReturnType<typeof setTimeout> | null };
+      entry.timer = setTimeout(() => {
+        entry.timer = null;
+        void saveEditorFileRef.current(file.tabId, file.workspaceId);
+      }, 1000);
+      timers.set(key, entry);
+    }
+  }, [editorWorkspaces, settings.autoSave]);
+
+  useEffect(() => () => {
+    for (const entry of autoSaveTimersRef.current.values()) if (entry.timer) clearTimeout(entry.timer);
+    autoSaveTimersRef.current.clear();
+  }, []);
 
   const createEditorGroup = useCallback(() => {
     const workspaceId = activeTerminalWorkspace?.id;
