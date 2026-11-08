@@ -552,12 +552,12 @@ function App() {
       return;
     }
 
-    const dirtyFiles = new Map<string, { workspaceId: string; tabId: string; content: string }>();
+    const dirtyFiles = new Map<string, { workspaceId: string; tabId: string; path: string; content: string }>();
     for (const [workspaceId, workspace] of Object.entries(editorWorkspaces)) {
       for (const tab of workspace.tabs) {
         if (tab.status !== "ready" || tab.sourceCommitId || tab.content === null || tab.savedContent === null) continue;
         if (normalizeEditorNewlines(tab.content) === normalizeEditorNewlines(tab.savedContent)) continue;
-        dirtyFiles.set(editorOperationKey(workspaceId, tab.id), { workspaceId, tabId: tab.id, content: tab.content });
+        dirtyFiles.set(editorOperationKey(workspaceId, tab.id), { workspaceId, tabId: tab.id, path: tab.path, content: tab.content });
       }
     }
 
@@ -573,7 +573,12 @@ function App() {
       const entry = { content: file.content, timer: null as ReturnType<typeof setTimeout> | null };
       entry.timer = setTimeout(() => {
         entry.timer = null;
-        void saveEditorFileRef.current(file.tabId, file.workspaceId);
+        const resourceKey = editorResourceKey(file.path);
+        const pendingSave = pendingEditorSavesRef.current.get(resourceKey);
+        void (async () => {
+          if (savingEditorFilesRef.current.has(resourceKey) && pendingSave) await pendingSave.catch(() => undefined);
+          await saveEditorFileRef.current(file.tabId, file.workspaceId);
+        })();
       }, 1000);
       timers.set(key, entry);
     }
