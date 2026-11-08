@@ -183,6 +183,17 @@ fn list_workspace_directory(root: String, path: String) -> Result<Vec<WorkspaceE
 }
 
 #[tauri::command]
+async fn search_workspace_files(
+    root: String,
+    query: String,
+    limit: usize,
+) -> Result<Vec<WorkspaceEntry>, String> {
+    tauri::async_runtime::spawn_blocking(move || workspace_fs::search_files(&root, &query, limit))
+        .await
+        .map_err(|error| format!("Workspace search failed: {error}"))?
+}
+
+#[tauri::command]
 fn read_workspace_text_file(root: String, path: String) -> Result<String, String> {
     workspace_fs::read_text_file(&root, &path)
 }
@@ -223,6 +234,7 @@ pub fn run() {
             git_commit_file_diff,
             git_commit_file_content,
             list_workspace_directory,
+            search_workspace_files,
             read_workspace_text_file,
             write_workspace_text_file
         ])

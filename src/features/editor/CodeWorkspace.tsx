@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { highlightCode } from "./highlighter";
 import { CommitSnapshotBanner } from "./CommitSnapshotBanner";
@@ -38,9 +38,9 @@ type CodeWorkspaceProps = {
   onClose: (tabId: string) => void;
   onChange: (tabId: string, content: string) => void;
   onSave: (tabId: string) => void;
-  onCreateGroup: () => void;
   onMoveTab: (tabId: string, groupId: string) => void;
   onCloseGroup: (groupId: string) => void;
+  onModeState: (mode: EditorLayoutMode, setMode: (mode: EditorLayoutMode) => void) => void;
 };
 
 type EditorGroupPaneProps = {
@@ -103,8 +103,22 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
   const language = useMemo(() => activeTab ? detectLanguage(activeTab.path) : null, [activeTab?.path]);
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
   const [highlighting, setHighlighting] = useState(false);
+  const editorContentRef = useRef<HTMLDivElement>(null);
+  const [editorViewport, setEditorViewport] = useState({ top: 0, size: 1 });
   const isReadOnly = Boolean(activeTab?.sourceCommitId);
   const isDirty = Boolean(activeTab && activeTab.content !== null && normalizeNewlines(activeTab.content) !== normalizeNewlines(activeTab.savedContent));
+  useEffect(() => {
+    const element = editorContentRef.current;
+    if (!element) return;
+    const updateViewport = () => setEditorViewport({
+      top: element.scrollTop / Math.max(1, element.scrollHeight),
+      size: Math.min(1, element.clientHeight / Math.max(1, element.scrollHeight)),
+    });
+    updateViewport();
+    const observer = new ResizeObserver(updateViewport);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [activeTab?.id, activeTab?.content, activeTab?.status]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     const resizeHandle = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>(".editor-group-resize-handle") : null;
@@ -162,7 +176,7 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
       onPointerUp={(event) => onEndResize(group.id, event)}
       onPointerCancel={(event) => onCancelResize(group.id, event)}
     />)}
-    <header
+    {(layoutMode === "free" || groups.length > 1) && <header
       className={"editor-group-heading" + (layoutMode === "free" ? " free" : "")}
       onPointerDown={layoutMode === "free" ? (event) => {
         if (event.button !== 0) return;
@@ -182,7 +196,7 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
         </select>}
         {groups.length > 1 && <button className="editor-group-close" type="button" title={"Close " + group.name + " and move its tabs"} aria-label={"Close " + group.name + " and move its tabs"} onClick={() => onCloseGroup(group.id)}>×</button>}
       </div>
-    </header>
+    </header>}
     <nav className="editor-file-tabs" role="tablist" aria-label={group.name + " open files"}>
       {groupTabs.map((tab) => <div className={"editor-file-tab" + (group.activeTabId === tab.id ? " selected" : "")} key={tab.id} onMouseDown={(event) => { if (event.button === 1) event.preventDefault(); }} onAuxClick={(event) => { if (event.button !== 1) return; event.preventDefault(); event.stopPropagation(); onClose(tab.id); }}>
         <button className="editor-file-tab-select" role="tab" aria-selected={group.activeTabId === tab.id} onClick={() => onSelect(group.id, tab.id)} type="button" title={tab.path + " · Middle-click to close"}>
@@ -198,10 +212,19 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
     {activeTab ? <>
       {isReadOnly && activeTab.snapshot && <CommitSnapshotBanner snapshot={activeTab.snapshot} filePath={activeTab.path} />}
       <header className="code-editor-header">
-        <div className="code-editor-breadcrumb" title={activeTab.path}><span>{activeTab.root.split(/[\\/]/).filter(Boolean).pop() ?? activeTab.root}</span><span className="code-editor-separator">›</span><strong>{activeTab.path}</strong></div>
-        <div className="code-editor-meta"><span>{language?.label ?? "Plain Text"}</span>{activeTab.sourceLabel && <span className="code-editor-source-label" title={activeTab.sourceLabel}>{activeTab.sourceLabel}</span>}{isReadOnly ? <span className="code-editor-readonly">Read only</span> : <><span className={"code-editor-editable-badge" + (isDirty ? " dirty" : "")}>{isDirty ? "Unsaved changes" : "Editable"}</span><button className="code-editor-save" type="button" disabled={activeTab.status !== "ready" || !isDirty || activeTab.isSaving} onClick={() => onSave(activeTab.id)}>{activeTab.isSaving ? "Saving…" : "Save"}<kbd>Ctrl S</kbd></button></>}</div>
+        <div className="code-editor-meta">
+          <span>{language?.label ?? "Plain Text"}</span>
+          <span className="code-editor-source-label" title={activeTab.sourceLabel ?? "Workspace file"}>{activeTab.sourceLabel ?? "Workspace file"}</span>
+          {isReadOnly ? <span className="code-editor-readonly">Read only</span> : <>
+            <span className={"code-editor-editable-badge" + (isDirty ? " dirty" : "")}>{isDirty ? "Unsaved changes" : "Editable"}</span>
+          </>}
+        </div>
       </header>
-      <div className="code-editor-content" key={activeTab.id}>
+      <div className="code-editor-layout">
+      <div className="code-editor-content" key={activeTab.id} ref={editorContentRef} onScroll={(event) => {
+        const element = event.currentTarget;
+        setEditorViewport({ top: element.scrollTop / Math.max(1, element.scrollHeight), size: Math.min(1, element.clientHeight / Math.max(1, element.scrollHeight)) });
+      }}>
         {activeTab.status === "loading" ? <div className="code-editor-message" role="status"><span className="editor-loading-indicator" /><span>Loading file content…</span></div> : activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this file</strong><span>{activeTab.error}</span></div> : isReadOnly ? highlightedHtml ? <div className="code-editor-highlighted" dangerouslySetInnerHTML={{ __html: highlightedHtml }} /> : <pre className={"code-editor-plain" + (highlighting ? " is-highlighting" : "")} tabIndex={0} aria-label={"Contents of " + activeTab.name}><code>{activeTab.content}</code></pre> : <div className="code-editor-editable-surface">
           <div className="code-editor-editable-highlight" aria-hidden="true">{highlightedHtml ? <div className="code-editor-highlighted" dangerouslySetInnerHTML={{ __html: highlightedHtml }} /> : <pre className="code-editor-plain"><code>{activeTab.content}</code></pre>}</div>
           <textarea className="code-editor-input" aria-label={"Edit " + activeTab.name} autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false} value={activeTab.content ?? ""} onChange={(event) => onChange(activeTab.id, event.currentTarget.value)} onKeyDown={(event) => {
@@ -216,14 +239,87 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
           }} />
         </div>}
       </div>
-      <footer className="code-editor-statusbar" aria-live="polite"><span className={activeTab.saveError ? "code-editor-save-error" : ""}>{activeTab.saveError ?? (activeTab.isSaving ? "Saving changes…" : isDirty ? "Unsaved changes" : isReadOnly ? "Read-only commit snapshot" : activeTab.status === "ready" ? "All changes saved" : activeTab.status === "loading" ? "Loading" : "Unavailable")}</span><span>{activeTab.status === "ready" ? (activeTab.content?.split(/\r?\n/).length ?? 0) + " lines" : ""}</span><span>UTF-8</span><span>{language?.label ?? "Plain Text"}</span></footer>
+      {activeTab.status === "ready" && activeTab.content !== null && <EditorMinimap content={activeTab.content} highlightedHtml={highlightedHtml} viewport={editorViewport} onNavigate={(position) => {
+        const element = editorContentRef.current;
+        if (!element) return;
+        element.scrollTop = position * element.scrollHeight;
+      }} />}
+      </div>
+      <footer className="code-editor-statusbar" aria-live="polite">
+        <span className="code-editor-path" title={activeTab.path}>{activeTab.root.split(/[\\/]/).filter(Boolean).pop() ?? activeTab.root}　›　{activeTab.path}</span>
+        <span className={activeTab.saveError ? "code-editor-save-error" : ""}>{activeTab.saveError ?? (activeTab.isSaving ? "Saving changes…" : isDirty ? "Unsaved changes" : isReadOnly ? "Read-only commit snapshot" : activeTab.status === "ready" ? "All changes saved" : activeTab.status === "loading" ? "Loading" : "Unavailable")}</span>
+        <span>{activeTab.status === "ready" ? (activeTab.content?.split(/\r?\n/).length ?? 0) + " lines" : ""}</span><span>UTF-8</span>
+      </footer>
     </> : <div className="code-editor-empty"><div className="code-editor-empty-icon">⌘</div><h2>Open a file in this group</h2><p>Choose a file from the workspace explorer or Git history. It will open in this editor group.</p></div>}
   </section>;
 }
 
-export function CodeWorkspace({ workspaceId, tabs, groups, activeGroupId, onSelect, onActivateGroup, onClose, onChange, onSave, onCreateGroup, onMoveTab, onCloseGroup }: CodeWorkspaceProps) {
+function EditorMinimap({ content, highlightedHtml, viewport, onNavigate }: { content: string; highlightedHtml: string | null; viewport: { top: number; size: number }; onNavigate: (position: number) => void }) {
+  const renderHighlightedPreview = Boolean(highlightedHtml && content.length <= 120_000);
+  const minimapRef = useRef<HTMLElement>(null);
+  const draggingPointerRef = useRef<number | null>(null);
+  const [previewMetrics, setPreviewMetrics] = useState({ fontSize: 2, lineHeight: 2.5, height: 0 });
+  let lineCount = 1;
+  for (let index = 0; index < content.length; index += 1) {
+    if (content.charCodeAt(index) === 10) lineCount += 1;
+  }
+
+  useEffect(() => {
+    const minimap = minimapRef.current;
+    if (!minimap) return;
+    const updatePreviewMetrics = () => {
+      const bounds = minimap.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) return;
+      const height = Math.min(bounds.height, lineCount * 2.5);
+      const lineHeight = height / lineCount;
+      setPreviewMetrics({ fontSize: Math.min(2, lineHeight * 0.78), lineHeight, height });
+    };
+    updatePreviewMetrics();
+    const observer = new ResizeObserver(updatePreviewMetrics);
+    observer.observe(minimap);
+    return () => observer.disconnect();
+  }, [content, lineCount]);
+
+  const navigateAt = (clientY: number) => {
+    const bounds = minimapRef.current?.getBoundingClientRect();
+    if (!bounds || !previewMetrics.height) return;
+    const documentPosition = Math.min(1, Math.max(0, (clientY - bounds.top) / previewMetrics.height));
+    const top = documentPosition - viewport.size / 2;
+    onNavigate(Math.max(0, Math.min(1 - viewport.size, top)));
+  };
+
+  return <aside
+    ref={minimapRef}
+    className="code-editor-minimap"
+    aria-label="Editor minimap"
+    onPointerDown={(event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      draggingPointerRef.current = event.pointerId;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      navigateAt(event.clientY);
+    }}
+    onPointerMove={(event) => { if (draggingPointerRef.current === event.pointerId) navigateAt(event.clientY); }}
+    onPointerUp={(event) => {
+      if (draggingPointerRef.current !== event.pointerId) return;
+      draggingPointerRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    }}
+    onPointerCancel={(event) => { if (draggingPointerRef.current === event.pointerId) draggingPointerRef.current = null; }}
+  >
+    <div className="code-editor-minimap-code" style={{ fontSize: `${previewMetrics.fontSize}px`, lineHeight: `${previewMetrics.lineHeight}px` }} aria-hidden="true">
+      {renderHighlightedPreview && highlightedHtml
+        ? <div className="code-editor-minimap-highlighted" dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
+        : <pre className="code-editor-minimap-plain"><code>{content}</code></pre>}
+    </div>
+    <span className="code-editor-minimap-window" style={{ top: `${viewport.top * previewMetrics.height}px`, height: `${Math.max(1, viewport.size * previewMetrics.height)}px` }} />
+  </aside>;
+}
+
+export function CodeWorkspace({ workspaceId, tabs, groups, activeGroupId, onSelect, onActivateGroup, onClose, onChange, onSave, onMoveTab, onCloseGroup, onModeState }: CodeWorkspaceProps) {
   const layout = useFloatingEditorLayout(workspaceId, groups.map((group) => group.id));
   const [surfaceWidth, setSurfaceWidth] = useState(0);
+  useEffect(() => onModeState(layout.mode, layout.setMode), [workspaceId, layout.mode, layout.setMode, onModeState]);
   useEffect(() => {
     const surface = layout.surfaceRef.current;
     if (!surface) return;
@@ -266,16 +362,6 @@ export function CodeWorkspace({ workspaceId, tabs, groups, activeGroupId, onSele
     </Fragment> : <Fragment key={group.id}>{pane}</Fragment>;
   });
   return <section className="code-workspace" aria-label="Code editor">
-    <header className="editor-groups-toolbar">
-      <div className="editor-groups-title"><span aria-hidden="true">▤</span>Editor groups<span className="editor-groups-count">{groups.length}</span></div>
-      <div className="editor-groups-toolbar-actions">
-        <div className="editor-layout-mode-toggle" role="group" aria-label="Editor group layout mode">
-          <button className={layout.mode === "tiled" ? "selected" : ""} type="button" aria-pressed={layout.mode === "tiled"} onClick={() => layout.setMode("tiled")} title="Use the default split editor layout">Split</button>
-          <button className={layout.mode === "free" ? "selected" : ""} type="button" aria-pressed={layout.mode === "free"} onClick={() => layout.setMode("free")} title="Move editor groups freely around the canvas">Free</button>
-        </div>
-        <button className="editor-create-group" type="button" onClick={onCreateGroup}><span aria-hidden="true">＋</span>New group</button>
-      </div>
-    </header>
     <div
       ref={layout.surfaceRef}
       className={"editor-groups-layout" + (layout.mode === "free" ? " free" : "")}

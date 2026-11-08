@@ -1,0 +1,97 @@
+.quick-open-backdrop {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: min(12vh, 100px) 16px 24px;
+  background: rgb(0 0 0 / 42%);
+  color: var(--theme-text, #ecebf4);
+}
+.quick-open-dialog {
+  width: min(680px, 100%);
+  max-height: min(72vh, 680px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--theme-border, #302e3b);
+  border-radius: 10px;
+  background: var(--theme-surface, #13141a);
+  box-shadow: 0 22px 64px rgb(0 0 0 / 58%), 0 0 0 1px rgb(255 255 255 / 3%);
+}
+.quick-open-search-row {
+  height: 48px;
+  flex: 0 0 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--theme-border, #302e3b);
+  background: var(--theme-raised, #191a22);
+  color: var(--theme-muted, #85899a);
+}
+.quick-open-search-row > span { font-size: 21px; line-height: 1; }
+.quick-open-search-row input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--theme-text, #ecebf4);
+  font: 15px Inter, "Segoe UI", sans-serif;
+}
+.quick-open-search-row input::placeholder { color: var(--theme-muted, #85899a); }
+.quick-open-search-row kbd,
+.quick-open-footer kbd {
+  padding: 2px 5px;
+  border: 1px solid var(--theme-border, #302e3b);
+  border-radius: 4px;
+  background: var(--theme-chrome, #0d0e13);
+  color: var(--theme-muted, #85899a);
+  font: 10px "Cascadia Code", Consolas, monospace;
+}
+.quick-open-meta {
+  min-height: 29px;
+  flex: 0 0 29px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 14px;
+  color: var(--theme-muted, #85899a);
+  font-size: 10px;
+}
+.quick-open-results { min-height: 45px; flex: 1 1 auto; overflow: auto; padding: 0 6px 6px; scrollbar-color: var(--theme-border, #302e3b) var(--theme-surface, #13141a); scrollbar-width: thin; }
+.quick-open-results::-webkit-scrollbar { width: 8px; }
+.quick-open-results::-webkit-scrollbar-track { background: var(--theme-surface, #13141a); }
+.quick-open-results::-webkit-scrollbar-thumb { border: 2px solid var(--theme-surface, #13141a); border-radius: 8px; background: var(--theme-border, #302e3b); }
+.quick-open-result {
+  width: 100%;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--theme-text, #ecebf4);
+  text-align: left;
+}
+.quick-open-result:hover,
+.quick-open-result.active { background: color-mix(in srgb, var(--theme-accent, #b39aff) 13%, var(--theme-raised, #191a22)); }
+.quick-open-file-icon { width: 24px; flex: 0 0 24px; color: var(--theme-accent, #b39aff); font: 9px "Cascadia Code", Consolas, monospace; text-align: center; }
+.quick-open-file-info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.quick-open-file-name { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.quick-open-file-path { overflow: hidden; color: var(--theme-muted, #85899a); font: 10px "Cascadia Code", Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.quick-open-location { flex: 0 0 auto; max-width: 140px; overflow: hidden; color: var(--theme-muted, #85899a); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.quick-open-message { display: grid; min-height: 70px; place-items: center; padding: 14px; color: var(--theme-muted, #85899a); font-size: 12px; text-align: center; }
+.quick-open-footer { min-height: 31px; flex: 0 0 31px; display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 0 12px; border-top: 1px solid var(--theme-border, #302e3b); color: var(--theme-muted, #85899a); font-size: 10px; }
+.quick-open-footer > span { display: inline-flex; align-items: center; gap: 4px; }
+.quick-open-result:focus-visible { outline: 2px solid var(--theme-accent, #b39aff); outline-offset: -2px; }
+@media (max-width: 600px) {
+  .quick-open-backdrop { padding: 8vh 10px 16px; }
+  .quick-open-location { display: none; }
+  .quick-open-footer { justify-content: center; gap: 10px; }
+}

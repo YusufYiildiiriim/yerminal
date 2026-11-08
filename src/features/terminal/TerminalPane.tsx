@@ -14,6 +14,7 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const resizeSyncRef = useRef<() => void>(() => {});
   const activeRef = useRef(active);
   const visibleRef = useRef(visible);
   const onFocusRef = useRef(onFocus);
@@ -84,6 +85,67 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
     const pendingOutput: TerminalOutput[] = [];
     let outputUnlisten: (() => void) | undefined;
     let exitUnlisten: (() => void) | undefined;
+    let ptyReady = false;
+    let resizeInFlight = false;
+    let inFlightPtySizeKey: string | null = null;
+    let resizeTimer: number | null = null;
+    let lastPtySize: string | null = null;
+    let pendingPtySize: { cols: number; rows: number; key: string } | null = null;
+
+    const readTerminalSize = () => {
+      const cols = Math.max(2, terminal.cols);
+      const rows = Math.max(2, terminal.rows);
+      return { cols, rows, key: `${cols}x${rows}` };
+    };
+
+    const flushPtyResize = async () => {
+      if (disposed || !ptyReady || resizeInFlight || !pendingPtySize) return;
+      if (!visibleRef.current) {
+        pendingPtySize = null;
+        return;
+      }
+      const size = pendingPtySize;
+      pendingPtySize = null;
+      if (size.key === lastPtySize) return;
+      resizeInFlight = true;
+      inFlightPtySizeKey = size.key;
+      try {
+        await invoke("resize_terminal", { sessionId, cols: size.cols, rows: size.rows });
+      } catch (error) {
+        console.warn(`Could not resize terminal ${sessionId}:`, error);
+      } finally {
+        lastPtySize = size.key;
+        resizeInFlight = false;
+        inFlightPtySizeKey = null;
+        if (!disposed && pendingPtySize && resizeTimer === null) {
+          resizeTimer = window.setTimeout(() => {
+            resizeTimer = null;
+            void flushPtyResize();
+          }, 90);
+        }
+      }
+    };
+
+    const fitAndSchedulePtyResize = () => {
+      if (disposed) return;
+      fit.fit();
+      if (!visibleRef.current || !ptyReady || !isTauri()) return;
+      const size = readTerminalSize();
+      if (size.key === (resizeInFlight ? inFlightPtySizeKey : lastPtySize)) {
+        pendingPtySize = null;
+        if (resizeTimer !== null) window.clearTimeout(resizeTimer);
+        resizeTimer = null;
+        return;
+      }
+      if (pendingPtySize?.key === size.key) return;
+      pendingPtySize = size;
+      if (resizeTimer !== null) window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        resizeTimer = null;
+        void flushPtyResize();
+      }, 90);
+    };
+    resizeSyncRef.current = fitAndSchedulePtyResize;
 
     const initialize = async () => {
       if (!isTauri()) {
@@ -111,11 +173,13 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
         exitUnlisten();
         return;
       }
+      fit.fit();
+      const initialSize = readTerminalSize();
       try {
         if (profileId) {
-          await invoke("create_agent_terminal", { sessionId, profileId, workingDirectory, cols: Math.max(2, terminal.cols), rows: Math.max(2, terminal.rows) });
+          await invoke("create_agent_terminal", { sessionId, profileId, workingDirectory, cols: initialSize.cols, rows: initialSize.rows });
         } else {
-          await invoke("create_terminal", { sessionId, shell, workingDirectory, cols: Math.max(2, terminal.cols), rows: Math.max(2, terminal.rows) });
+          await invoke("create_terminal", { sessionId, shell, workingDirectory, cols: initialSize.cols, rows: initialSize.rows });
         }
       } catch (error) {
         terminal.writeln(`\r\n[terminal start error: ${String(error)}]`);
@@ -123,6 +187,9 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
         return;
       }
       if (disposed) return;
+      ptyReady = true;
+      lastPtySize = initialSize.key;
+      fitAndSchedulePtyResize();
       let throughSequence = 0;
       try {
         const snapshot = await invoke<TerminalOutputSnapshot>("terminal_output_snapshot", { sessionId });
@@ -142,8 +209,7 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
           terminal.writeln(`\r\n[terminal input error: ${String(error)}]`);
         });
       });
-      fit.fit();
-      void invoke("resize_terminal", { sessionId, cols: terminal.cols, rows: terminal.rows });
+      fitAndSchedulePtyResize();
     };
     void initialize().catch((error: unknown) => {
       terminal.writeln(`\r\n[terminal initialization error: ${String(error)}]`);
@@ -151,18 +217,14 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
 
     const resizeObserver = new ResizeObserver(() => {
       if (!visibleRef.current || disposed) return;
-      fit.fit();
-      void invoke("resize_terminal", { sessionId, cols: terminal.cols, rows: terminal.rows });
+      fitAndSchedulePtyResize();
     });
     resizeObserver.observe(hostRef.current);
     const appearanceRoot = hostRef.current.closest(".app-shell");
     const appearanceObserver = new MutationObserver(() => {
       if (disposed) return;
       applyAppearance();
-      if (visibleRef.current) {
-        fit.fit();
-        if (isTauri()) void invoke("resize_terminal", { sessionId, cols: terminal.cols, rows: terminal.rows });
-      }
+      if (visibleRef.current) fitAndSchedulePtyResize();
     });
     if (appearanceRoot) appearanceObserver.observe(appearanceRoot, { attributes: true, attributeFilter: ["style", "data-theme"] });
 
@@ -170,6 +232,8 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
       disposed = true;
       resizeObserver.disconnect();
       appearanceObserver.disconnect();
+      if (resizeTimer !== null) window.clearTimeout(resizeTimer);
+      if (resizeSyncRef.current === fitAndSchedulePtyResize) resizeSyncRef.current = () => {};
       outputUnlisten?.();
       exitUnlisten?.();
       hostRef.current?.removeEventListener("focusin", handleFocus);
@@ -182,10 +246,9 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
   useEffect(() => {
     if (!visible || !terminalRef.current || !fitRef.current) return;
     requestAnimationFrame(() => {
-      fitRef.current?.fit();
+      resizeSyncRef.current();
       const terminal = terminalRef.current;
       if (terminal && isTauri() && activeRef.current) {
-        void invoke("resize_terminal", { sessionId, cols: terminal.cols, rows: terminal.rows });
         terminal.focus();
       }
     });

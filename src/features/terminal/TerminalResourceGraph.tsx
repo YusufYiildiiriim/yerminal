@@ -4,7 +4,7 @@ import "./terminal-resource-graph.css";
 
 type TerminalSummary = { id: string; name: string; shellLabel: string };
 type TerminalResourceMetric = { sessionId: string; available: boolean; processCount: number; memoryBytes: number; cpuPercent: number | null };
-type TerminalResourceGraphProps = { enabled: boolean; workspaceName: string; terminals: TerminalSummary[]; activeTerminalId: string | null };
+type TerminalResourceGraphProps = { enabled: boolean; workspaceName: string; terminals: TerminalSummary[]; activeTerminalId: string | null; onFocusTerminal: (terminalId: string) => void };
 
 function formatMemory(bytes: number): string {
   if (bytes < 1024) return bytes + " B";
@@ -18,7 +18,7 @@ function formatMemory(bytes: number): string {
   return size.toFixed(size >= 10 ? 1 : 2) + " " + units[unitIndex];
 }
 
-export function TerminalResourceGraph({ enabled, workspaceName, terminals, activeTerminalId }: TerminalResourceGraphProps) {
+export function TerminalResourceGraph({ enabled, workspaceName, terminals, activeTerminalId, onFocusTerminal }: TerminalResourceGraphProps) {
   const sessionKey = terminals.map((terminal) => terminal.id).join("|");
   const sessionIds = sessionKey ? sessionKey.split("|") : [];
   const [metrics, setMetrics] = useState<TerminalResourceMetric[]>([]);
@@ -74,14 +74,11 @@ export function TerminalResourceGraph({ enabled, workspaceName, terminals, activ
   }, [enabled, sessionKey]);
 
   const metricBySession = new Map(metrics.map((metric) => [metric.sessionId, metric]));
-  const maxMemory = Math.max(1, ...metrics.filter((metric) => metric.available).map((metric) => metric.memoryBytes));
-  const maxCpu = Math.max(1, ...metrics.filter((metric) => metric.available && metric.cpuPercent !== null).map((metric) => metric.cpuPercent ?? 0));
 
   return <section className="terminal-resource-strip" aria-label="Terminal resource usage">
     <header className="terminal-resource-strip-header">
       <strong>Terminal usage</strong>
       <span className="terminal-resource-workspace" title={workspaceName}>{workspaceName}</span>
-      <span className="terminal-resource-session-count">{terminals.length} {terminals.length === 1 ? "session" : "sessions"}</span>
       {enabled && terminals.length > 0 && !error && <span className="terminal-resource-live"><span className="terminal-resource-live-dot" />Live · 1.5s</span>}
     </header>
     {error && <div className="terminal-resource-error" role="alert">{error}</div>}
@@ -90,30 +87,15 @@ export function TerminalResourceGraph({ enabled, workspaceName, terminals, activ
         const metric = metricBySession.get(terminal.id);
         const available = metric?.available ?? false;
         const cpu = metric?.cpuPercent ?? null;
-        const memoryWidth = available ? Math.max(metric?.memoryBytes ? 2 : 0, (metric?.memoryBytes ?? 0) / maxMemory * 100) : 0;
-        const cpuWidth = available && cpu !== null ? Math.max(cpu > 0 ? 2 : 0, cpu / maxCpu * 100) : 0;
-        const state = available ? "Tracked" : metric || !loading ? "Unavailable" : "Sampling…";
-        return <article className={"terminal-resource-card" + (terminal.id === activeTerminalId ? " active" : "")} key={terminal.id} title={terminal.shellLabel}>
+        return <button className={"terminal-resource-card" + (terminal.id === activeTerminalId ? " active" : "")} key={terminal.id} type="button" title={`Focus ${terminal.name}`} aria-pressed={terminal.id === activeTerminalId} aria-label={`Focus ${terminal.name} terminal`} onClick={() => onFocusTerminal(terminal.id)}>
           <div className="terminal-resource-card-heading">
-            <span className="terminal-resource-terminal-icon" aria-hidden="true">▣</span>
-            <div className="terminal-resource-terminal-name">
-              <strong>{terminal.name}</strong>
-              <span>{terminal.shellLabel}{terminal.id === activeTerminalId ? " · Active" : ""}</span>
-            </div>
-            <span className={"terminal-resource-state" + (available ? " available" : "")}>{state}</span>
+            <strong className="terminal-resource-terminal-name">{terminal.name}</strong>
           </div>
           {available && metric ? <div className="terminal-resource-metrics">
-            <div className="terminal-resource-metric-row">
-              <span>RAM</span><strong>{formatMemory(metric.memoryBytes)}</strong>
-              <div className="terminal-resource-bar" aria-label={"RAM " + formatMemory(metric.memoryBytes)}><span className="memory" style={{ width: memoryWidth + "%" }} /></div>
-            </div>
-            <div className="terminal-resource-metric-row">
-              <span title="Share of logical CPU capacity available to yerminal">CPU</span><strong>{cpu === null ? "Measuring…" : cpu.toFixed(1) + "%"}</strong>
-              <div className="terminal-resource-bar" aria-label={cpu === null ? "CPU measuring" : "CPU " + cpu.toFixed(1) + "%"}><span className="cpu" style={{ width: cpuWidth + "%" }} /></div>
-            </div>
-            <span className="terminal-resource-process-count">{metric.processCount} processes</span>
+            <div className="terminal-resource-metric-row"><span>RAM</span><strong>{formatMemory(metric.memoryBytes)}</strong></div>
+            <div className="terminal-resource-metric-row"><span>CPU</span><strong>{cpu === null ? "Measuring…" : cpu.toFixed(1) + "%"}</strong></div>
           </div> : <span className="terminal-resource-unavailable">{metric ? "Process ended" : loading ? "Collecting metrics…" : "Unavailable"}</span>}
-        </article>;
+        </button>;
       })}
     </div>}
   </section>;

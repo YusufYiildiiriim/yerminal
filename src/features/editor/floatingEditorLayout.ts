@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -215,17 +216,17 @@ export function useFloatingEditorLayout(workspaceId: string, groupIds: string[])
     }
   }, [snapshot, workspaceId, groupIdsKey]);
 
-  const updateSnapshot = (update: (current: FloatingEditorSnapshot) => FloatingEditorSnapshot) => {
+  const updateSnapshot = useCallback((update: (current: FloatingEditorSnapshot) => FloatingEditorSnapshot) => {
     setSnapshot((current) => update(normalizeSnapshot(
       current.workspaceId === workspaceId ? current : readSnapshot(workspaceId, stableGroupIds),
       workspaceId,
       stableGroupIds,
     )));
-  };
+  }, [stableGroupIds, workspaceId]);
 
-  const setMode = (mode: EditorLayoutMode) => {
+  const setMode = useCallback((mode: EditorLayoutMode) => {
     updateSnapshot((current) => ({ ...current, mode }));
-  };
+  }, [updateSnapshot]);
 
   const getRect = (groupId: string) => currentSnapshot.positions[groupId] ?? createDefaultPositions([groupId])[groupId];
   const getWindowStyle = (groupId: string): CSSProperties => {

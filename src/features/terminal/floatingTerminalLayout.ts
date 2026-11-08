@@ -72,6 +72,17 @@ function isRect(value: unknown): value is FloatingTerminalRect {
   return [rect.x, rect.y, rect.width, rect.height].every((part) => typeof part === "number" && Number.isFinite(part));
 }
 
+function normalizeStoredRect(rect: FloatingTerminalRect): FloatingTerminalRect {
+  const width = Math.max(MIN_SIZE_PERCENT, Math.min(100, rect.width));
+  const height = Math.max(MIN_SIZE_PERCENT, Math.min(100, rect.height));
+  return {
+    x: Math.max(0, Math.min(100 - width, rect.x)),
+    y: Math.max(0, Math.min(100 - height, rect.y)),
+    width,
+    height,
+  };
+}
+
 function createDefaultPositions(sessionIds: string[]): Record<string, FloatingTerminalRect> {
   const columns = Math.max(1, Math.ceil(Math.sqrt(sessionIds.length)));
   const rows = Math.max(1, Math.ceil(sessionIds.length / columns));
@@ -95,7 +106,7 @@ function readSnapshot(workspaceId: string, sessionIds: string[]): FloatingLayout
       if (value.workspaceId === workspaceId) {
         const positions: Record<string, FloatingTerminalRect> = { ...defaults };
         for (const sessionId of sessionIds) {
-          if (isRect(value.positions?.[sessionId])) positions[sessionId] = value.positions[sessionId];
+          if (isRect(value.positions?.[sessionId])) positions[sessionId] = normalizeStoredRect(value.positions[sessionId]);
         }
         return { workspaceId, mode: value.mode === "floating" ? "floating" : "tiled", positions };
       }
@@ -130,6 +141,18 @@ function getCanvasBounds(surface: HTMLElement): CanvasBounds | null {
     height: surface.clientHeight * scaleY,
   };
   return bounds.width > 0 && bounds.height > 0 ? bounds : null;
+}
+
+function clampRectToCanvas(rect: FloatingTerminalRect, bounds: CanvasBounds): FloatingTerminalRect {
+  const minWidth = Math.min(100, Math.max(MIN_SIZE_PERCENT, MIN_WIDTH_PX / bounds.width * 100));
+  const minHeight = Math.min(100, Math.max(MIN_SIZE_PERCENT, MIN_HEIGHT_PX / bounds.height * 100));
+  const renderedWidth = Math.min(100, Math.max(minWidth, rect.width));
+  const renderedHeight = Math.min(100, Math.max(minHeight, rect.height));
+  return {
+    ...rect,
+    x: Math.max(0, Math.min(100 - renderedWidth, rect.x)),
+    y: Math.max(0, Math.min(100 - renderedHeight, rect.y)),
+  };
 }
 
 export function useFloatingTerminalLayout(
@@ -181,6 +204,31 @@ export function useFloatingTerminalLayout(
   }, [snapshot, workspaceId]);
 
   const currentSnapshot = snapshot.workspaceId === workspaceId ? snapshot : readSnapshot(workspaceId, sessionIds);
+
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+
+    const clampVisibleRects = () => {
+      const bounds = getCanvasBounds(surface);
+      if (!bounds) return;
+      setSnapshot((current) => {
+        if (current.workspaceId !== workspaceId || current.mode !== "floating") return current;
+        let changed = false;
+        const positions = Object.fromEntries(Object.entries(current.positions).map(([sessionId, rect]) => {
+          const clamped = clampRectToCanvas(rect, bounds);
+          if (clamped.x !== rect.x || clamped.y !== rect.y) changed = true;
+          return [sessionId, clamped];
+        }));
+        return changed ? { ...current, positions } : current;
+      });
+    };
+
+    const observer = new ResizeObserver(clampVisibleRects);
+    observer.observe(surface);
+    clampVisibleRects();
+    return () => observer.disconnect();
+  }, [currentSnapshot.mode, workspaceId]);
 
   const setMode = useCallback((mode: TerminalLayoutMode) => {
     setSnapshot((current) => {

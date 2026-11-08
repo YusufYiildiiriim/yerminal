@@ -5,6 +5,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { DiffViewer } from "./features/git/DiffViewer";
 import { TerminalResourceGraph } from "./features/terminal/TerminalResourceGraph";
 import { CodeWorkspace, type EditorFileTab, type EditorGroupState } from "./features/editor/CodeWorkspace";
+import { QuickOpenDialog, type QuickOpenFile } from "./features/editor/QuickOpenDialog";
+import type { EditorLayoutMode } from "./features/editor/floatingEditorLayout";
 import { FloatingTerminalDockGuides, FloatingTerminalModeToggle } from "./features/terminal/FloatingTerminalLayoutControls";
 import { useFloatingTerminalLayout, type TerminalDockEdge, type TerminalLayoutMode } from "./features/terminal/floatingTerminalLayout";
 import { ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -14,6 +16,7 @@ import "./styles/app.css";
 import "./styles/themes.css";
 import "./styles/sidebar-ux.css";
 import "./styles/workbench-ux.css";
+import "./styles/git-ux.css";
 
 const TerminalPane = lazy(() => import("./features/terminal/TerminalPane"));
 
@@ -73,6 +76,7 @@ const HELP_SHORTCUTS = [
   { keys: "Ctrl/⌘ + Tab", label: "Focus next terminal" },
   { keys: "Ctrl/⌘ + Shift + Tab", label: "Focus previous terminal" },
   { keys: "Alt + Shift + Arrow", label: "Resize a Free pane/group (focus a resize edge)" },
+  { keys: "Ctrl/⌘ + P", label: "Quick Open files" },
   { keys: "Ctrl/⌘ + S", label: "Save active code file" },
   { keys: "Tab", label: "Insert four spaces in the code editor" },
   { keys: "Esc", label: "Close Help or commit details; cancel terminal rename" },
@@ -209,7 +213,7 @@ const tools: { id: ToolId; label: string; icon: string }[] = [
 ];
 
 const SETTINGS_KEY = "yerminal.app-settings.v1";
-const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13 };
+const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13, quickOpenScope: "active", collapseOtherFolders: false };
 function readAppSettings(): AppSettings {
   try {
     const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}");
@@ -219,6 +223,8 @@ function readAppSettings(): AppSettings {
       terminalFontFamily: typeof raw.terminalFontFamily === "string" && raw.terminalFontFamily.trim() ? raw.terminalFontFamily : DEFAULT_SETTINGS.terminalFontFamily,
       editorFontSize: typeof raw.editorFontSize === "number" && Number.isFinite(raw.editorFontSize) ? Math.max(8, Math.min(40, raw.editorFontSize)) : DEFAULT_SETTINGS.editorFontSize,
       terminalFontSize: typeof raw.terminalFontSize === "number" && Number.isFinite(raw.terminalFontSize) ? Math.max(8, Math.min(40, raw.terminalFontSize)) : DEFAULT_SETTINGS.terminalFontSize,
+      quickOpenScope: raw.quickOpenScope === "all" ? "all" : "active",
+      collapseOtherFolders: raw.collapseOtherFolders === true,
     };
   } catch { return DEFAULT_SETTINGS; }
 }
@@ -233,6 +239,7 @@ function App() {
   });
   const toolsPanelRef = useRef<ImperativePanelHandle>(null);
   const [toolsPanelCollapsed, setToolsPanelCollapsed] = useState(false);
+  const toolClickRef = useRef<{ toolId: ToolId; initiallyCollapsed: boolean } | null>(null);
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   useEffect(() => {
     const onResize = () => setViewportWidth(window.innerWidth);
@@ -241,6 +248,7 @@ function App() {
   }, []);
   const [activeMainView, setActiveMainView] = useState<"code" | "terminals">("terminals");
   const [terminalLayoutMode, setTerminalLayoutMode] = useState<TerminalLayoutMode>("tiled");
+  const [editorLayoutMode, setEditorLayoutMode] = useState<EditorLayoutMode>("tiled");
   const [terminalViews, setTerminalViews] = useState<Record<string, string | null>>({});
   const [terminalWorkspaceState, setTerminalWorkspaceState] = useState<TerminalWorkspaceState>(() => readTerminalWorkspaceState());
   const [editorWorkspaces, setEditorWorkspaces] = useState<Record<string, EditorWorkspaceState>>({});
@@ -254,13 +262,19 @@ function App() {
   const [editingTerminalId, setEditingTerminalId] = useState<string | null>(null);
   const [terminalNameDraft, setTerminalNameDraft] = useState("");
   const terminalNameInputRef = useRef<HTMLInputElement>(null);
+  const terminalDirectoryTargetsRef = useRef(new Map<string, string>());
+  const terminalDirectoryWritesRef = useRef(new Map<string, Promise<void>>());
+  const terminalTabsRef = useRef<HTMLDivElement>(null);
+  const terminalTabScrollTargetRef = useRef<{ workspaceId: string; terminalId: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [terminalUsageOpen, setTerminalUsageOpen] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const [settings, setSettings] = useState<AppSettings>(readAppSettings);
   const initializedWorkspaceIdsRef = useRef(new Set<string>());
   const floatingModeSetterRef = useRef<((mode: TerminalLayoutMode) => void) | null>(null);
+  const editorModeSetterRef = useRef<((mode: EditorLayoutMode) => void) | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeTerminalWorkspace = terminalWorkspaceState.workspaces.find((workspace) => workspace.id === terminalWorkspaceState.activeId) ?? terminalWorkspaceState.workspaces[0];
   const selectedTerminalView = terminalViews[activeTerminalWorkspace?.id ?? ""] ?? null;
@@ -281,6 +295,65 @@ function App() {
   const activeTerminalId = activeTerminalWorkspace?.activeTerminalId ?? null;
   const layout = activeTerminalWorkspace?.layout ?? null;
   const activeEditorWorkspace = editorWorkspaces[activeTerminalWorkspace?.id ?? ""] ?? createEmptyEditorWorkspaceState();
+
+  const handleToolClick = (toolId: ToolId, clickCount: number) => {
+    setActiveTool(toolId);
+    const firstClick = toolClickRef.current;
+    if (clickCount >= 2 && firstClick?.toolId === toolId) {
+      if (firstClick.initiallyCollapsed) {
+        toolsPanelRef.current?.expand();
+        setToolsPanelCollapsed(false);
+      } else {
+        toolsPanelRef.current?.collapse();
+        setToolsPanelCollapsed(true);
+      }
+      toolClickRef.current = null;
+      return;
+    }
+    toolClickRef.current = { toolId, initiallyCollapsed: toolsPanelCollapsed };
+    if (toolsPanelCollapsed) {
+      toolsPanelRef.current?.expand();
+      setToolsPanelCollapsed(false);
+    }
+  };
+
+  useEffect(() => {
+    const tabs = terminalTabsRef.current;
+    const workspaceId = activeTerminalWorkspace?.id;
+    if (!tabs || activeMainView !== "terminals" || !workspaceId) return;
+
+    const pendingTarget = terminalTabScrollTargetRef.current;
+    if (pendingTarget && pendingTarget.workspaceId !== workspaceId) terminalTabScrollTargetRef.current = null;
+    const terminalId = pendingTarget?.workspaceId === workspaceId
+      ? pendingTarget.terminalId
+      : focusedTerminalView ?? activeTerminalId;
+    if (!terminalId) return;
+    const target = Array.from(tabs.querySelectorAll<HTMLElement>("[data-terminal-id]"))
+      .find((element) => element.dataset.terminalId === terminalId);
+    if (!target) return;
+
+    let frameId = 0;
+    const scrollTargetIntoView = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        const tabsBounds = tabs.getBoundingClientRect();
+        const targetBounds = target.getBoundingClientRect();
+        if (targetBounds.left < tabsBounds.left) {
+          tabs.scrollBy({ left: targetBounds.left - tabsBounds.left, behavior: "smooth" });
+        } else if (targetBounds.right > tabsBounds.right) {
+          tabs.scrollBy({ left: targetBounds.right - tabsBounds.right, behavior: "smooth" });
+        }
+        if (terminalTabScrollTargetRef.current?.terminalId === terminalId) terminalTabScrollTargetRef.current = null;
+      });
+    };
+    const observer = new ResizeObserver(scrollTargetIntoView);
+    observer.observe(tabs);
+    scrollTargetIntoView();
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [activeMainView, activeTerminalId, activeTerminalWorkspace?.id, activeWorkspaceTerminalIds.join("\u0000"), focusedTerminalView]);
 
   useEffect(() => {
     try {
@@ -310,8 +383,8 @@ function App() {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* Retain settings in memory. */ }
   }, [settings]);
 
-  const openEditorFile = useCallback(async (request: EditorFileRequest) => {
-    const workspaceId = activeTerminalWorkspace?.id;
+  const openEditorFile = useCallback(async (request: EditorFileRequest, targetWorkspaceId?: string) => {
+    const workspaceId = targetWorkspaceId ?? activeTerminalWorkspace?.id;
     if (!workspaceId) return;
     const tabId = request.id;
     const operationKey = editorOperationKey(workspaceId, tabId);
@@ -479,6 +552,15 @@ function App() {
     });
   }, [activeTerminalWorkspace?.id]);
 
+  const registerEditorLayoutControl = useCallback((mode: EditorLayoutMode, setMode: (mode: EditorLayoutMode) => void) => {
+    editorModeSetterRef.current = setMode;
+    setEditorLayoutMode((current) => current === mode ? current : mode);
+  }, []);
+
+  const changeEditorLayoutMode = useCallback((mode: EditorLayoutMode) => {
+    editorModeSetterRef.current?.(mode);
+  }, []);
+
   const activateEditorGroup = useCallback((groupId: string) => {
     const workspaceId = activeTerminalWorkspace?.id;
     if (!workspaceId) return;
@@ -596,6 +678,9 @@ function App() {
 
   const changeTerminalLayoutMode = useCallback((mode: TerminalLayoutMode) => {
     const workspace = activeTerminalWorkspace;
+    if (mode === "floating" && workspace) {
+      setTerminalViews((current) => ({ ...current, [workspace.id]: null }));
+    }
     if (mode === "tiled" && workspace && !workspace.layout && workspace.terminalIds.length > 1) {
       updateTerminalWorkspace(workspace.id, (current) => ({ ...current, layout: buildTerminalLayout(current.terminalIds) }));
     }
@@ -662,6 +747,7 @@ function App() {
     try {
       const shell: ShellKind = navigator.userAgent.includes("Windows") ? "powershell" : "bash";
       const id = crypto.randomUUID();
+      if (activeTerminalWorkspace) terminalTabScrollTargetRef.current = { workspaceId: activeTerminalWorkspace.id, terminalId: id };
       const terminal: TerminalSession = {
         id,
         name: activeWorkspaceTerminalIds.length === 0 ? (shell === "powershell" ? "PowerShell" : shell) : `Terminal ${activeWorkspaceTerminalIds.length + 1}`,
@@ -735,12 +821,18 @@ function App() {
   }, [activeTerminalWorkspace, createTerminal, updateTerminalWorkspace]);
 
   const addTerminalToWorkspace = useCallback(async () => {
-    if (!activeTerminalId) {
+    const workspace = activeTerminalWorkspace;
+    if (!workspace) {
       await createTerminal();
       return;
     }
-    await splitActiveTerminal("horizontal");
-  }, [activeTerminalId, createTerminal, splitActiveTerminal]);
+    const created = await createTerminal(false);
+    if (!created) return;
+    updateTerminalWorkspace(workspace.id, (current) => ({
+      ...current,
+      layout: buildTerminalLayout(current.terminalIds),
+    }));
+  }, [activeTerminalWorkspace, createTerminal, updateTerminalWorkspace]);
 
   const moveTerminal = useCallback((sourceId: string, targetId: string) => {
     if (sourceId === targetId || !activeTerminalWorkspace) return;
@@ -780,23 +872,48 @@ function App() {
     setRepoInfo(null);
   }, [terminalWorkspaceState.workspaces]);
 
+  const sendTerminalDirectoryCommand = useCallback((workspaceId: string, terminal: TerminalSession, path: string) => {
+    const sessionKey = JSON.stringify([workspaceId, terminal.id]);
+    const normalizedPath = navigator.userAgent.includes("Windows") ? path.replace(/\//g, "\\").toLocaleLowerCase() : path;
+    const targets = terminalDirectoryTargetsRef.current;
+    const writes = terminalDirectoryWritesRef.current;
+    if (targets.get(sessionKey) === normalizedPath) return writes.get(sessionKey) ?? Promise.resolve();
+
+    targets.set(sessionKey, normalizedPath);
+    const previousWrite = writes.get(sessionKey) ?? Promise.resolve();
+    const write = previousWrite.catch(() => undefined).then(async () => {
+      if (targets.get(sessionKey) !== normalizedPath) return;
+      await invoke<void>("write_terminal", { sessionId: terminal.id, data: changeDirectoryCommand(terminal.shell, path) });
+    });
+    writes.set(sessionKey, write);
+    void write.then(
+      () => { if (writes.get(sessionKey) === write) writes.delete(sessionKey); },
+      () => {
+        if (targets.get(sessionKey) === normalizedPath) targets.delete(sessionKey);
+        if (writes.get(sessionKey) === write) writes.delete(sessionKey);
+      },
+    );
+    return write;
+  }, []);
+
   const activateWorkspaceFolder = useCallback(async (path: string, additions: string[] = []) => {
     const workspace = activeTerminalWorkspace;
     if (!workspace) return;
+    const rootChanged = workspace.rootPath !== path;
     updateTerminalWorkspace(workspace.id, (current) => {
       const folderPaths = mergeWorkspaceFolders(current.folderPaths, [...additions, ...(path ? [path] : [])]);
       return { ...current, folderPaths, rootPath: path && folderPaths.includes(path) ? path : "" };
     });
     setRepoInfo(null);
-    if (!path || !isTauri()) return;
-    const activeIds = new Set(workspace.terminalIds);
-    const workspaceTerminals = terminals.filter((terminal) => activeIds.has(terminal.id));
-    const results = await Promise.allSettled(workspaceTerminals.map((terminal) =>
-      invoke("write_terminal", { sessionId: terminal.id, data: changeDirectoryCommand(terminal.shell, path) }),
-    ));
-    const failed = results.find((result) => result.status === "rejected");
-    if (failed?.status === "rejected") showToast(`Could not change terminal working directory: ${String(failed.reason)}`);
-  }, [activeTerminalWorkspace, showToast, terminals, updateTerminalWorkspace]);
+    if (!path || !rootChanged || !isTauri()) return;
+    const terminal = terminals.find((item) => item.id === workspace.activeTerminalId && workspace.terminalIds.includes(item.id));
+    if (!terminal) return;
+    try {
+      await sendTerminalDirectoryCommand(workspace.id, terminal, path);
+    } catch (reason) {
+      showToast(`Could not change terminal working directory: ${String(reason)}`);
+    }
+  }, [activeTerminalWorkspace, sendTerminalDirectoryCommand, showToast, terminals, updateTerminalWorkspace]);
   const createWorkspace = useCallback(() => {
     const ordinal = terminalWorkspaceState.workspaces.length + 1;
     const name = window.prompt("Workspace name", `Workspace ${ordinal}`)?.trim();
@@ -877,20 +994,23 @@ function App() {
     if (workspace.rootPath !== path) return;
     setRepoInfo(null);
     if (!rootPath || !isTauri()) return;
-    const terminalIds = new Set(workspace.terminalIds);
-    void Promise.allSettled(terminals.filter((terminal) => terminalIds.has(terminal.id)).map((terminal) =>
-      invoke("write_terminal", { sessionId: terminal.id, data: changeDirectoryCommand(terminal.shell, rootPath) }),
-    )).then((results) => {
-      const failed = results.find((result) => result.status === "rejected");
-      if (failed?.status === "rejected") showToast(`Could not change terminal working directory: ${String(failed.reason)}`);
+    const terminal = terminals.find((item) => item.id === workspace.activeTerminalId && workspace.terminalIds.includes(item.id));
+    if (!terminal) return;
+    void sendTerminalDirectoryCommand(workspace.id, terminal, rootPath).catch((reason) => {
+      showToast(`Could not change terminal working directory: ${String(reason)}`);
     });
-  }, [activeTerminalWorkspace, showToast, terminals, updateTerminalWorkspace]);
+  }, [activeTerminalWorkspace, sendTerminalDirectoryCommand, showToast, terminals, updateTerminalWorkspace]);
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && key === "p") {
+        event.preventDefault();
+        if (!settingsOpen && !quickOpenOpen) setQuickOpenOpen(true);
+        return;
+      }
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable)) return;
       if (!(event.ctrlKey || event.metaKey)) return;
-      const key = event.key.toLowerCase();
       if (event.shiftKey && key === "t") { event.preventDefault(); void createTerminal(); }
       else if (event.shiftKey && key === "w" && activeTerminalId) { event.preventDefault(); void closeTerminal(activeTerminalId); }
       else if (event.shiftKey && key === "h") { event.preventDefault(); void splitActiveTerminal("horizontal"); }
@@ -909,7 +1029,7 @@ function App() {
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [activeTerminalId, activeTerminalWorkspace, activeWorkspaceTerminals, closeTerminal, createTerminal, focusTerminal, focusedTerminalView, splitActiveTerminal]);
+  }, [activeTerminalId, activeTerminalWorkspace, activeWorkspaceTerminals, closeTerminal, createTerminal, focusTerminal, focusedTerminalView, quickOpenOpen, settingsOpen, splitActiveTerminal]);
 
   const activeTerminal = useMemo(
     () => terminals.find((terminal) => terminal.id === activeTerminalId),
@@ -930,70 +1050,66 @@ function App() {
                 <button className="workspace-action" type="button" aria-label="Rename workspace" title="Rename workspace" onClick={renameWorkspace} disabled={!activeTerminalWorkspace}>✎</button>
                 <button className="workspace-action delete" type="button" aria-label="Delete workspace" title={terminalWorkspaceState.workspaces.length <= 1 ? "Keep at least one workspace" : "Delete workspace"} onClick={() => void deleteWorkspace()} disabled={terminalWorkspaceState.workspaces.length <= 1}>×</button>
               </div>
+        <nav className="workspace-view-tabs" role="tablist" aria-label="Workspace views">
+          <button className={`workspace-view-tab ${activeMainView === "terminals" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "terminals"} onClick={() => setActiveMainView("terminals")} type="button">Terminal</button>
+          <button className={`workspace-view-tab ${activeMainView === "code" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "code"} onClick={() => setActiveMainView("code")} type="button">Editor</button>
+        </nav>
         <div className="titlebar-spacer" />
+        <div className="titlebar-layout-controls">
+          {activeMainView === "terminals" ? <>
+            <FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={changeTerminalLayoutMode} />
+            <button className="icon-button titlebar-new-terminal" aria-label="Add terminal to workspace" title="Add terminal pane" onClick={() => { selectTerminalView(null); void addTerminalToWorkspace(); }} type="button">＋</button>
+          </> : <>
+            <div className="layout-mode-toggle editor-layout-mode-toggle floating-editor-mode-toggle" role="group" aria-label="Editor group layout mode">
+              <button className={editorLayoutMode === "tiled" ? "selected" : ""} type="button" aria-pressed={editorLayoutMode === "tiled"} onClick={() => changeEditorLayoutMode("tiled")} title="Use the default split editor layout">Split</button>
+              <button className={editorLayoutMode === "free" ? "selected" : ""} type="button" aria-pressed={editorLayoutMode === "free"} onClick={() => changeEditorLayoutMode("free")} title="Move editor groups freely around the canvas">Free</button>
+            </div>
+            <button className="editor-create-group" type="button" onClick={createEditorGroup}><span aria-hidden="true">＋</span>New group</button>
+          </>}
+        </div>
+        {activeMainView === "terminals" && <button className="titlebar-resource-button" type="button" aria-expanded={terminalUsageOpen} aria-controls="terminal-resource-panel" onClick={() => setTerminalUsageOpen((open) => !open)}>CPU / RAM</button>}
         <button className="titlebar-help-button" type="button" onClick={() => setSettingsOpen(true)} aria-haspopup="dialog">Help &amp; Settings</button>
       </header>
 
       <PanelGroup direction="horizontal" className="workspace">
-        <Panel ref={toolsPanelRef} defaultSize={19} minSize={16} maxSize={46} collapsible collapsedSize={5000 / Math.max(920, viewportWidth)} className="tools-panel" data-autohide-collapsed={toolsPanelCollapsed ? "true" : "false"} onBlurCapture={(event) => {
+        <Panel ref={toolsPanelRef} defaultSize={16} minSize={14} maxSize={38} collapsible collapsedSize={5000 / Math.max(920, viewportWidth)} className="tools-panel" data-autohide-collapsed={toolsPanelCollapsed ? "true" : "false"} onBlurCapture={(event) => {
           if (!toolPanelAutoHide || event.currentTarget.contains(event.relatedTarget as Node | null)) return;
           toolsPanelRef.current?.collapse();
           setToolsPanelCollapsed(true);
         }}>
           <div className="workspace-tool-layout">
             <nav className="tool-sidebar" aria-label="Workspace tools">
-              {tools.map((tool) => <button key={tool.id} className={`tool-sidebar-item ${activeTool === tool.id ? "selected" : ""}`} onClick={() => { setActiveTool(tool.id); if (toolsPanelCollapsed) { toolsPanelRef.current?.expand(); setToolsPanelCollapsed(false); } }} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={tool.label}>
+              {tools.map((tool) => <button key={tool.id} className={`tool-sidebar-item ${activeTool === tool.id ? "selected" : ""}`} onClick={(event) => handleToolClick(tool.id, event.detail)} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={`${tool.label} · Double-click to toggle panel`}>
                 <span className="tool-sidebar-icon" aria-hidden="true">{tool.icon}</span>
                 <span className="tool-sidebar-label">{tool.label}</span>
               </button>)}
-              <button className="tool-sidebar-visibility" type="button" aria-label={toolsPanelCollapsed ? "Show workspace panel" : "Hide workspace panel"} aria-expanded={!toolsPanelCollapsed} title={toolsPanelCollapsed ? "Show workspace panel" : "Hide workspace panel"} onClick={() => { if (toolsPanelCollapsed) { toolsPanelRef.current?.expand(); setToolsPanelCollapsed(false); } else { toolsPanelRef.current?.collapse(); setToolsPanelCollapsed(true); } }}>
-                <span aria-hidden="true">{toolsPanelCollapsed ? "»" : "«"}</span><span className="tool-sidebar-autohide-label">{toolsPanelCollapsed ? "Show" : "Hide"}</span>
-              </button>
               <button className="tool-sidebar-autohide" type="button" aria-label={toolPanelAutoHide ? "Disable automatic hiding of workspace panel" : "Automatically hide workspace panel"} aria-pressed={toolPanelAutoHide} title={toolPanelAutoHide ? "Keep workspace panel visible" : "Automatically hide workspace panel"} onClick={() => setToolPanelAutoHide((enabled) => !enabled)}>
                 <span aria-hidden="true">{toolPanelAutoHide ? "⌖" : "◧"}</span>
                 <span className="tool-sidebar-autohide-label">{toolPanelAutoHide ? "Pinned" : "Auto-hide"}</span>
               </button>
             </nav>
             <div className="workspace-sidebar-content">
-          <section className="workspace-navigation" aria-label="Workspace navigation">
-            <div className="workspace-navigation-controls">
-              <label className="workspace-root-picker" title={repoInfo ? repoInfo.root + " · " + repoInfo.branch : repoPath || "Set a project folder for this workspace"}>
-                <span className="workspace-root-label" aria-hidden="true">⌂</span>
-                <select aria-label="Workspace project folder" value={repoPath} onChange={(event) => void activateWorkspaceFolder(event.currentTarget.value)}>
-                  <option value="">Choose project folder</option>
-                  {workspaceFolders.map((folder) => <option key={folder} value={folder}>{folder}</option>)}
-                </select>
-                <button className="workspace-action add-folder" type="button" aria-label="Add folders to workspace" title="Add folders" onClick={() => void addWorkspaceFolders()}>＋</button>
-              </label>
-            </div>
-          </section>
             <section className="tool-content" aria-label={tools.find((tool) => tool.id === activeTool)?.label}>
-              {activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPath={repoPath} repoInfo={repoInfo} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} /> : <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } })} />}
+              {activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path)} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} /> : <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } })} />}
             </section>
             </div>
           </div>
         </Panel>
         <PanelResizeHandle className="resize-handle" aria-label="Resize developer tools" />
         <Panel minSize={35} className="terminal-panel">
-          <div className="terminal-toolbar">
-            <nav className="workspace-view-tabs" role="tablist" aria-label="Workspace views">
-              <button className={`workspace-view-tab ${activeMainView === "terminals" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "terminals"} onClick={() => setActiveMainView("terminals")} type="button">Terminal</button>
-              <button className={`workspace-view-tab ${activeMainView === "code" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "code"} onClick={() => setActiveMainView("code")} type="button">Editor</button>
-            </nav>
-            {activeMainView === "terminals" && <div className="terminal-session-toolbar">
-              <div className="terminal-tabs" role="tablist" aria-label="Terminal sessions">
+          <div className={"terminal-toolbar" + (activeMainView === "code" ? " editor-mode" : "") + (activeMainView === "terminals" && terminalLayoutMode === "floating" ? " floating-mode" : "")}>
+            {activeMainView === "terminals" && terminalLayoutMode === "tiled" && <div className="terminal-session-toolbar">
+              <div className="terminal-tabs" ref={terminalTabsRef} role="tablist" aria-label="Terminal sessions">
                 <button className={`terminal-tab ${!focusedTerminalView ? "selected" : ""}`} type="button" role="tab" aria-selected={!focusedTerminalView} onClick={() => selectTerminalView(null)}>All terminals</button>
-                {activeWorkspaceTerminals.map((terminal) => <div key={terminal.id} className={`terminal-tab-item ${terminal.id === focusedTerminalView ? "selected" : ""} ${editingTerminalId === terminal.id ? "editing" : ""}`} role="presentation">
+                {activeWorkspaceTerminals.map((terminal) => <div key={terminal.id} data-terminal-id={terminal.id} className={`terminal-tab-item ${terminal.id === focusedTerminalView ? "selected" : ""} ${editingTerminalId === terminal.id ? "editing" : ""}`} role="presentation">
                   {editingTerminalId === terminal.id ? <TerminalNameEditor terminalName={terminal.name} value={terminalNameDraft} inputRef={terminalNameInputRef} compact onChange={setTerminalNameDraft} onSave={saveTerminalName} onCancel={cancelTerminalRename} /> : <>
-                    <button className={`terminal-tab ${terminal.id === focusedTerminalView ? "selected" : ""}`} onClick={() => selectTerminalView(terminal.id)} onDoubleClick={() => beginRenameTerminal(terminal)} onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); void closeTerminal(terminal.id); } }} type="button" role="tab" aria-selected={terminal.id === focusedTerminalView} aria-label={`${terminal.name}. Double-click to rename.`} title={terminal.name}><span className="terminal-dot" /><span className="terminal-tab-name">{terminal.name}</span>{terminal.id === activeTerminalId && <span className="terminal-active-label" aria-hidden="true">Active</span>}</button>
+                    <button className={`terminal-tab ${terminal.id === focusedTerminalView ? "selected" : ""}`} onClick={() => selectTerminalView(terminal.id)} onDoubleClick={() => beginRenameTerminal(terminal)} onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); void closeTerminal(terminal.id); } }} type="button" role="tab" aria-selected={terminal.id === focusedTerminalView} aria-label={`${terminal.name}. Double-click to rename.`} title={terminal.name}><span className="terminal-tab-name">{terminal.name}</span>{terminal.id === activeTerminalId && <span className="terminal-active-label" aria-hidden="true">Active</span>}</button>
                     <button className="terminal-tab-rename" type="button" aria-label={`Rename ${terminal.name}`} title="Rename terminal" onClick={() => beginRenameTerminal(terminal)}>✎</button>
                     {activeWorkspaceTerminals.length > 1 && <button className="tab-close" type="button" aria-label={`Close ${terminal.name}`} title={`Close ${terminal.name}`} onClick={() => void closeTerminal(terminal.id)}>×</button>}
                   </>}
                 </div>)}
-                <button className="icon-button new-terminal" aria-label="Add terminal to workspace" title="Add terminal pane" onClick={() => { selectTerminalView(null); void addTerminalToWorkspace(); }} type="button">＋</button>
               </div>
             </div>}
-            {activeMainView === "terminals" && <div className="terminal-layout-toolbar"><span>Layout</span><div className="toolbar-actions"><FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={changeTerminalLayoutMode} /></div></div>}
           </div>
           <WorkspaceViewLayout activeView={activeMainView} code={<CodeWorkspace
             key={activeTerminalWorkspace?.id ?? ""}
@@ -1006,28 +1122,55 @@ function App() {
             onClose={closeEditorTab}
             onChange={updateEditorFileContent}
             onSave={(tabId) => void saveEditorFile(tabId)}
-            onCreateGroup={createEditorGroup}
             onMoveTab={moveEditorTab}
             onCloseGroup={closeEditorGroup}
-          />} terminal={<div className="terminal-workspace-view">
-          {activeMainView === "terminals" && terminalUsageOpen && <TerminalResourceGraph enabled={true} workspaceName={activeTerminalWorkspace?.name ?? "Workspace"} terminals={activeWorkspaceTerminals} activeTerminalId={activeTerminalId} />}
+            onModeState={registerEditorLayoutControl}
+          />} terminal={<div className={`terminal-workspace-view${terminalUsageOpen ? " has-terminal-usage" : ""}`}>
           <section className="terminal-surface" aria-label="Terminal workspace">
             <TerminalWorkspaceLayout layout={layout} focusedTerminalId={focusedTerminalView} terminals={terminals} visibleTerminalIds={activeWorkspaceTerminalIds} workspaceId={activeTerminalWorkspace?.id ?? ""} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
             {activeWorkspaceTerminals.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Welcome to <span>yerminal</span></div><p>Create a terminal to begin.</p><button className="primary-button" onClick={() => void createTerminal()} type="button">New Terminal</button></div>}
 
             <div className="terminal-status" aria-live="polite" aria-atomic="true"><span className="status-indicator" /><strong>{activeTerminal?.name ?? "No terminal"}</strong>{activeTerminal && <span className="terminal-status-active">Active</span>}<span className="status-separator">·</span><span>{activeTerminal?.shellLabel ?? "Ready"}</span></div>
           </section>
-          {activeMainView === "terminals" && <footer className="statusbar"><span><span className="status-indicator" />{repoInfo ? `${repoInfo.branch} · ${repoInfo.state}` : "No folder opened"}</span><button type="button" className="terminal-usage-toggle" aria-pressed={terminalUsageOpen} onClick={() => setTerminalUsageOpen((open) => !open)}>Terminal resource usage</button></footer>}
+          {terminalUsageOpen && <div id="terminal-resource-panel" className="terminal-resource-panel"><TerminalResourceGraph enabled={true} workspaceName={activeTerminalWorkspace?.name ?? "Workspace"} terminals={activeWorkspaceTerminals} activeTerminalId={activeTerminalId} onFocusTerminal={(id) => {
+            if (activeMainView !== "terminals") setActiveMainView("terminals");
+            if (focusedTerminalView && focusedTerminalView !== id) selectTerminalView(id);
+            else if (id !== activeTerminalId) focusTerminal(id);
+          }} /></div>}
           </div>} />
         </Panel>
       </PanelGroup>
+      {quickOpenOpen && <QuickOpenDialog
+        workspaces={terminalWorkspaceState.workspaces}
+        activeWorkspaceId={activeTerminalWorkspace?.id ?? null}
+        scope={settings.quickOpenScope}
+        onClose={() => setQuickOpenOpen(false)}
+        onOpen={(file: QuickOpenFile) => {
+          const workspaceExists = terminalWorkspaceState.workspaces.some((workspace) => workspace.id === file.workspaceId);
+          if (!workspaceExists) return;
+          activateWorkspace(file.workspaceId);
+          setQuickOpenOpen(false);
+          void openEditorFile({ id: `workspace:${file.root}:${file.path}`, root: file.root, path: file.path, name: file.name, size: file.size ?? undefined }, file.workspaceId);
+        }}
+      />}
       {settingsOpen && <SettingsDialog settings={settings} shortcuts={HELP_SHORTCUTS} onSettingsChange={setSettings} onClose={closeSettings} />}
       {toast && <div className="app-toast" role="alert" aria-live="assertive" aria-atomic="true"><span>{toast}</span><button aria-label="Dismiss notification" onClick={dismissToast} type="button">×</button></div>}
     </main>
   );
 }
 
-function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOpenFile }: { folders: string[]; activePath: string; onAdd: () => void; onActivate: (path: string) => void; onRemove: (path: string) => void; onOpenFile: (root: string, entry: WorkspaceEntry) => void }) {
+function normalizeTreePath(path: string) {
+  const normalized = path.replace(/[\\/]+/g, "\\").toLowerCase();
+  return normalized.length > 3 ? normalized.replace(/\\+$/, "") : normalized;
+}
+
+function isSameOrDescendantTreePath(parent: string, child: string) {
+  const normalizedParent = normalizeTreePath(parent);
+  const normalizedChild = normalizeTreePath(child);
+  return normalizedChild === normalizedParent || normalizedChild.startsWith(normalizedParent.endsWith("\\") ? normalizedParent : `${normalizedParent}\\`);
+}
+
+function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOpenFile, collapseOtherFolders }: { folders: string[]; activePath: string; onAdd: () => void; onActivate: (path: string) => void; onRemove: (path: string) => void; onOpenFile: (root: string, entry: WorkspaceEntry) => void; collapseOtherFolders: boolean }) {
   const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
   const [entriesByPath, setEntriesByPath] = useState<Record<string, WorkspaceEntry[]>>({});
   const [loadingPaths, setLoadingPaths] = useState<Record<string, boolean>>({});
@@ -1035,6 +1178,7 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOp
   const loadedPathsRef = useRef(new Set<string>());
   const pendingPathsRef = useRef(new Set<string>());
   const treeGenerationRef = useRef(0);
+  const folderSignature = folders.join("\u0000");
 
   const loadDirectory = useCallback(async (root: string, path: string) => {
     if (!isTauri()) {
@@ -1071,19 +1215,26 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOp
     setEntriesByPath({});
     setLoadingPaths({});
     setErrorsByPath({});
-  }, [folders]);
+  }, [folderSignature]);
 
   useEffect(() => {
     if (!activePath || !folders.includes(activePath)) return;
-    setExpandedPaths((current) => ({ ...current, [activePath]: true }));
+    setExpandedPaths((current) => collapseOtherFolders ? { [activePath]: true } : ({ ...current, [activePath]: true }));
     void loadDirectory(activePath, activePath);
-  }, [activePath, folders, loadDirectory]);
+  }, [activePath, collapseOtherFolders, folderSignature, loadDirectory]);
 
   const toggleDirectory = useCallback((root: string, path: string) => {
     const expand = !expandedPaths[path];
-    setExpandedPaths((current) => ({ ...current, [path]: expand }));
+    setExpandedPaths((current) => {
+      if (!expand) return { ...current, [path]: false };
+      if (!collapseOtherFolders) return { ...current, [path]: true };
+      const ancestors = Object.keys(current).filter((candidate) =>
+        current[candidate] && isSameOrDescendantTreePath(root, candidate) && isSameOrDescendantTreePath(candidate, path),
+      );
+      return Object.fromEntries([...ancestors, path].map((candidate) => [candidate, true]));
+    });
     if (expand) void loadDirectory(root, path);
-  }, [expandedPaths, loadDirectory]);
+  }, [collapseOtherFolders, expandedPaths, loadDirectory]);
 
   const renderEntries = (entries: WorkspaceEntry[], root: string, depth: number): ReactElement[] => entries.map((entry) => {
     const expanded = Boolean(expandedPaths[entry.path]);
@@ -1150,7 +1301,7 @@ function WorkspaceTreeNode({ entry, depth, expanded, children, loading, error, o
   const extension = entry.extension ?? entry.name.split(".").pop() ?? "file";
   const fileBadge = entry.isDir ? "▣" : extension.slice(0, 2).toUpperCase();
   return <div className="workspace-tree-node" role="treeitem" aria-level={depth + 1} aria-expanded={entry.isDir ? expanded : undefined}>
-    <div className={`workspace-tree-row ${entry.isDir ? "directory" : "file"}`} style={{ paddingLeft: (depth + 1) * 12 }}>
+    <div className={`workspace-tree-row ${entry.isDir ? "directory" : "file"}`} style={{ paddingLeft: (depth + 1) * 16, "--tree-guide-width": `${depth * 16}px`, "--tree-branch-start": `${depth * 16 - 1}px` } as CSSProperties}>
       {entry.isDir ? <button className="workspace-tree-toggle" aria-label={`${expanded ? "Collapse" : "Expand"} ${entry.name}`} aria-expanded={expanded} onClick={onToggle} type="button">{expanded ? "⌄" : "›"}</button> : <span className="workspace-tree-toggle-spacer" />}
       {entry.isDir ? <button className="workspace-tree-entry" onClick={onToggle} title={entry.path} type="button"><span className="workspace-tree-file-icon folder" aria-hidden="true">{fileBadge}</span><span className="workspace-tree-name">{entry.name}</span></button> : <button className="workspace-tree-entry" onClick={(event) => onOpen(event.currentTarget)} title={entry.path} type="button"><span className={`workspace-tree-file-icon ext-${extension.replace(/[^a-z0-9]/gi, "").toLowerCase()}`} aria-hidden="true">{fileBadge || "F"}</span><span className="workspace-tree-name">{entry.name}</span><span className="workspace-tree-size">{entry.size === null ? "" : formatFileSize(entry.size)}</span></button>}
     </div>
@@ -1168,7 +1319,39 @@ function formatFileSize(size: number): string {
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
-function GitChanges({ repoPath, repoInfo, onOpenRepository, onError }: { repoPath: string; repoInfo: RepositoryInfo | null; onOpenRepository: () => void; onError: (message: string) => void }) {
+function GitChanges({ repoPaths, onOpenRepository, onError }: { repoPaths: string[]; onOpenRepository: () => void; onError: (message: string) => void }) {
+  const [repositories, setRepositories] = useState<RepositoryInfo[]>([]);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isTauri() || repoPaths.length === 0) { setRepositories([]); return; }
+    const paths = [...new Set(repoPaths.filter(Boolean))];
+    void Promise.all(paths.map((path) => invoke<RepositoryInfo>("git_repository_info", { path }).catch(() => null)))
+      .then((infos) => {
+        if (cancelled) return;
+        const unique = new Map<string, RepositoryInfo>();
+        for (const info of infos) {
+          if (!info?.root) continue;
+          const key = info.root.replaceAll("\\", "/").replace(/\/+$/, "").toLocaleLowerCase();
+          if (!unique.has(key)) unique.set(key, info);
+        }
+        setRepositories([...unique.values()]);
+      });
+    return () => { cancelled = true; };
+  }, [refreshNonce, repoPaths]);
+
+  return <div className="tool-view git-changes-view">
+    <header className="tool-header"><div><h1>Git Changes</h1><p>{repositories.length > 0 ? `${repositories.length} ${repositories.length === 1 ? "repository" : "repositories"}` : repoPaths.length ? "Searching opened folders for Git repositories" : "Review your working trees"}</p></div><button className="icon-button refresh-button" aria-label="Refresh repositories and changes" onClick={() => setRefreshNonce((value) => value + 1)} type="button">↻</button></header>
+    {repositories.length === 0 ? <div className="empty-repository"><div className="empty-icon">⌂</div><h2>{repoPaths.length ? "No Git repository found" : "No repository opened"}</h2><p>{repoPaths.length ? "Add a folder that belongs to a Git repository to view its changes." : "Open a folder to view its changes."}</p><button className="primary-button" onClick={onOpenRepository} type="button">Open Folder</button></div> : <div className="git-repository-list" aria-label="Git repositories">
+      {repositories.map((repoInfo) => <GitRepositoryChanges key={repoInfo.root.replaceAll("\\", "/").replace(/\/+$/, "").toLocaleLowerCase()} repoInfo={repoInfo} refreshNonce={refreshNonce} onError={onError} />)}
+    </div>}
+    <div className="panel-footnote"><span className="read-only-mark">◇</span> Stage, unstage, discard, and commit changes</div>
+  </div>;
+}
+
+function GitRepositoryChanges({ repoInfo, refreshNonce, onError }: { repoInfo: RepositoryInfo; refreshNonce: number; onError: (message: string) => void }) {
+  const repoPath = repoInfo.root;
   const [changes, setChanges] = useState<FileChange[]>([]);
   const [selected, setSelected] = useState<FileChange | null>(null);
   const [selectedStaged, setSelectedStaged] = useState(false);
@@ -1178,6 +1361,7 @@ function GitChanges({ repoPath, repoInfo, onOpenRepository, onError }: { repoPat
   const [fileAction, setFileAction] = useState<{ path: string; action: string } | null>(null);
   const [discardTarget, setDiscardTarget] = useState<string | null>(null);
   const [isCommitting, setIsCommitting] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const lastFocusedRowRef = useRef<HTMLButtonElement>(null);
   const stagedChanges = changes.filter((change) => change.staged);
@@ -1218,7 +1402,7 @@ function GitChanges({ repoPath, repoInfo, onOpenRepository, onError }: { repoPat
     }
   };
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh, refreshNonce]);
   useEffect(() => { setSelected(null); setSelectedStaged(false); setCommitMessage(""); setDiscardTarget(null); }, [repoPath]);
   useEffect(() => {
     if (!selected || !repoInfo || !repoPath || !isTauri()) { setDiff(""); setDiffLoading(false); return; }
@@ -1259,9 +1443,20 @@ function GitChanges({ repoPath, repoInfo, onOpenRepository, onError }: { repoPat
     </div>
   </div>;
 
-  return <div className="tool-view">
-    <header className="tool-header"><div><h1>Git Changes</h1><p>{repoInfo ? `${repoInfo.branch} · ${stagedChanges.length} staged · ${unstagedChanges.length} unstaged` : "Review your working tree"}</p></div><button className="icon-button refresh-button" aria-label="Refresh changes" onClick={() => void refresh()} type="button">↻</button></header>
-    {!repoInfo ? <div className="empty-repository"><div className="empty-icon">⌂</div><h2>No repository opened</h2><p>Open a folder to view its changes.</p><button className="primary-button" onClick={onOpenRepository} type="button">Open Folder</button></div> : <>
+  const repoName = repoInfo.root.split(/[\\/]/).filter(Boolean).pop() ?? repoInfo.root;
+  const toggleExpanded = () => setExpanded((current) => { if (current) setSelected(null); return !current; });
+
+  return <section className={`git-repository-section${expanded ? " is-expanded" : ""}`}>
+    <header className="git-repository-heading">
+      <button className="git-repository-toggle" aria-expanded={expanded} onClick={toggleExpanded} type="button">
+        <span className="git-repository-chevron" aria-hidden="true">{expanded ? "⌄" : "›"}</span>
+        <span className="git-repository-name"><strong>{repoName}</strong><small title={repoInfo.root}>{repoInfo.root}</small></span>
+        <span className="git-repository-branch" title="Current branch">{repoInfo.branch || "Detached HEAD"}</span>
+        <span className="git-repository-counts"><span>{stagedChanges.length} staged</span><span>{unstagedChanges.length} changes</span></span>
+      </button>
+      <button className="icon-button refresh-button git-repository-refresh" aria-label={`Refresh ${repoName} changes`} title="Refresh repository" onClick={() => void refresh()} type="button">↻</button>
+    </header>
+    <div className="git-repository-body" hidden={!expanded}>
       <section className="git-commit-box" aria-label="Commit staged changes">
         <div className="git-commit-box-heading"><span>Commit staged changes</span><span className="git-staged-count">{stagedChanges.length}</span></div>
         <textarea aria-label="Commit message" placeholder="Message (required)" rows={2} maxLength={65536} value={commitMessage} onChange={(event) => setCommitMessage(event.currentTarget.value)} />
@@ -1323,9 +1518,8 @@ function GitChanges({ repoPath, repoInfo, onOpenRepository, onError }: { repoPat
         </div>,
         document.body,
       )}
-    </>}
-    <div className="panel-footnote"><span className="read-only-mark">◇</span> Stage, unstage, discard, and commit changes</div>
-  </div>;
+    </div>
+  </section>;
 }
 
 function GitGraph({ repoPath, onError, onOpenInEditor }: { repoPath: string; onError: (message: string) => void; onOpenInEditor: (commit: CommitInfo, file: CommitFileChange) => void }) {
@@ -1518,7 +1712,7 @@ function GitGraph({ repoPath, onError, onOpenInEditor }: { repoPath: string; onE
             <aside className="commit-preview-files" aria-label="Changed files">
               <div className="commit-preview-files-heading"><h3>Changed files</h3><span>{detailLoading ? "…" : commitFiles.length}</span></div>
               <div className="commit-preview-file-list">
-                {detailLoading ? <div className="commit-preview-state" role="status">Loading changed files…</div> : detailError ? <div className="commit-preview-state commit-preview-error" role="alert"><span>{detailError}</span><button type="button" onClick={() => void selectCommit(selectedCommit)}>Retry loading files</button></div> : commitFiles.length === 0 ? <div className="commit-preview-state">No files changed in this commit.</div> : commitFiles.map((file) => <button className={`commit-preview-file ${selectedFile === file.path ? "selected" : ""}`} key={file.path} onClick={() => void selectFile(file.path)} type="button" aria-pressed={selectedFile === file.path} title={file.path}>
+                {detailLoading ? <div className="commit-preview-state" role="status">Loading changed files…</div> : detailError ? <div className="commit-preview-state commit-preview-error" role="alert"><span>{detailError}</span><button type="button" onClick={() => void selectCommit(selectedCommit)}>Retry loading files</button></div> : commitFiles.length === 0 ? <div className="commit-preview-state">No files changed in this commit.</div> : commitFiles.map((file) => <button className="commit-preview-file" key={file.path} onClick={() => { onOpenInEditor(selectedCommit, file); closeCommitDetails(false); }} type="button" title={`Open ${file.path} in the Code view`}>
                   <span className={`change-kind ${file.kind}`}>{file.kind === "deleted" ? "D" : file.kind === "added" ? "A" : file.kind === "renamed" ? "R" : "M"}</span><span className="commit-preview-file-path">{file.path}</span><span className="commit-preview-file-kind">{file.kind}</span>
                 </button>)}
               </div>
@@ -1561,12 +1755,15 @@ type TerminalWorkspaceLayoutProps = {
 
 function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visibleTerminalIds, workspaceId, onDockToTiledLayout, onModeState, activeTerminalId, onFocus, onExit, onClose, onMove, onResize }: TerminalWorkspaceLayoutProps) {
   const surfaceRef = useRef<HTMLDivElement>(null);
+  const scrollportRef = useRef<HTMLDivElement>(null);
   const paneRefs = useRef(new Map<string, HTMLDivElement>());
   const paneDragRef = useRef<{ sourceId: string; pointerId: number; startX: number; startY: number; started: boolean } | null>(null);
   const [draggingPaneId, setDraggingPaneId] = useState<string | null>(null);
   const [dropTargetPaneId, setDropTargetPaneId] = useState<string | null>(null);
   const floatingLayout = useFloatingTerminalLayout(workspaceId, visibleTerminalIds, onDockToTiledLayout);
   useEffect(() => onModeState(floatingLayout.mode, floatingLayout.setMode), [floatingLayout.mode, floatingLayout.setMode, onModeState]);
+  const tiledAllTerminals = !focusedTerminalId && floatingLayout.mode === "tiled" && Boolean(layout);
+  const minimumTiledWidth = layout ? getMinimumTerminalLayoutWidth(layout) : 0;
   const geometry = useMemo(() => {
     if (focusedTerminalId && visibleTerminalIds.includes(focusedTerminalId)) return { panes: new Map([[focusedTerminalId, { x: 0, y: 0, width: 100, height: 100 }]]), dividers: [] };
     if (floatingLayout.mode === "floating") {
@@ -1582,6 +1779,31 @@ function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visible
     if (activeTerminalId) panes.set(activeTerminalId, { x: 0, y: 0, width: 100, height: 100 });
     return { panes, dividers: [] };
   }, [activeTerminalId, focusedTerminalId, floatingLayout.mode, floatingLayout.positions, layout, visibleTerminalIds.join("\u0000")]);
+
+  useEffect(() => {
+    const scrollport = scrollportRef.current;
+    if (!scrollport || !tiledAllTerminals || !activeTerminalId || !geometry.panes.has(activeTerminalId)) return;
+
+    const revealActivePane = () => {
+      const pane = paneRefs.current.get(activeTerminalId);
+      if (!pane) return;
+      const viewport = scrollport.getBoundingClientRect();
+      const bounds = pane.getBoundingClientRect();
+      if (bounds.left < viewport.left) {
+        scrollport.scrollBy({ left: bounds.left - viewport.left, behavior: "smooth" });
+      } else if (bounds.right > viewport.right) {
+        scrollport.scrollBy({ left: bounds.right - viewport.right, behavior: "smooth" });
+      }
+    };
+
+    const frameId = window.requestAnimationFrame(revealActivePane);
+    const observer = new ResizeObserver(() => window.requestAnimationFrame(revealActivePane));
+    observer.observe(scrollport);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, [activeTerminalId, geometry, tiledAllTerminals]);
 
   const findPaneAtPoint = (clientX: number, clientY: number, sourceId: string) => {
     for (const [paneId, pane] of paneRefs.current) {
@@ -1603,7 +1825,8 @@ function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visible
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
-  return <div className={`terminal-layout-surface ${floatingLayout.mode === "floating" ? "floating-terminal-canvas" : ""}`} ref={(element) => { surfaceRef.current = element; floatingLayout.surfaceRef.current = element; }} data-mode={floatingLayout.mode} data-pane-dragging={draggingPaneId || floatingLayout.draggingSessionId ? "true" : undefined}>
+  return <div className={`terminal-layout-scrollport${tiledAllTerminals ? " is-tiled" : ""}`} ref={scrollportRef}>
+  <div className={`terminal-layout-surface ${floatingLayout.mode === "floating" ? "floating-terminal-canvas" : ""}${tiledAllTerminals ? " tiled-scroll-canvas" : ""}`} style={tiledAllTerminals ? { "--terminal-layout-min-width": `${minimumTiledWidth}px` } as CSSProperties : undefined} ref={(element) => { surfaceRef.current = element; floatingLayout.surfaceRef.current = element; }} data-mode={floatingLayout.mode} data-pane-dragging={draggingPaneId || floatingLayout.draggingSessionId ? "true" : undefined}>
     {terminals.map((terminal) => {
       const rect = geometry.panes.get(terminal.id);
       const isFloating = !focusedTerminalId && floatingLayout.mode === "floating" && visibleTerminalIds.includes(terminal.id);
@@ -1721,6 +1944,7 @@ function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visible
     })}
     {!focusedTerminalId && floatingLayout.mode === "floating" && <FloatingTerminalDockGuides activeEdge={floatingLayout.dockTarget} />}
     {floatingLayout.mode === "tiled" && geometry.dividers.map((divider) => <LayoutDivider key={divider.id} divider={divider} surfaceRef={surfaceRef} onResize={onResize} />)}
+  </div>
   </div>;
 }
 
@@ -1755,17 +1979,16 @@ function LayoutDivider({ divider, surfaceRef, onResize }: { divider: LayoutDivid
     onPointerCancel={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}
   />;
 }
-function buildTerminalLayout(sessionIds: string[], depth = 0): LayoutNode {
+function buildTerminalLayout(sessionIds: string[]): LayoutNode {
   if (sessionIds.length === 0) throw new Error("A terminal layout requires at least one session.");
   if (sessionIds.length === 1) return { type: "terminal", sessionId: sessionIds[0] };
-  const middle = Math.ceil(sessionIds.length / 2);
-  const direction = depth % 2 === 0 ? "horizontal" : "vertical";
+  const count = sessionIds.length;
   return {
     type: "split",
     id: crypto.randomUUID(),
-    direction,
-    ratio: middle / sessionIds.length,
-    children: [buildTerminalLayout(sessionIds.slice(0, middle), depth + 1), buildTerminalLayout(sessionIds.slice(middle), depth + 1)],
+    direction: "horizontal",
+    ratio: 1 / count,
+    children: [{ type: "terminal", sessionId: sessionIds[0] }, buildTerminalLayout(sessionIds.slice(1))],
   };
 }
 function splitTerminal(node: LayoutNode, sessionId: string, newSessionId: string, direction: "horizontal" | "vertical"): LayoutNode {
@@ -1804,6 +2027,16 @@ function updateSplitRatio(node: LayoutNode, splitId: string, ratio: number): Lay
   if (node.type === "terminal") return node;
   if (node.id === splitId) return { ...node, ratio };
   return { ...node, children: [updateSplitRatio(node.children[0], splitId, ratio), updateSplitRatio(node.children[1], splitId, ratio)] };
+}
+
+const MIN_TILED_TERMINAL_WIDTH = 280;
+function getMinimumTerminalLayoutWidth(node: LayoutNode): number {
+  if (node.type === "terminal") return MIN_TILED_TERMINAL_WIDTH;
+  const firstWidth = getMinimumTerminalLayoutWidth(node.children[0]);
+  const secondWidth = getMinimumTerminalLayoutWidth(node.children[1]);
+  if (node.direction === "vertical") return Math.max(firstWidth, secondWidth);
+  const ratio = Math.max(0.01, Math.min(0.99, node.ratio));
+  return Math.max(firstWidth / ratio, secondWidth / (1 - ratio));
 }
 
 function getLayoutGeometry(root: LayoutNode): LayoutGeometry {

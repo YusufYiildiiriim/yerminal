@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::collections::HashSet;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
@@ -112,6 +113,113 @@ pub fn list_directory(root: &str, path: &str) -> Result<Vec<WorkspaceEntry>, Str
             .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
     });
     Ok(entries)
+}
+
+fn ignored_search_directory(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        ".git"
+            | "node_modules"
+            | "target"
+            | "dist"
+            | "build"
+            | "coverage"
+            | ".next"
+            | ".turbo"
+            | ".venv"
+            | "venv"
+    )
+}
+
+pub fn search_files(root: &str, query: &str, requested_limit: usize) -> Result<Vec<WorkspaceEntry>, String> {
+    const MAX_DEPTH: usize = 64;
+    const MAX_DIRECTORIES: usize = 5_000;
+    const MAX_ENTRIES: usize = 250_000;
+    const MAX_RESULTS: usize = 100;
+
+    let root = canonical_root(root)?;
+    let query = query.trim().replace('\\', "/").to_lowercase();
+    if query.is_empty() {
+        return Ok(Vec::new());
+    }
+    let limit = requested_limit.clamp(1, MAX_RESULTS);
+    let mut pending = vec![(root.clone(), 0usize)];
+    let mut visited_directories = HashSet::new();
+    let mut candidates: Vec<(u8, String, WorkspaceEntry)> = Vec::new();
+    let mut directories_seen = 0usize;
+    let mut entries_seen = 0usize;
+
+    while let Some((directory, depth)) = pending.pop() {
+        if depth > MAX_DEPTH || directories_seen >= MAX_DIRECTORIES || entries_seen >= MAX_ENTRIES {
+            break;
+        }
+        let directory_key = directory.to_string_lossy().to_lowercase();
+        if !visited_directories.insert(directory_key) {
+            continue;
+        }
+        directories_seen += 1;
+        let Ok(entries) = fs::read_dir(&directory) else {
+            continue;
+        };
+        for item in entries.flatten() {
+            entries_seen += 1;
+            if entries_seen >= MAX_ENTRIES {
+                break;
+            }
+            let name = item.file_name().to_string_lossy().into_owned();
+            let path = match item.path().canonicalize() {
+                Ok(path) if is_within_root(&root, &path) => path,
+                _ => continue,
+            };
+            let metadata = match fs::metadata(&path) {
+                Ok(metadata) => metadata,
+                Err(_) => continue,
+            };
+            if metadata.is_dir() {
+                if depth < MAX_DEPTH && !ignored_search_directory(&name) {
+                    pending.push((path, depth + 1));
+                }
+                continue;
+            }
+            if !metadata.is_file() {
+                continue;
+            }
+
+            let name_lower = name.to_lowercase();
+            let relative_path = path.strip_prefix(&root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+            let path_lower = relative_path.to_lowercase();
+            let score = if name_lower == query {
+                0
+            } else if name_lower.starts_with(&query) {
+                1
+            } else if name_lower.contains(&query) {
+                2
+            } else if path_lower.contains(&query) {
+                3
+            } else {
+                continue;
+            };
+            let extension = path
+                .extension()
+                .map(|value| value.to_string_lossy().to_ascii_lowercase());
+            candidates.push((score, path_lower, WorkspaceEntry {
+                name,
+                path: path.to_string_lossy().into_owned(),
+                is_dir: false,
+                size: Some(metadata.len()),
+                extension,
+            }));
+
+            if candidates.len() >= limit.saturating_mul(8).max(256) {
+                candidates.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+                candidates.truncate(limit.saturating_mul(4));
+            }
+        }
+    }
+
+    candidates.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+    candidates.truncate(limit);
+    Ok(candidates.into_iter().map(|(_, _, entry)| entry).collect())
 }
 
 pub fn read_text_file(root: &str, path: &str) -> Result<String, String> {

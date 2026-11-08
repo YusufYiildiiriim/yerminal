@@ -2,7 +2,7 @@ import type { TerminalDockEdge, TerminalLayoutMode } from "./floatingTerminalLay
 import "./floating-terminal-canvas.css";
 
 export function FloatingTerminalModeToggle({ mode, onChange }: { mode: TerminalLayoutMode; onChange: (mode: TerminalLayoutMode) => void }) {
-  return <div className="floating-terminal-mode-toggle" role="group" aria-label="Terminal layout mode">
+  return <div className="layout-mode-toggle floating-terminal-mode-toggle" role="group" aria-label="Terminal layout mode">
     <button type="button" aria-pressed={mode === "tiled"} onClick={() => onChange("tiled")} title="Use the default split layout">Split</button>
     <button type="button" aria-pressed={mode === "floating"} onClick={() => onChange("floating")} title="Move terminals freely around the canvas">Free</button>
   </div>;
