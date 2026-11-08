@@ -1267,7 +1267,7 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOp
           <div className="workspace-root-row" role="treeitem" aria-level={1} aria-expanded={expanded}>
             <button className="workspace-tree-toggle" aria-label={`${expanded ? "Collapse" : "Expand"} ${name}`} aria-expanded={expanded} onClick={() => toggleDirectory(folder, folder)} type="button">{expanded ? "⌄" : "›"}</button>
             <button className="workspace-folder-select" onClick={() => { onActivate(folder); if (selected) toggleDirectory(folder, folder); }} type="button" aria-pressed={selected} title={folder}>
-              <span className="workspace-folder-icon" aria-hidden="true">▣</span>
+              <span className="workspace-folder-icon" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M1.75 4.5a1 1 0 0 1 1-1h3.1l1.4 1.5h5.9a1 1 0 0 1 1 1v6.4H1.75z" /></svg></span>
               <span className="workspace-folder-label"><strong>{name}</strong><small>{folder}</small></span>
             </button>
             <button className="workspace-folder-remove" aria-label={`Remove ${name} from this workspace`} title="Remove folder" onClick={() => onRemove(folder)} type="button">×</button>
@@ -1299,11 +1299,11 @@ function WorkspaceTreeNode({ entry, depth, expanded, children, loading, error, o
   renderChildren: (entries: WorkspaceEntry[], depth: number) => ReactElement[];
 }) {
   const extension = entry.extension ?? entry.name.split(".").pop() ?? "file";
-  const fileBadge = entry.isDir ? "▣" : extension.slice(0, 2).toUpperCase();
+  const fileBadge = entry.isDir ? "" : extension.slice(0, 2).toUpperCase();
   return <div className="workspace-tree-node" role="treeitem" aria-level={depth + 1} aria-expanded={entry.isDir ? expanded : undefined}>
     <div className={`workspace-tree-row ${entry.isDir ? "directory" : "file"}`} style={{ paddingLeft: (depth + 1) * 16, "--tree-guide-width": `${depth * 16}px`, "--tree-branch-start": `${depth * 16 - 1}px` } as CSSProperties}>
       {entry.isDir ? <button className="workspace-tree-toggle" aria-label={`${expanded ? "Collapse" : "Expand"} ${entry.name}`} aria-expanded={expanded} onClick={onToggle} type="button">{expanded ? "⌄" : "›"}</button> : <span className="workspace-tree-toggle-spacer" />}
-      {entry.isDir ? <button className="workspace-tree-entry" onClick={onToggle} title={entry.path} type="button"><span className="workspace-tree-file-icon folder" aria-hidden="true">{fileBadge}</span><span className="workspace-tree-name">{entry.name}</span></button> : <button className="workspace-tree-entry" onClick={(event) => onOpen(event.currentTarget)} title={entry.path} type="button"><span className={`workspace-tree-file-icon ext-${extension.replace(/[^a-z0-9]/gi, "").toLowerCase()}`} aria-hidden="true">{fileBadge || "F"}</span><span className="workspace-tree-name">{entry.name}</span><span className="workspace-tree-size">{entry.size === null ? "" : formatFileSize(entry.size)}</span></button>}
+      {entry.isDir ? <button className="workspace-tree-entry" onClick={onToggle} title={entry.path} type="button"><span className="workspace-tree-file-icon folder" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M1.75 4.5a1 1 0 0 1 1-1h3.1l1.4 1.5h5.9a1 1 0 0 1 1 1v6.4H1.75z" /></svg></span><span className="workspace-tree-name">{entry.name}</span></button> : <button className="workspace-tree-entry" onClick={(event) => onOpen(event.currentTarget)} title={entry.path} type="button"><span className={`workspace-tree-file-icon ext-${extension.replace(/[^a-z0-9]/gi, "").toLowerCase()}`} aria-hidden="true">{fileBadge || "F"}</span><span className="workspace-tree-name">{entry.name}</span><span className="workspace-tree-size">{entry.size === null ? "" : formatFileSize(entry.size)}</span></button>}
     </div>
     {entry.isDir && expanded && <div className="workspace-tree-children" role="group">
       {loading && <div className="workspace-tree-message" style={{ paddingLeft: 25 + depth * 12 }}>Loading folder…</div>}
