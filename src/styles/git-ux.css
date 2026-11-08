@@ -131,6 +131,48 @@
   font-size: var(--editor-font-size, 13px);
   font-family: var(--editor-font-family, "Cascadia Code", Consolas, monospace);
 }
+.app-shell[data-theme] .diff-code {
+  background: var(--theme-editor, var(--theme-background, #101114));
+  color: var(--theme-text, #d4d4d8);
+}
+.app-shell[data-theme] .diff-line {
+  min-width: max-content;
+  width: 100%;
+}
+.app-shell[data-theme] .diff-line-marker {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: 42px;
+  flex-basis: 42px;
+  padding-right: 13px;
+  border-right: 1px solid var(--theme-border, #34343c);
+  background: var(--theme-editor, var(--theme-background, #101114));
+  color: var(--theme-muted, #85848e);
+}
+.app-shell[data-theme] .diff-line.added {
+  background: color-mix(in srgb, var(--theme-success, #34d399) 12%, var(--theme-editor, var(--theme-background, #101114)));
+  color: var(--theme-text, #d4d4d8);
+}
+.app-shell[data-theme] .diff-line.added .diff-line-marker {
+  background: color-mix(in srgb, var(--theme-success, #34d399) 19%, var(--theme-editor, var(--theme-background, #101114)));
+  color: var(--theme-success, #34d399);
+  font-weight: 700;
+}
+.app-shell[data-theme] .diff-line.removed {
+  background: color-mix(in srgb, #f87171 12%, var(--theme-editor, var(--theme-background, #101114)));
+  color: var(--theme-text, #d4d4d8);
+}
+.app-shell[data-theme] .diff-line.removed .diff-line-marker {
+  background: color-mix(in srgb, #f87171 19%, var(--theme-editor, var(--theme-background, #101114)));
+  color: #f87171;
+  font-weight: 700;
+}
+.app-shell[data-theme] .diff-line.hunk {
+  background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 10%, var(--theme-surface, #19191f));
+  color: var(--theme-accent, #b3a3ee);
+}
+.app-shell[data-theme] .diff-line.meta { color: var(--theme-muted, #85848e); }
 :is(.diff-preview-close, .commit-preview-close, .commit-open-editor):focus-visible {
   outline: 2px solid #b3a3ee;
   outline-offset: -2px;

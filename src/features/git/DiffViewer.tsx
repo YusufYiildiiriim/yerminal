@@ -16,10 +16,20 @@ export function DiffViewer({ diff, emptyMessage }: { diff: string; emptyMessage:
       {diff.split(/\r?\n/).map((line, index) => {
         const kind = getDiffLineKind(line);
         const marker = kind === "added" ? "+" : kind === "removed" ? "−" : kind === "context" ? " " : "";
+        const content = kind === "added" || kind === "removed" || kind === "context"
+          ? line.slice(1)
+          : line;
         return (
           <div className={`diff-line ${kind}`} key={`${index}-${line}`}>
-            <span className="diff-line-marker" aria-hidden="true">{marker}</span>
-            <code>{line || " "}</code>
+            <span
+              className="diff-line-marker"
+              role={kind === "added" || kind === "removed" ? "img" : undefined}
+              aria-label={kind === "added" ? "Added" : kind === "removed" ? "Removed" : undefined}
+              aria-hidden={kind === "context" || kind === "hunk" || kind === "meta"}
+            >
+              {marker}
+            </span>
+            <code>{content || " "}</code>
           </div>
         );
       })}
