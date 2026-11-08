@@ -1266,7 +1266,7 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOp
         return <section className={`workspace-root ${selected ? "selected" : ""}`} key={folder}>
           <div className="workspace-root-row" role="treeitem" aria-level={1} aria-expanded={expanded}>
             <button className="workspace-tree-toggle" aria-label={`${expanded ? "Collapse" : "Expand"} ${name}`} aria-expanded={expanded} onClick={() => toggleDirectory(folder, folder)} type="button">{expanded ? "⌄" : "›"}</button>
-            <button className="workspace-folder-select" onClick={() => onActivate(folder)} type="button" aria-pressed={selected} title={folder}>
+            <button className="workspace-folder-select" onClick={() => { onActivate(folder); if (selected) toggleDirectory(folder, folder); }} type="button" aria-pressed={selected} title={folder}>
               <span className="workspace-folder-icon" aria-hidden="true">▣</span>
               <span className="workspace-folder-label"><strong>{name}</strong><small>{folder}</small></span>
             </button>
