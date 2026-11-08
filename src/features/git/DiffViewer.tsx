@@ -5,7 +5,8 @@ function getDiffLineKind(line: string): DiffLineKind {
   if (line.startsWith("diff --git ") || line.startsWith("index ") || line.startsWith("--- ") || line.startsWith("+++ ")) return "meta";
   if (line.startsWith("+")) return "added";
   if (line.startsWith("-")) return "removed";
-  return "context";
+  if (line.startsWith(" ") || line === "") return "context";
+  return "meta";
 }
 
 export function DiffViewer({ diff, emptyMessage }: { diff: string; emptyMessage: string }) {
