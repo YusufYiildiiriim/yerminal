@@ -38,8 +38,8 @@
   position: absolute;
   z-index: 1;
   display: flex;
-  min-width: 240px;
-  min-height: 160px;
+  min-width: min(240px, 100%);
+  min-height: min(160px, 100%);
   flex-direction: column;
   overflow: hidden;
   border: 1px solid #383943;

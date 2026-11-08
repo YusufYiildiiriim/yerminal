@@ -92,8 +92,74 @@
 .app-shell[data-theme] .titlebar .workspace-switcher::before { display: none; }
 .app-shell[data-theme] .titlebar .workspace-switcher-icon { display: none; }
 .app-shell[data-theme] .titlebar .workspace-name-select { width: 145px; max-width: 20vw; min-height: 30px; border-color: transparent; background: transparent; font-size: 13px; }
+.app-shell[data-theme] .titlebar .workspace-name-select {
+  color-scheme: dark;
+  color: var(--theme-text);
+  background-color: var(--theme-background);
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.app-shell[data-theme] .titlebar .workspace-name-select option {
+  color: var(--theme-text);
+  background-color: var(--theme-surface);
+}
+.app-shell[data-theme] .titlebar .workspace-name-select option:checked {
+  color: var(--theme-text);
+  background-color: color-mix(in srgb, var(--theme-accent) 20%, var(--theme-raised));
+}
+.app-shell[data-theme] .titlebar .workspace-name-select:hover {
+  border-color: var(--theme-border);
+  background-color: var(--theme-raised);
+}
+.app-shell[data-theme] .titlebar .workspace-name-select:focus {
+  border-color: color-mix(in srgb, var(--theme-accent) 42%, var(--theme-border));
+  outline: none;
+  background-color: var(--theme-raised);
+}
+.app-shell[data-theme] .titlebar .workspace-name-select:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--theme-accent) 48%, var(--theme-border));
+  outline-offset: 0;
+}
 .app-shell[data-theme] .titlebar .workspace-action { width: 27px; height: 27px; flex-basis: 27px; border-color: transparent; background: transparent; }
 .app-shell[data-theme] .titlebar-help-button { color: var(--theme-muted); font-size: 12px; }
+.app-shell[data-theme] .titlebar-layout-controls { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+.app-shell[data-theme] .titlebar-layout-controls .editor-create-group { min-height: 30px; padding: 4px 10px; font-size: 12px; }
+.app-shell[data-theme] .titlebar-new-terminal {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-color: var(--theme-border);
+  background: var(--theme-surface);
+  color: var(--theme-muted);
+  font-size: 16px;
+}
+.app-shell[data-theme] .titlebar-new-terminal:hover { border-color: var(--theme-accent); background: var(--theme-raised); color: var(--theme-text); }
+.app-shell[data-theme] .layout-mode-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid var(--theme-border);
+  border-radius: 7px;
+  background: var(--theme-chrome);
+}
+.app-shell[data-theme] .layout-mode-toggle button {
+  min-width: 52px;
+  height: 24px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--theme-muted);
+  font: 11px/1 Inter, "Segoe UI", sans-serif;
+}
+.app-shell[data-theme] .layout-mode-toggle button:hover { color: var(--theme-text); background: var(--theme-raised); }
+.app-shell[data-theme] .layout-mode-toggle button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--theme-accent) 35%, var(--theme-border));
+  background: color-mix(in srgb, var(--theme-accent) 14%, var(--theme-raised));
+  color: var(--theme-accent);
+}
 .app-shell[data-theme] .terminal-toolbar { border-bottom: 0; background: var(--theme-background); }
 .app-shell[data-theme] .workspace-view-tabs { flex: 0 0 49px; padding: 0 12px; background: var(--theme-surface); }
 .app-shell[data-theme] .workspace-view-tab { min-width: 0; padding: 0 13px; font-weight: 400; }
@@ -108,12 +174,12 @@
 .app-shell[data-theme] .terminal-tabs > .terminal-tab.selected { box-shadow: inset 0 -2px var(--theme-accent); }
 .app-shell[data-theme] .terminal-tabs .terminal-active-label { display: none; }
 .app-shell[data-theme] .terminal-tab-name { max-width: 140px; }
-.app-shell[data-theme] .new-terminal { margin-left: auto; flex: 0 0 30px; }
-.app-shell[data-theme] .terminal-layout-toolbar { min-height: 46px; display: flex; align-items: center; padding: 0 16px; color: var(--theme-muted); border-bottom: 1px solid var(--theme-border); }
-.app-shell[data-theme] .terminal-layout-toolbar .toolbar-actions { margin-left: auto; padding: 0; }
 .app-shell[data-theme] .terminal-pane-header { min-height: 43px; background: var(--theme-surface); }
 .app-shell[data-theme] .terminal-pane-frame[data-active="true"] .terminal-pane-header { background: var(--theme-surface); border-color: var(--theme-border); }
-.app-shell[data-theme] .terminal-pane-frame.layout-pane[data-active="true"] { box-shadow: none; border-color: var(--theme-border); }
+.app-shell[data-theme] .terminal-pane-frame.layout-pane[data-active="true"] {
+  border-color: var(--theme-accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 34%, transparent), 0 0 0 1px color-mix(in srgb, var(--theme-accent) 45%, transparent);
+}
 .app-shell[data-theme] .terminal-status { display: none; }
 .app-shell[data-theme] .terminal-usage-toggle { margin-left: auto; border: 0; background: transparent; color: var(--theme-muted); font: inherit; }
 .app-shell[data-theme] .terminal-usage-toggle[aria-pressed="true"] { color: var(--theme-text); }
@@ -122,3 +188,130 @@
 /* Keep the rename input usable when its tab normally sizes to its content. */
 .app-shell[data-theme] .terminal-tab-item.editing { flex: 0 0 220px; min-width: 220px; }
 .app-shell[data-theme] .terminal-tab-item.editing .terminal-name-editor input { min-width: 0; }
+
+/* Keep the view switcher in the title bar like the Stitch workbench. */
+.app-shell[data-theme] .titlebar { position: relative; height: 44px; flex-basis: 44px; background: var(--theme-background); }
+.app-shell[data-theme] .workspace-view-tabs {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  height: 32px;
+  flex: none;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--theme-border);
+  border-radius: 8px;
+  background: var(--theme-raised);
+}
+.app-shell[data-theme] .workspace-view-tab { min-width: 82px; padding: 0 13px; border-radius: 6px; color: var(--theme-muted); font-size: 12px; }
+.app-shell[data-theme] .workspace-view-tab.selected {
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 24%, var(--theme-border));
+  background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-surface));
+  color: var(--theme-accent);
+  box-shadow: 0 1px 2px #0006;
+}
+.app-shell[data-theme] .workspace-view-tab.selected::after { display: none; }
+.app-shell[data-theme] .terminal-toolbar.editor-mode { display: none; }
+.app-shell[data-theme] .terminal-toolbar.floating-mode:not(.editor-mode) { display: none; }
+.app-shell[data-theme] .terminal-toolbar:not(.editor-mode) {
+  position: relative;
+  height: 49px;
+  flex: 0 0 49px;
+  display: block;
+  overflow: visible;
+  border-bottom: 1px solid var(--theme-border);
+}
+.app-shell[data-theme] .terminal-session-toolbar { height: 49px; min-height: 49px; padding-right: 12px; }
+.app-shell[data-theme] .terminal-workspace-view.has-terminal-usage { gap: 6px; padding-bottom: 8px; }
+.app-shell[data-theme] .terminal-surface { flex: 1 1 0%; min-width: 0; min-height: 0; overflow: hidden; }
+
+/* Keep the editor information compact and reserve its footer's left side for the file path. */
+.app-shell[data-theme] .editor-group-indicator { display: none; }
+.app-shell[data-theme] .editor-groups-layout {
+  scrollbar-color: var(--theme-border) var(--theme-surface);
+  scrollbar-width: thin;
+}
+.app-shell[data-theme] .editor-groups-layout::-webkit-scrollbar { width: 8px; height: 8px; }
+.app-shell[data-theme] .editor-groups-layout::-webkit-scrollbar-track,
+.app-shell[data-theme] .editor-groups-layout::-webkit-scrollbar-corner { background: var(--theme-surface); }
+.app-shell[data-theme] .editor-groups-layout::-webkit-scrollbar-thumb {
+  border: 2px solid var(--theme-surface);
+  border-radius: 8px;
+  background: var(--theme-border);
+}
+.app-shell[data-theme] .editor-groups-layout::-webkit-scrollbar-thumb:hover { background: var(--theme-accent); }
+.app-shell[data-theme] .editor-group-heading { height: 27px; flex-basis: 27px; }
+.app-shell[data-theme] .editor-file-tabs { height: 36px; flex-basis: 36px; }
+.app-shell[data-theme] .editor-file-tab { min-width: 112px; }
+.app-shell[data-theme] .editor-file-tab-select { gap: 6px; padding-inline: 8px; font-size: 12px; }
+.app-shell[data-theme] .editor-group-pane .code-editor-header {
+  height: 32px;
+  min-height: 32px;
+  flex: 0 0 32px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 8px;
+}
+.app-shell[data-theme] .code-editor-meta {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 8px;
+  font-size: 10px;
+}
+.app-shell[data-theme] .code-editor-source-label { max-width: 150px; font-size: 10px; }
+.app-shell[data-theme] .code-editor-editable-badge,
+.app-shell[data-theme] .code-editor-readonly { padding: 2px 6px; font-size: 9px; white-space: nowrap; }
+.app-shell[data-theme] .code-editor-save { min-height: 23px; gap: 5px; padding: 2px 7px; font-size: 10px; white-space: nowrap; }
+.app-shell[data-theme] .code-editor-save kbd { font-size: 8px; }
+.app-shell[data-theme] .code-editor-statusbar {
+  height: 30px;
+  flex-basis: 30px;
+  gap: 12px;
+  padding-inline: 10px;
+  border-color: var(--theme-border);
+  background: color-mix(in srgb, var(--theme-raised) 88%, var(--theme-accent) 12%);
+  color: var(--theme-muted);
+  font-size: 10px;
+}
+.app-shell[data-theme] .code-editor-statusbar > .code-editor-path { flex: 1 1 auto; min-width: 0; color: color-mix(in srgb, var(--theme-text) 72%, var(--theme-muted)); font-size: 10px; }
+
+/* Render a small, faithful source preview and keep the minimap viewport fixed at the editor's right edge. */
+.app-shell[data-theme] .code-editor-minimap {
+  right: 0;
+  touch-action: none;
+  user-select: none;
+  cursor: ns-resize;
+}
+.app-shell[data-theme] .code-editor-minimap-code {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+  pointer-events: none;
+}
+.app-shell[data-theme] .code-editor-minimap-code :is(pre, .shiki) {
+  width: max-content;
+  min-width: max-content;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  font-family: var(--editor-font-family, "Cascadia Code", Consolas, monospace);
+  font-size: inherit !important;
+  line-height: inherit !important;
+  letter-spacing: normal;
+  tab-size: 4;
+  white-space: pre;
+}
+.app-shell[data-theme] .code-editor-minimap-code .shiki { background: transparent !important; }
+.app-shell[data-theme] .code-editor-minimap-window { cursor: grab; }
+.app-shell[data-theme] .code-editor-minimap:active .code-editor-minimap-window { cursor: grabbing; }
+@media (max-width: 900px) {
+  .app-shell[data-theme] .code-editor-meta { flex-wrap: nowrap; gap: 5px; font-size: 9px; }
+  .app-shell[data-theme] .code-editor-source-label { max-width: 92px; }
+  .app-shell[data-theme] .code-editor-statusbar { gap: 6px; }
+}

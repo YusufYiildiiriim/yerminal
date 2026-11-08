@@ -91,9 +91,7 @@
 }
 
 
-.app-shell[data-theme] .tool-sidebar-visibility { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 100%; min-height: 46px; margin-top: auto; color: var(--theme-muted); background: transparent; border: 1px solid var(--theme-border); border-radius: 5px; cursor: pointer; }
-.app-shell[data-theme] .tool-sidebar-visibility:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }
-.app-shell[data-theme] .tool-sidebar-autohide { margin-top: 0; }
+.app-shell[data-theme] .tool-sidebar-autohide { margin-top: auto; }
 
 /* Compact activity rail and explorer from the approved preview. */
 .app-shell[data-theme] .tool-sidebar { width: 50px; flex-basis: 50px; padding: 10px 5px; gap: 6px; }
@@ -101,7 +99,7 @@
 .app-shell[data-theme] .tool-sidebar-item { min-height: 38px; height: 38px; border: 0; border-radius: 4px; }
 .app-shell[data-theme] .tool-sidebar-label { display: none; }
 .app-shell[data-theme] .tool-sidebar-item.selected { color: var(--theme-accent); background: var(--theme-raised); }
-.app-shell[data-theme] .tool-sidebar-visibility, .app-shell[data-theme] .tool-sidebar-autohide { min-height: 38px; border: 0; }
+.app-shell[data-theme] .tool-sidebar-autohide { min-height: 38px; border: 0; }
 .app-shell[data-theme] .tool-sidebar-autohide-label { font-size: 10px; }
 .app-shell[data-theme] .workspace-navigation-controls { padding: 8px 10px; gap: 0; }
 .app-shell[data-theme] .workspace-root-picker { flex-wrap: nowrap; gap: 4px; }

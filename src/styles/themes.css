@@ -1,16 +1,16 @@
 /* Semantic theme tokens are intentionally independent of the selected preset. */
 .app-shell[data-theme] {
-  --theme-background: #101116;
-  --theme-surface: #13141a;
-  --theme-raised: #191a22;
-  --theme-chrome: #0d0e13;
-  --theme-editor: #101116;
-  --theme-terminal: #0d0e12;
-  --theme-text: #ecebf4;
-  --theme-muted: #85899a;
-  --theme-border: #302e3b;
-  --theme-accent: #b39aff;
-  --theme-success: #8ad6b0;
+  --theme-background: #0b0b0e;
+  --theme-surface: #111115;
+  --theme-raised: #15151a;
+  --theme-chrome: #0c0c10;
+  --theme-editor: #141418;
+  --theme-terminal: #141418;
+  --theme-text: #d4d4d8;
+  --theme-muted: #85848e;
+  --theme-border: #23232a;
+  --theme-accent: #f59e0b;
+  --theme-success: #34d399;
   --bg: var(--theme-background);
   --panel: var(--theme-surface);
   --panel-raised: var(--theme-raised);
@@ -75,9 +75,9 @@
 .app-shell[data-theme] :is(.workspace-view-tab.selected, .editor-file-tab.selected, .tool-sidebar-item.selected, .tool-sidebar-item.active) { color: var(--theme-text); }
 .app-shell[data-theme] .workspace-view-tab.selected::after { background: var(--theme-accent); }
 .app-shell[data-theme] .workspace-view-tab.selected > span,
-.app-shell[data-theme] :is(.editor-groups-title > span:first-child, .terminal-dot, .read-only-mark) { color: var(--theme-accent); }
+.app-shell[data-theme] :is(.editor-groups-title > span:first-child, .read-only-mark) { color: var(--theme-accent); }
 .app-shell[data-theme] .editor-file-tab.selected { box-shadow: inset 0 2px var(--theme-accent); }
-.app-shell[data-theme] :is(.editor-group-pane.active .editor-group-indicator, .terminal-dot) { background: var(--theme-accent); }
+.app-shell[data-theme] .editor-group-pane.active .editor-group-indicator { background: var(--theme-accent); }
 .app-shell[data-theme] :is(.workspace-name-select, .workspace-root-picker, .editor-group-move) {
   color: var(--theme-text);
   background: var(--theme-raised);
@@ -182,4 +182,158 @@
   border-color: var(--theme-border);
   color: var(--theme-text);
   border-radius: 7px;
+}
+
+/* Stitch structure is shared; its palette follows the selected theme tokens. */
+.app-shell[data-theme] .titlebar {
+  position: relative;
+  height: 44px;
+  flex-basis: 44px;
+  background: var(--theme-background);
+  border-color: var(--theme-border);
+}
+.app-shell[data-theme] .workspace-view-tabs {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  height: 32px;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--theme-border);
+  border-radius: 8px;
+  background: var(--theme-raised);
+}
+.app-shell[data-theme] .workspace-view-tab {
+  min-width: 82px;
+  padding: 0 13px;
+  border-radius: 6px;
+  color: var(--theme-muted);
+  font-size: 12px;
+}
+.app-shell[data-theme] .workspace-view-tab.selected {
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 24%, var(--theme-border));
+  background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-surface));
+  color: var(--theme-accent);
+  box-shadow: 0 1px 2px #0006;
+}
+.app-shell[data-theme] .workspace-view-tab.selected::after { display: none; }
+.app-shell[data-theme] .titlebar-resource-button {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--theme-border);
+  border-radius: 6px;
+  background: var(--theme-raised);
+  color: var(--theme-muted);
+  font-size: 10px;
+}
+.app-shell[data-theme] .titlebar-resource-button:hover,
+.app-shell[data-theme] .titlebar-resource-button[aria-expanded="true"] {
+  color: var(--theme-accent);
+  border-color: color-mix(in srgb, var(--theme-accent) 38%, var(--theme-border));
+  background: color-mix(in srgb, var(--theme-accent) 9%, var(--theme-surface));
+}
+.app-shell[data-theme] :is(.tools-panel, .tool-content, .workspace-sidebar-content) { background: var(--theme-surface); }
+.app-shell[data-theme] .tool-sidebar {
+  width: 48px;
+  flex-basis: 48px;
+  padding: 8px 4px;
+  background: var(--theme-chrome);
+}
+.app-shell[data-theme] .tool-sidebar-item { min-height: 38px; height: 38px; border-radius: 4px; }
+.app-shell[data-theme] .tool-sidebar-label { display: none; }
+.app-shell[data-theme] .tool-sidebar-item.selected {
+  border-left-color: var(--theme-accent);
+  background: color-mix(in srgb, var(--theme-accent) 12%, var(--theme-surface));
+  color: var(--theme-accent);
+}
+.app-shell[data-theme] .tool-sidebar-autohide { min-height: 34px; border-color: var(--theme-border); }
+.app-shell[data-theme] .workspace-navigation-controls { padding: 7px 8px; gap: 0; background: var(--theme-surface); }
+.app-shell[data-theme] .workspace-root-picker,
+.app-shell[data-theme] .workspace-root-picker select { background: var(--theme-surface); border-color: transparent; }
+.app-shell[data-theme] .workspace-root-picker select { min-height: 27px; font-size: 10px; }
+.app-shell[data-theme] :is(.read-only-mark, .editor-group-pane.active .editor-group-indicator) { color: var(--theme-accent); }
+.app-shell[data-theme] :is(.terminal-session-toolbar, .terminal-layout-toolbar, .terminal-pane-header, .editor-file-tabs, .code-editor-header, .editor-group-heading) {
+  background: var(--theme-raised);
+  border-color: var(--theme-border);
+}
+.app-shell[data-theme] :is(.terminal-surface, .terminal-pane-body, .terminal-instance) { background: var(--theme-terminal); }
+.app-shell[data-theme] :is(.code-editor-content, .code-editor-editable-surface, .editor-group-pane) { background: var(--theme-editor); }
+.app-shell[data-theme] .terminal-pane-frame[data-active="true"] {
+  border-color: var(--theme-accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 34%, transparent), 0 0 0 1px color-mix(in srgb, var(--theme-accent) 45%, transparent);
+}
+.app-shell[data-theme] .terminal-pane-frame.floating-terminal-window:not([data-active="true"]) {
+  border-color: var(--theme-border);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 28%);
+}
+.app-shell[data-theme] .terminal-pane-frame.floating-terminal-window[data-active="true"] {
+  z-index: 3;
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-accent) 78%, transparent), 0 10px 30px rgb(0 0 0 / 52%), 0 0 24px color-mix(in srgb, var(--theme-accent) 16%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 20%, transparent);
+}
+.app-shell[data-theme] .terminal-pane-frame.floating-terminal-window[data-active="true"] .terminal-pane-header {
+  border-bottom-color: color-mix(in srgb, var(--theme-accent) 65%, var(--theme-border));
+  background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-raised));
+}
+.app-shell[data-theme] .terminal-pane-frame.floating-terminal-window[data-active="true"] .terminal-pane-title {
+  color: var(--theme-accent);
+  font-weight: 650;
+}
+.app-shell[data-theme] .terminal-resource-strip { border: 0; background: var(--theme-surface); }
+.app-shell[data-theme] .terminal-resource-strip-header { height: 36px; flex-basis: 36px; padding-inline: 12px; border-color: var(--theme-border); font-size: 10px; }
+.app-shell[data-theme] .terminal-resource-strip-header > strong { font-size: 10px; }
+.app-shell[data-theme] .terminal-resource-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); padding: 10px; }
+.app-shell[data-theme] .terminal-resource-card { min-width: 0; background: var(--theme-raised); border-color: var(--theme-border); border-radius: 5px; box-shadow: none; }
+.app-shell[data-theme] .terminal-resource-card.active { border-color: color-mix(in srgb, var(--theme-accent) 45%, var(--theme-border)); box-shadow: inset 0 1px color-mix(in srgb, var(--theme-accent) 15%, transparent); }
+.app-shell[data-theme] .terminal-resource-terminal-icon,
+.app-shell[data-theme] .terminal-resource-bar span.memory { color: var(--theme-accent); background: var(--theme-accent); }
+.app-shell[data-theme] :is(.terminal-usage-toggle, .statusbar) { display: none; }
+.app-shell[data-theme] .code-editor-layout {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--theme-editor);
+}
+.app-shell[data-theme] .code-editor-content {
+  position: absolute;
+  inset: 0 98px 0 0;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  flex: none;
+  padding: 0;
+  overflow: auto;
+}
+.app-shell[data-theme] .code-editor-minimap {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 98px;
+  overflow: hidden;
+  border-left: 1px solid var(--theme-border);
+  background: var(--theme-chrome);
+  opacity: .82;
+  cursor: pointer;
+}
+.app-shell[data-theme] .code-editor-minimap canvas { display: block; width: 100%; height: 100%; }
+.app-shell[data-theme] .code-editor-minimap-window {
+  position: absolute;
+  right: 0;
+  left: 0;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 35%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 9%, transparent);
+  pointer-events: none;
+}
+@media (max-width: 1000px) {
+  .app-shell[data-theme] .workspace-view-tabs { left: 52%; }
+  .app-shell[data-theme] .titlebar-resource-button { display: none; }
+  .app-shell[data-theme] .code-editor-minimap { width: 66px; }
+  .app-shell[data-theme] .code-editor-content { right: 66px; }
 }
