@@ -258,6 +258,7 @@ function App() {
   const savingEditorFilesRef = useRef(new Set<string>());
   const pendingEditorSavesRef = useRef(new Map<string, Promise<void>>());
   const autoSaveTimersRef = useRef(new Map<string, { content: string; timer: ReturnType<typeof setTimeout> | null }>());
+  const autoSaveQueuedRef = useRef(new Set<string>());
 
   const [repoInfo, setRepoInfo] = useState<RepositoryInfo | null>(null);
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
@@ -549,15 +550,16 @@ function App() {
     if (!settings.autoSave || !isTauri()) {
       for (const entry of timers.values()) if (entry.timer) clearTimeout(entry.timer);
       timers.clear();
+      autoSaveQueuedRef.current.clear();
       return;
     }
 
-    const dirtyFiles = new Map<string, { workspaceId: string; tabId: string; path: string; content: string }>();
+    const dirtyFiles = new Map<string, { workspaceId: string; tabId: string; path: string; content: string; isSaving: boolean }>();
     for (const [workspaceId, workspace] of Object.entries(editorWorkspaces)) {
       for (const tab of workspace.tabs) {
         if (tab.status !== "ready" || tab.sourceCommitId || tab.content === null || tab.savedContent === null) continue;
         if (normalizeEditorNewlines(tab.content) === normalizeEditorNewlines(tab.savedContent)) continue;
-        dirtyFiles.set(editorOperationKey(workspaceId, tab.id), { workspaceId, tabId: tab.id, path: tab.path, content: tab.content });
+        dirtyFiles.set(editorOperationKey(workspaceId, tab.id), { workspaceId, tabId: tab.id, path: tab.path, content: tab.content, isSaving: tab.isSaving });
       }
     }
 
@@ -565,20 +567,25 @@ function App() {
       if (dirtyFiles.has(key)) continue;
       if (entry.timer) clearTimeout(entry.timer);
       timers.delete(key);
+      autoSaveQueuedRef.current.delete(key);
     }
+    for (const key of autoSaveQueuedRef.current) if (!dirtyFiles.has(key)) autoSaveQueuedRef.current.delete(key);
     for (const [key, file] of dirtyFiles) {
       const existing = timers.get(key);
-      if (existing?.content === file.content) continue;
+      const retryQueued = autoSaveQueuedRef.current.has(key);
+      if (retryQueued && file.isSaving) continue;
+      if (retryQueued) autoSaveQueuedRef.current.delete(key);
+      if (existing?.content === file.content && !retryQueued) continue;
       if (existing?.timer) clearTimeout(existing.timer);
       const entry = { content: file.content, timer: null as ReturnType<typeof setTimeout> | null };
       entry.timer = setTimeout(() => {
         entry.timer = null;
         const resourceKey = editorResourceKey(file.path);
-        const pendingSave = pendingEditorSavesRef.current.get(resourceKey);
-        void (async () => {
-          if (savingEditorFilesRef.current.has(resourceKey) && pendingSave) await pendingSave.catch(() => undefined);
-          await saveEditorFileRef.current(file.tabId, file.workspaceId);
-        })();
+        if (savingEditorFilesRef.current.has(resourceKey)) {
+          autoSaveQueuedRef.current.add(key);
+          return;
+        }
+        void saveEditorFileRef.current(file.tabId, file.workspaceId);
       }, 1000);
       timers.set(key, entry);
     }
@@ -587,6 +594,7 @@ function App() {
   useEffect(() => () => {
     for (const entry of autoSaveTimersRef.current.values()) if (entry.timer) clearTimeout(entry.timer);
     autoSaveTimersRef.current.clear();
+    autoSaveQueuedRef.current.clear();
   }, []);
 
   const createEditorGroup = useCallback(() => {
