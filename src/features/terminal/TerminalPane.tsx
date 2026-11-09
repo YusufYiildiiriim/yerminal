@@ -254,7 +254,11 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
     });
   }, [active, visible, sessionId]);
 
-  return <div className="terminal-instance" ref={hostRef} aria-label={`Terminal ${sessionId}`} hidden={!visible} />;
+  return (
+    <div className="terminal-instance" aria-label={`Terminal ${sessionId}`} hidden={!visible}>
+      <div className="terminal-fit" ref={hostRef} />
+    </div>
+  );
 }
 
 export default TerminalPane;

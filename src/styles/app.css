@@ -190,6 +190,7 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .terminal-status-active { padding: 2px 5px; border-radius: 3px; background: #39314f; color: #e4dcff; font-size: 8px; font-weight: 750; letter-spacing: .3px; text-transform: uppercase; }.status-indicator { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #7ec69a; }.status-separator { color: #44464f; }
 .statusbar { height: 25px; flex: 0 0 25px; padding: 0 12px; display: flex; align-items: center; gap: 17px; border-top: 1px solid #24252b; background: #141519; color: #777a85; font-size: 10px; }.statusbar span { display: flex; gap: 6px; align-items: center; }.statusbar .status-indicator { width: 5px; height: 5px; background: #777a85; }
 .terminal-instance { position: absolute; inset: 0; padding: 18px 22px 40px; background: #101114; }
+.terminal-instance > .terminal-fit { width: 100%; height: 100%; }
 .terminal-instance[hidden] { display: none; }
 .terminal-instance .xterm { height: 100%; }
 .terminal-instance .xterm-viewport { scrollbar-color: #383942 #101114; }
