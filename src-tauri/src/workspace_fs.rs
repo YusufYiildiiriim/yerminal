@@ -6,7 +6,7 @@ use std::path::{Component, Path, PathBuf};
 
 pub const MAX_PREVIEW_BYTES: u64 = 1024 * 1024;
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceEntry {
     pub name: String,
@@ -131,7 +131,11 @@ fn ignored_search_directory(name: &str) -> bool {
     )
 }
 
-pub fn search_files(root: &str, query: &str, requested_limit: usize) -> Result<Vec<WorkspaceEntry>, String> {
+pub fn search_files(
+    root: &str,
+    query: &str,
+    requested_limit: usize,
+) -> Result<Vec<WorkspaceEntry>, String> {
     const MAX_DEPTH: usize = 64;
     const MAX_DIRECTORIES: usize = 5_000;
     const MAX_ENTRIES: usize = 250_000;
@@ -186,7 +190,11 @@ pub fn search_files(root: &str, query: &str, requested_limit: usize) -> Result<V
             }
 
             let name_lower = name.to_lowercase();
-            let relative_path = path.strip_prefix(&root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+            let relative_path = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
             let path_lower = relative_path.to_lowercase();
             let score = if name_lower == query {
                 0
@@ -202,16 +210,21 @@ pub fn search_files(root: &str, query: &str, requested_limit: usize) -> Result<V
             let extension = path
                 .extension()
                 .map(|value| value.to_string_lossy().to_ascii_lowercase());
-            candidates.push((score, path_lower, WorkspaceEntry {
-                name,
-                path: path.to_string_lossy().into_owned(),
-                is_dir: false,
-                size: Some(metadata.len()),
-                extension,
-            }));
+            candidates.push((
+                score,
+                path_lower,
+                WorkspaceEntry {
+                    name,
+                    path: path.to_string_lossy().into_owned(),
+                    is_dir: false,
+                    size: Some(metadata.len()),
+                    extension,
+                },
+            ));
 
             if candidates.len() >= limit.saturating_mul(8).max(256) {
-                candidates.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+                candidates
+                    .sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
                 candidates.truncate(limit.saturating_mul(4));
             }
         }
@@ -296,4 +309,361 @@ pub fn write_text_file(
         .map_err(|error| format!("Cannot save workspace file: {error}"))?;
     file.sync_all()
         .map_err(|error| format!("Cannot flush workspace file: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_root() -> (tempfile::TempDir, String) {
+        let dir = tempfile::tempdir().expect("create temp directory");
+        let root = dir.path().to_string_lossy().into_owned();
+        (dir, root)
+    }
+
+    fn add_bytes(root: &Path, relative: &str, contents: &[u8]) {
+        let path = root.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create fixture parent directory");
+        }
+        fs::write(path, contents).expect("write fixture file");
+    }
+
+    fn add_file(root: &Path, relative: &str, contents: &str) {
+        add_bytes(root, relative, contents.as_bytes());
+    }
+
+    fn fixture_path(dir: &tempfile::TempDir, relative: &str) -> String {
+        dir.path().join(relative).to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn list_directory_empty_path_lists_root() {
+        let (dir, root) = temp_root();
+        fs::create_dir_all(dir.path().join("zeta")).expect("create fixture directory");
+        add_file(dir.path(), "alpha.txt", "a");
+        add_file(dir.path(), "Beta.txt", "bb");
+        add_file(dir.path(), "gamma.txt", "ccc");
+
+        let entries = list_directory(&root, "").expect("list workspace root");
+
+        let names: Vec<(String, bool)> = entries
+            .iter()
+            .map(|entry| (entry.name.clone(), entry.is_dir))
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                ("zeta".to_owned(), true),
+                ("alpha.txt".to_owned(), false),
+                ("Beta.txt".to_owned(), false),
+                ("gamma.txt".to_owned(), false),
+            ]
+        );
+    }
+
+    #[test]
+    fn list_directory_reports_extensions_sizes_and_directory_flags() {
+        let (dir, root) = temp_root();
+        add_file(dir.path(), "Report.TXT", "hello");
+        fs::create_dir_all(dir.path().join("nested")).expect("create fixture directory");
+
+        let entries = list_directory(&root, "").expect("list workspace root");
+
+        let report = entries
+            .iter()
+            .find(|entry| entry.name == "Report.TXT")
+            .expect("report entry");
+        assert_eq!(report.extension.as_deref(), Some("txt"));
+        assert_eq!(report.size, Some(5));
+        assert!(!report.is_dir);
+
+        let nested = entries
+            .iter()
+            .find(|entry| entry.name == "nested")
+            .expect("nested entry");
+        assert!(nested.is_dir);
+        assert_eq!(nested.size, None);
+        assert_eq!(nested.extension, None);
+    }
+
+    #[test]
+    fn list_directory_rejects_paths_outside_root() {
+        let (_dir, root) = temp_root();
+        let outside = tempfile::tempdir().expect("create outside temp directory");
+        let outside_file = outside.path().join("secret.txt");
+        fs::write(&outside_file, "sneaky").expect("write outside file");
+
+        let error = list_directory(&root, outside_file.to_string_lossy().as_ref()).unwrap_err();
+        assert!(error.contains("outside the included folder"), "{error}");
+    }
+
+    #[test]
+    fn list_directory_rejects_files_and_missing_paths() {
+        let (dir, root) = temp_root();
+        add_file(dir.path(), "keep.txt", "ok");
+
+        let file_error = list_directory(&root, &fixture_path(&dir, "keep.txt")).unwrap_err();
+        assert!(file_error.contains("not a folder"), "{file_error}");
+
+        let missing_error =
+            list_directory(&root, &fixture_path(&dir, "does-not-exist")).unwrap_err();
+        assert!(
+            missing_error.contains("Cannot access workspace item"),
+            "{missing_error}"
+        );
+    }
+
+    #[test]
+    fn search_files_ranks_exact_prefix_contains_and_path_matches() {
+        let (dir, root) = temp_root();
+        add_file(dir.path(), "report", "exact");
+        add_file(dir.path(), "report2024.md", "prefix");
+        add_file(dir.path(), "my_report_final.txt", "contains");
+        add_file(dir.path(), "reports_old/summary.txt", "path");
+
+        let results = search_files(&root, "REPORT", 10).expect("search files");
+
+        let names: Vec<&str> = results.iter().map(|entry| entry.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "report",
+                "report2024.md",
+                "my_report_final.txt",
+                "summary.txt"
+            ]
+        );
+        let top = &results[0];
+        assert_eq!(top.extension, None);
+        assert!(!top.is_dir);
+        assert!(top.size.is_some());
+    }
+
+    #[test]
+    fn search_files_treats_backslashes_as_slashes() {
+        let (dir, root) = temp_root();
+        add_file(dir.path(), "sub/note.md", "content");
+
+        let results = search_files(&root, "sub\\note.md", 10).expect("search files");
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "note.md");
+        assert_eq!(results[0].extension.as_deref(), Some("md"));
+    }
+
+    #[test]
+    fn search_files_empty_query_returns_no_results() {
+        let (dir, root) = temp_root();
+        add_file(dir.path(), "anything.txt", "x");
+
+        assert!(search_files(&root, "", 10).expect("empty query").is_empty());
+        assert!(search_files(&root, "   \t", 10)
+            .expect("blank query")
+            .is_empty());
+    }
+
+    #[test]
+    fn search_files_skips_ignored_directories() {
+        let (dir, root) = temp_root();
+        let ignored = [
+            ".git",
+            "node_modules",
+            "target",
+            "dist",
+            "build",
+            "coverage",
+            ".next",
+            ".turbo",
+            ".venv",
+            "venv",
+        ];
+        for name in ignored {
+            add_file(dir.path(), &format!("{name}/ignored_marker.log"), "x");
+        }
+
+        let results = search_files(&root, "ignored_marker", 10).expect("search files");
+
+        assert!(results.is_empty(), "unexpected results: {results:?}");
+    }
+
+    #[test]
+    fn search_files_clamps_limit() {
+        let (dir, root) = temp_root();
+        for index in 1..=3 {
+            add_file(dir.path(), &format!("item{index}.txt"), "x");
+        }
+
+        assert_eq!(search_files(&root, "item", 0).expect("limit zero").len(), 1);
+        let limited = search_files(&root, "item", 2).expect("limit two");
+        assert_eq!(limited.len(), 2);
+        assert_eq!(limited[0].name, "item1.txt");
+        assert_eq!(limited[0].extension.as_deref(), Some("txt"));
+        assert_eq!(
+            search_files(&root, "item", 1000)
+                .expect("limit large")
+                .len(),
+            3
+        );
+    }
+
+    #[test]
+    fn search_files_rejects_missing_root() {
+        let error = search_files("does-not-exist-root-yerminal", "item", 10).unwrap_err();
+        assert!(error.contains("Cannot open workspace folder"), "{error}");
+    }
+
+    #[test]
+    fn read_text_file_roundtrips_valid_utf8() {
+        let (dir, root) = temp_root();
+        add_file(dir.path(), "hello.txt", "héllo wörld 中文");
+
+        let content =
+            read_text_file(&root, &fixture_path(&dir, "hello.txt")).expect("read text file");
+
+        assert_eq!(content, "héllo wörld 中文");
+    }
+
+    #[test]
+    fn read_text_file_rejects_oversized_files() {
+        let (dir, root) = temp_root();
+        add_bytes(
+            dir.path(),
+            "big.txt",
+            "a".repeat(MAX_PREVIEW_BYTES as usize + 1).as_bytes(),
+        );
+
+        let error = read_text_file(&root, &fixture_path(&dir, "big.txt")).unwrap_err();
+        assert!(error.contains("too large to preview"), "{error}");
+    }
+
+    #[test]
+    fn read_text_file_rejects_binary_and_invalid_utf8_files() {
+        let (dir, root) = temp_root();
+        add_bytes(dir.path(), "binary.bin", b"abc\0def");
+        add_bytes(dir.path(), "not_utf8.txt", &[0xC3, 0x28, b'x']);
+
+        let binary_error = read_text_file(&root, &fixture_path(&dir, "binary.bin")).unwrap_err();
+        assert!(
+            binary_error.contains("Binary file preview"),
+            "{binary_error}"
+        );
+
+        let utf8_error = read_text_file(&root, &fixture_path(&dir, "not_utf8.txt")).unwrap_err();
+        assert!(utf8_error.contains("not valid UTF-8"), "{utf8_error}");
+    }
+
+    #[test]
+    fn read_text_file_rejects_paths_outside_root_and_directories() {
+        let (dir, root) = temp_root();
+        let outside = tempfile::tempdir().expect("create outside temp directory");
+        let outside_file = outside.path().join("secret.txt");
+        fs::write(&outside_file, "sneaky").expect("write outside file");
+        fs::create_dir_all(dir.path().join("folder")).expect("create fixture directory");
+
+        let outside_error =
+            read_text_file(&root, outside_file.to_string_lossy().as_ref()).unwrap_err();
+        assert!(
+            outside_error.contains("outside the included folder"),
+            "{outside_error}"
+        );
+
+        let directory_error = read_text_file(&root, &fixture_path(&dir, "folder")).unwrap_err();
+        assert!(directory_error.contains("not a file"), "{directory_error}");
+    }
+
+    #[test]
+    fn write_text_file_rewrites_and_truncates_when_expected_matches() {
+        let (dir, root) = temp_root();
+        add_file(dir.path(), "notes.txt", "oldest content here is longer");
+
+        let notes = fixture_path(&dir, "notes.txt");
+
+        write_text_file(&root, &notes, "short", "oldest content here is longer")
+            .expect("write text file");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("notes.txt")).unwrap(),
+            "short"
+        );
+
+        write_text_file(&root, &notes, "short", "short").expect("write same content");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("notes.txt")).unwrap(),
+            "short"
+        );
+    }
+
+    #[test]
+    fn write_text_file_rejects_stale_expected_content() {
+        let (dir, root) = temp_root();
+        add_file(dir.path(), "notes.txt", "current content");
+
+        let error = write_text_file(
+            &root,
+            &fixture_path(&dir, "notes.txt"),
+            "new content",
+            "stale content",
+        )
+        .unwrap_err();
+        assert!(error.contains("File changed on disk"), "{error}");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("notes.txt")).unwrap(),
+            "current content"
+        );
+    }
+
+    #[test]
+    fn write_text_file_rejects_oversized_and_binary_content() {
+        let (dir, root) = temp_root();
+        add_file(dir.path(), "notes.txt", "existing");
+
+        let oversized = "a".repeat(MAX_PREVIEW_BYTES as usize + 1);
+        let size_error = write_text_file(
+            &root,
+            &fixture_path(&dir, "notes.txt"),
+            &oversized,
+            "existing",
+        )
+        .unwrap_err();
+        assert!(size_error.contains("too large to save"), "{size_error}");
+
+        let binary_error = write_text_file(
+            &root,
+            &fixture_path(&dir, "notes.txt"),
+            "ab\0cd",
+            "existing",
+        )
+        .unwrap_err();
+        assert!(
+            binary_error.contains("Binary file editing"),
+            "{binary_error}"
+        );
+    }
+
+    #[test]
+    fn write_text_file_rejects_missing_files_and_paths_outside_root() {
+        let (dir, root) = temp_root();
+        add_file(dir.path(), " filler.txt", "keep root alive");
+        let missing_error =
+            write_text_file(&root, &fixture_path(&dir, "missing.txt"), "content", "").unwrap_err();
+        assert!(
+            missing_error.contains("Cannot access workspace item"),
+            "{missing_error}"
+        );
+
+        let outside = tempfile::tempdir().expect("create outside temp directory");
+        let outside_file = outside.path().join("secret.txt");
+        fs::write(&outside_file, "sneaky").expect("write outside file");
+        let outside_error = write_text_file(
+            &root,
+            outside_file.to_string_lossy().as_ref(),
+            "content",
+            "sneaky",
+        )
+        .unwrap_err();
+        assert!(
+            outside_error.contains("outside the included folder"),
+            "{outside_error}"
+        );
+    }
 }

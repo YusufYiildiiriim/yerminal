@@ -8,7 +8,7 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepositoryInfo {
     pub root: String,
@@ -16,7 +16,7 @@ pub struct RepositoryInfo {
     pub state: String,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileChange {
     pub path: String,
@@ -25,7 +25,7 @@ pub struct FileChange {
     pub unstaged: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitInfo {
     pub id: String,
@@ -37,14 +37,14 @@ pub struct CommitInfo {
     pub branches: Vec<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitFileChange {
     pub path: String,
     pub kind: String,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitFileContent {
     pub content: String,
@@ -578,4 +578,639 @@ fn branch_labels(repo: &Repository) -> std::collections::HashMap<String, Vec<Str
         }
     }
     labels
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn init_repo() -> (tempfile::TempDir, String) {
+        let dir = tempfile::tempdir().expect("create temp directory");
+        let repo = git2::Repository::init(dir.path()).expect("init repository");
+        let mut config = repo.config().expect("read repository config");
+        config
+            .set_str("user.name", "Yerminal Test")
+            .expect("set user.name");
+        config
+            .set_str("user.email", "test@yerminal.local")
+            .expect("set user.email");
+        config.set_bool("core.autocrlf", false).ok();
+        drop(config);
+        drop(repo);
+        let path = dir.path().to_string_lossy().into_owned();
+        (dir, path)
+    }
+
+    fn add_file(root: &std::path::Path, relative: &str, contents: &str) -> std::path::PathBuf {
+        let path = root.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create fixture parent directory");
+        }
+        fs::write(&path, contents).expect("write fixture file");
+        path
+    }
+
+    fn add_bytes(root: &std::path::Path, relative: &str, contents: &[u8]) {
+        let path = root.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create fixture parent directory");
+        }
+        fs::write(path, contents).expect("write fixture file");
+    }
+
+    fn stage_and_commit(root: &str, relative: &str, message: &str) -> String {
+        stage_file(root, relative).expect("stage file");
+        commit_staged(root, message).expect("commit staged changes")
+    }
+
+    fn find_change<'a>(changes: &'a [FileChange], path: &str) -> &'a FileChange {
+        changes
+            .iter()
+            .find(|change| change.path == path)
+            .unwrap_or_else(|| panic!("missing change for {path}: {changes:?}"))
+    }
+
+    fn assert_change(changes: &[FileChange], path: &str, kind: &str, staged: bool, unstaged: bool) {
+        let change = find_change(changes, path);
+        assert_eq!(change.kind, kind, "kind for {path}");
+        assert_eq!(change.staged, staged, "staged for {path}");
+        assert_eq!(change.unstaged, unstaged, "unstaged for {path}");
+    }
+
+    fn absolute_fixture_path() -> &'static str {
+        if cfg!(windows) {
+            r"C:\outside-yerminal.txt"
+        } else {
+            "/outside-yerminal.txt"
+        }
+    }
+
+    fn normalize_path_text(path: &str) -> String {
+        #[cfg(windows)]
+        {
+            let path = path
+                .strip_prefix(r"\\?\UNC\")
+                .map(|rest| format!(r"\\{rest}"))
+                .unwrap_or_else(|| {
+                    path.strip_prefix(r"\\?\")
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| path.to_owned())
+                });
+            path.replace('/', "\\")
+                .trim_end_matches(['/', '\\'])
+                .to_owned()
+        }
+        #[cfg(not(windows))]
+        {
+            path.trim_end_matches('/').to_owned()
+        }
+    }
+
+    #[test]
+    fn repository_info_reports_root_branch_and_clean_state() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "readme.md", "# repo");
+        stage_and_commit(&path, "readme.md", "initial commit");
+
+        let info = repository_info(&path).expect("repository info");
+
+        let root = normalize_path_text(&info.root);
+        let expected_root = normalize_path_text(&dir.path().to_string_lossy());
+        #[cfg(windows)]
+        assert!(
+            root.eq_ignore_ascii_case(&expected_root),
+            "root {root} != {expected_root}"
+        );
+        #[cfg(not(windows))]
+        assert_eq!(root, expected_root);
+
+        assert!(
+            info.branch == "master" || info.branch == "main",
+            "unexpected branch: {}",
+            info.branch
+        );
+        assert_eq!(info.state, "clean");
+    }
+
+    #[test]
+    fn repository_info_reports_unborn_head_and_rejects_non_repositories() {
+        let (dir, path) = init_repo();
+        let info = repository_info(&path).expect("repository info");
+        assert_eq!(info.branch, "(detached HEAD)");
+        assert_eq!(info.state, "clean");
+
+        let outside = tempfile::tempdir().expect("create outside temp directory");
+        let plain = outside.path().join("plain");
+        fs::create_dir_all(&plain).expect("create plain directory");
+        let error = repository_info(plain.to_string_lossy().as_ref()).unwrap_err();
+        assert!(error.contains("No Git repository found"), "{error}");
+
+        let _ = dir;
+    }
+
+    #[test]
+    fn status_classifies_untracked_modified_and_deleted_changes() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "tracked.txt", "one\n");
+        add_file(dir.path(), "remove_me.txt", "bye\n");
+        stage_and_commit(&path, "tracked.txt", "add tracked");
+        stage_and_commit(&path, "remove_me.txt", "add remove me");
+
+        add_file(dir.path(), "fresh.txt", "new\n");
+        assert_change(
+            &status(&path).unwrap(),
+            "fresh.txt",
+            "untracked",
+            false,
+            true,
+        );
+
+        add_file(dir.path(), "tracked.txt", "one\ntwo\n");
+        assert_change(
+            &status(&path).unwrap(),
+            "tracked.txt",
+            "modified",
+            false,
+            true,
+        );
+
+        stage_file(&path, "tracked.txt").expect("stage modification");
+        assert_change(
+            &status(&path).unwrap(),
+            "tracked.txt",
+            "modified",
+            true,
+            false,
+        );
+
+        fs::remove_file(dir.path().join("remove_me.txt")).expect("delete fixture file");
+        assert_change(
+            &status(&path).unwrap(),
+            "remove_me.txt",
+            "deleted",
+            false,
+            true,
+        );
+    }
+
+    #[test]
+    fn status_reports_newly_staged_files_as_added() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "new.txt", "hello\n");
+        stage_file(&path, "new.txt").expect("stage new file");
+
+        assert_change(&status(&path).unwrap(), "new.txt", "added", true, false);
+
+        let _ = dir;
+    }
+
+    #[test]
+    fn status_is_sorted_and_clean_repositories_are_empty() {
+        let (dir, path) = init_repo();
+        assert!(status(&path).expect("clean status").is_empty());
+
+        add_file(dir.path(), "zeta.txt", "z");
+        add_file(dir.path(), "alpha.txt", "a");
+        let changes = status(&path).expect("status");
+        let paths: Vec<&str> = changes.iter().map(|change| change.path.as_str()).collect();
+        assert_eq!(paths, vec!["alpha.txt", "zeta.txt"]);
+    }
+
+    #[test]
+    fn stage_file_removes_deleted_tracked_files_from_index() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "gone.txt", "value\n");
+        stage_and_commit(&path, "gone.txt", "add gone");
+
+        fs::remove_file(dir.path().join("gone.txt")).expect("delete fixture file");
+        stage_file(&path, "gone.txt").expect("stage deletion");
+
+        assert_change(&status(&path).unwrap(), "gone.txt", "deleted", true, false);
+    }
+
+    #[test]
+    fn stage_file_validates_paths_and_entries() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "real.txt", "ok\n");
+        fs::create_dir_all(dir.path().join("subdir")).expect("create fixture directory");
+
+        let missing_error = stage_file(&path, "missing.txt").unwrap_err();
+        assert!(
+            missing_error.contains("File no longer exists"),
+            "{missing_error}"
+        );
+
+        let directory_error = stage_file(&path, "subdir").unwrap_err();
+        assert!(
+            directory_error.contains("Only individual files"),
+            "{directory_error}"
+        );
+
+        for invalid in ["sub/../real.txt", absolute_fixture_path(), ""] {
+            let error = stage_file(&path, invalid).unwrap_err();
+            assert!(
+                error.contains("Invalid repository-relative file path"),
+                "{invalid}: {error}"
+            );
+        }
+
+        let _ = dir;
+    }
+
+    #[test]
+    fn unstage_file_returns_modifications_to_the_worktree() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "file.txt", "original\n");
+        stage_and_commit(&path, "file.txt", "add file");
+
+        add_file(dir.path(), "file.txt", "changed\n");
+        stage_file(&path, "file.txt").expect("stage modification");
+        assert_change(&status(&path).unwrap(), "file.txt", "modified", true, false);
+
+        unstage_file(&path, "file.txt").expect("unstage modification");
+        assert_change(&status(&path).unwrap(), "file.txt", "modified", false, true);
+
+        let _ = dir;
+    }
+
+    #[test]
+    fn unstage_file_removes_staged_entries_without_head() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "new.txt", "hello\n");
+        stage_file(&path, "new.txt").expect("stage new file");
+        assert_change(&status(&path).unwrap(), "new.txt", "added", true, false);
+
+        unstage_file(&path, "new.txt").expect("unstage new file");
+        assert_change(&status(&path).unwrap(), "new.txt", "untracked", false, true);
+
+        let _ = dir;
+    }
+
+    #[test]
+    fn discard_restores_tracked_files_to_head_content() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "file.txt", "original\n");
+        stage_and_commit(&path, "file.txt", "add file");
+
+        add_file(dir.path(), "file.txt", "changed\n");
+        discard_worktree_file(&path, "file.txt").expect("discard modification");
+
+        let restored = fs::read_to_string(dir.path().join("file.txt")).unwrap();
+        assert_eq!(restored, "original\n");
+    }
+
+    #[test]
+    fn discard_removes_untracked_files() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "untracked.txt", "scratch\n");
+
+        discard_worktree_file(&path, "untracked.txt").expect("discard untracked file");
+
+        assert!(!dir.path().join("untracked.txt").exists());
+        assert!(status(&path).expect("status").is_empty());
+    }
+
+    #[test]
+    fn discard_ignores_missing_files_and_rejects_directories_and_bad_paths() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "real.txt", "ok\n");
+        stage_and_commit(&path, "real.txt", "add real");
+        fs::create_dir_all(dir.path().join("subdir")).expect("create fixture directory");
+
+        discard_worktree_file(&path, "missing.txt").expect("missing file is a no-op");
+
+        let directory_error = discard_worktree_file(&path, "subdir").unwrap_err();
+        assert!(
+            directory_error.contains("Only individual files can be discarded"),
+            "{directory_error}"
+        );
+
+        for invalid in ["", "sub/../real.txt", absolute_fixture_path()] {
+            let error = discard_worktree_file(&path, invalid).unwrap_err();
+            assert!(
+                error.contains("Invalid repository-relative file path"),
+                "{invalid}: {error}"
+            );
+        }
+
+        let _ = dir;
+    }
+
+    #[test]
+    fn commit_staged_creates_history_with_message() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "file.txt", "content\n");
+
+        let oid = stage_and_commit(&path, "file.txt", "test commit message");
+
+        assert_eq!(oid.len(), 40);
+        assert!(oid.chars().all(|character| character.is_ascii_hexdigit()));
+
+        let commits = history(&path, 0, 10).expect("history");
+        assert_eq!(commits.len(), 1);
+        assert_eq!(commits[0].id, oid);
+        assert_eq!(commits[0].message, "test commit message");
+        assert_eq!(commits[0].author, "Yerminal Test");
+        assert!(commits[0].parents.is_empty());
+
+        assert!(dir.path().join(".git").exists());
+    }
+
+    #[test]
+    fn commit_staged_rejects_empty_messages_and_missing_staged_changes() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "untracked.txt", "not staged\n");
+
+        let empty_error = commit_staged(&path, "").unwrap_err();
+        assert!(empty_error.contains("commit message"), "{empty_error}");
+
+        let blank_error = commit_staged(&path, "   ").unwrap_err();
+        assert!(blank_error.contains("commit message"), "{blank_error}");
+
+        let no_change_error = commit_staged(&path, "nothing staged").unwrap_err();
+        assert!(
+            no_change_error.contains("There are no staged changes to commit"),
+            "{no_change_error}"
+        );
+
+        let _ = dir;
+    }
+
+    #[test]
+    fn diff_unstaged_shows_added_and_removed_lines() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "code.txt", "one\ntwo\nthree\n");
+        stage_and_commit(&path, "code.txt", "base commit");
+
+        add_file(dir.path(), "code.txt", "one\nTWO\nthree\nplus\n");
+        let patch = diff(&path, "code.txt", false).expect("unstaged diff");
+
+        assert!(
+            patch.contains("diff --git a/code.txt b/code.txt"),
+            "{patch}"
+        );
+        assert!(patch.contains("@@"), "{patch}");
+        assert!(patch.contains("TWO"), "new line missing:\n{patch}");
+        assert!(patch.contains("two"), "old line missing:\n{patch}");
+        assert!(patch.contains("plus"), "added line missing:\n{patch}");
+        let _ = dir;
+    }
+
+    #[test]
+    fn diff_staged_shows_the_same_patch_shape() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "code.txt", "one\ntwo\nthree\n");
+        stage_and_commit(&path, "code.txt", "base commit");
+
+        add_file(dir.path(), "code.txt", "one\nTWO\nthree\nplus\n");
+        stage_file(&path, "code.txt").expect("stage modification");
+        let patch = diff(&path, "code.txt", true).expect("staged diff");
+
+        assert!(
+            patch.contains("diff --git a/code.txt b/code.txt"),
+            "{patch}"
+        );
+        assert!(patch.contains("@@"), "{patch}");
+        assert!(patch.contains("TWO"), "new line missing:\n{patch}");
+        assert!(patch.contains("two"), "old line missing:\n{patch}");
+        assert!(patch.contains("plus"), "added line missing:\n{patch}");
+        let _ = dir;
+    }
+
+    #[test]
+    fn diff_rejects_invalid_file_paths() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "code.txt", "one\ntwo\n");
+        stage_and_commit(&path, "code.txt", "base commit");
+
+        for invalid in ["", "code/../code.txt", absolute_fixture_path()] {
+            for staged in [false, true] {
+                let error = diff(&path, invalid, staged).unwrap_err();
+                assert!(
+                    error.contains("Invalid repository-relative file path"),
+                    "staged={staged} {invalid}: {error}"
+                );
+            }
+        }
+
+        let _ = dir;
+    }
+
+    #[test]
+    fn history_paginates_clamps_and_labels_branches() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "a.txt", "a\n");
+        let first = stage_and_commit(&path, "a.txt", "first commit");
+        add_file(dir.path(), "b.txt", "b\n");
+        let second = stage_and_commit(&path, "b.txt", "second commit");
+        add_file(dir.path(), "c.txt", "c\n");
+        let _third = stage_and_commit(&path, "c.txt", "third commit");
+
+        let commits = history(&path, 0, 2).expect("history page");
+        assert_eq!(commits.len(), 2);
+        assert_eq!(commits[0].message, "third commit");
+        assert_eq!(commits[1].message, "second commit");
+        assert_eq!(commits[1].id, second);
+        assert_eq!(commits[1].parents, vec![first.clone()]);
+        assert_eq!(commits[1].short_id, second[..8]);
+        assert_eq!(commits[0].parents, vec![second.clone()]);
+
+        let branch = repository_info(&path).expect("repository info").branch;
+        assert_eq!(commits[0].branches, vec![branch]);
+        assert!(commits[1].branches.is_empty());
+
+        let skipped = history(&path, 2, 10).expect("skipped history");
+        assert_eq!(skipped.len(), 1);
+        assert_eq!(skipped[0].message, "first commit");
+        assert!(skipped[0].parents.is_empty());
+
+        assert_eq!(history(&path, 0, 0).expect("clamped low").len(), 1);
+        assert_eq!(history(&path, 0, 1000).expect("clamped high").len(), 3);
+
+        let _ = dir;
+    }
+
+    #[test]
+    fn history_requires_commits() {
+        let (_dir, path) = init_repo();
+        let error = history(&path, 0, 10).unwrap_err();
+        assert!(error.contains("HEAD"), "{error}");
+    }
+
+    #[test]
+    fn commit_files_maps_kinds_and_sorts_paths() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "beta.txt", "old\n");
+        add_file(dir.path(), "gamma.txt", "same\n");
+        stage_and_commit(&path, "beta.txt", "add beta");
+        stage_and_commit(&path, "gamma.txt", "add gamma");
+
+        add_file(dir.path(), "alpha.txt", "new\n");
+        fs::remove_file(dir.path().join("beta.txt")).expect("delete fixture file");
+        add_file(dir.path(), "gamma.txt", "changed\n");
+        stage_file(&path, "alpha.txt").expect("stage addition");
+        stage_file(&path, "beta.txt").expect("stage deletion");
+        stage_file(&path, "gamma.txt").expect("stage modification");
+        let commit_id = commit_staged(&path, "mixed changes").expect("commit");
+
+        let files = commit_files(&path, &commit_id).expect("commit files");
+        let pairs: Vec<(String, String)> = files
+            .iter()
+            .map(|file| (file.path.clone(), file.kind.clone()))
+            .collect();
+        assert_eq!(
+            pairs,
+            vec![
+                ("alpha.txt".to_owned(), "added".to_owned()),
+                ("beta.txt".to_owned(), "deleted".to_owned()),
+                ("gamma.txt".to_owned(), "modified".to_owned()),
+            ]
+        );
+
+        let _ = dir;
+    }
+
+    #[test]
+    fn commit_files_rejects_invalid_commit_ids() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "a.txt", "a\n");
+        stage_and_commit(&path, "a.txt", "initial");
+
+        let malformed = commit_files(&path, "not-a-hash").unwrap_err();
+        assert!(malformed.contains("Invalid commit ID"), "{malformed}");
+
+        let unknown = commit_files(&path, &"0".repeat(40)).unwrap_err();
+        assert!(unknown.contains("Could not read commit"), "{unknown}");
+
+        let _ = dir;
+    }
+
+    #[test]
+    fn commit_file_diff_returns_a_patch_for_the_changed_file() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "code.txt", "one\ntwo\n");
+        stage_and_commit(&path, "code.txt", "base commit");
+
+        add_file(dir.path(), "code.txt", "one\nTWO\n");
+        stage_file(&path, "code.txt").expect("stage modification");
+        let commit_id = commit_staged(&path, "edit code").expect("commit");
+
+        let patch = commit_file_diff(&path, &commit_id, "code.txt").expect("commit file diff");
+
+        assert!(
+            patch.contains("diff --git a/code.txt b/code.txt"),
+            "{patch}"
+        );
+        assert!(patch.contains("@@"), "{patch}");
+        assert!(patch.contains("TWO"), "new line missing:\n{patch}");
+        assert!(patch.contains("two"), "old line missing:\n{patch}");
+
+        let _ = dir;
+    }
+
+    #[test]
+    fn commit_file_diff_rejects_invalid_paths_and_commits() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "code.txt", "one\ntwo\n");
+        stage_and_commit(&path, "code.txt", "base commit");
+
+        for invalid in ["", "x/../code.txt", absolute_fixture_path()] {
+            let error = commit_file_diff(&path, "aaaaaaaa", invalid).unwrap_err();
+            assert!(
+                error.contains("Invalid repository-relative file path"),
+                "{invalid}: {error}"
+            );
+        }
+
+        let malformed = commit_file_diff(&path, "zzz", "code.txt").unwrap_err();
+        assert!(malformed.contains("Invalid commit ID"), "{malformed}");
+
+        let _ = dir;
+    }
+
+    #[test]
+    fn commit_file_content_reads_files_added_in_the_commit() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "hello.txt", "hello world\n");
+
+        let commit_id = stage_and_commit(&path, "hello.txt", "add hello");
+        let content = commit_file_content(&path, &commit_id, "hello.txt").expect("commit content");
+
+        assert_eq!(content.content, "hello world\n");
+        let short_id = &commit_id[..8];
+        assert_eq!(content.source_label, format!("Commit {short_id} snapshot"));
+
+        let _ = dir;
+    }
+
+    #[test]
+    fn commit_file_content_falls_back_to_parent_for_deleted_files() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "gone.txt", "kept from parent\n");
+        stage_and_commit(&path, "gone.txt", "add gone");
+
+        fs::remove_file(dir.path().join("gone.txt")).expect("delete fixture file");
+        stage_file(&path, "gone.txt").expect("stage deletion");
+        let commit_id = commit_staged(&path, "delete gone").expect("commit");
+
+        let content = commit_file_content(&path, &commit_id, "gone.txt").expect("parent content");
+        assert_eq!(content.content, "kept from parent\n");
+        assert!(
+            content.source_label.contains("deleted in commit"),
+            "{content:?}"
+        );
+
+        let missing = commit_file_content(&path, &commit_id, "never.txt").unwrap_err();
+        assert!(
+            missing.contains("does not exist in this commit or its parent"),
+            "{missing}"
+        );
+
+        let _ = dir;
+    }
+
+    #[test]
+    fn commit_file_content_rejects_binary_non_utf8_and_large_blobs() {
+        let (dir, path) = init_repo();
+        add_bytes(dir.path(), "binary.txt", b"text\0more");
+        add_bytes(dir.path(), "not_utf8.txt", &[b'x', 0xC3, 0x28, b'y']);
+        add_bytes(
+            dir.path(),
+            "big.txt",
+            "a".repeat(crate::workspace_fs::MAX_PREVIEW_BYTES as usize + 1)
+                .as_bytes(),
+        );
+        stage_file(&path, "binary.txt").expect("stage binary");
+        stage_file(&path, "not_utf8.txt").expect("stage non-utf8");
+        stage_file(&path, "big.txt").expect("stage big");
+        let commit_id = commit_staged(&path, "add asset files").expect("commit");
+
+        let binary = commit_file_content(&path, &commit_id, "binary.txt").unwrap_err();
+        assert!(binary.contains("Binary file preview"), "{binary}");
+
+        let non_utf8 = commit_file_content(&path, &commit_id, "not_utf8.txt").unwrap_err();
+        assert!(non_utf8.contains("not valid UTF-8"), "{non_utf8}");
+
+        let large = commit_file_content(&path, &commit_id, "big.txt").unwrap_err();
+        assert!(large.contains("too large to preview"), "{large}");
+
+        let _ = dir;
+    }
+
+    #[test]
+    fn commit_file_content_rejects_invalid_paths() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "code.txt", "one\ntwo\n");
+        stage_and_commit(&path, "code.txt", "base commit");
+
+        for invalid in ["", "a/../code.txt", absolute_fixture_path()] {
+            let error = commit_file_content(&path, "aaaaaaaa", invalid).unwrap_err();
+            assert!(
+                error.contains("Invalid repository-relative file path"),
+                "{invalid}: {error}"
+            );
+        }
+
+        let _ = dir;
+    }
 }

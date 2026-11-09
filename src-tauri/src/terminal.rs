@@ -58,7 +58,7 @@ pub struct AgentProfileInfo {
     pub name: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalOutput {
     pub session_id: String,
@@ -66,7 +66,7 @@ pub struct TerminalOutput {
     pub data: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalOutputSnapshot {
     pub through_sequence: u64,
@@ -117,6 +117,7 @@ struct TerminalSession {
     output_history: Arc<Mutex<TerminalOutputHistory>>,
 }
 
+#[derive(Debug)]
 pub(crate) struct TerminalProcessRoot {
     session_id: String,
     process_id: Option<u32>,
@@ -677,4 +678,215 @@ fn spawn_output_reader(
         })
         .map(|_| ())
         .map_err(|error| format!("Could not start terminal output worker: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn output_history_assigns_increasing_sequences() {
+        let mut history = TerminalOutputHistory::default();
+
+        let first = history.append("session-a".to_owned(), "first\n".to_owned());
+        let second = history.append("session-a".to_owned(), "second\r\n".to_owned());
+        let third = history.append("session-a".to_owned(), "third".to_owned());
+
+        assert_eq!(first.sequence, 1);
+        assert_eq!(second.sequence, 2);
+        assert_eq!(third.sequence, 3);
+
+        let snapshot = history.snapshot();
+        assert_eq!(snapshot.through_sequence, 3);
+        assert_eq!(snapshot.events.len(), 3);
+        assert_eq!(snapshot.events[0].session_id, "session-a");
+        assert_eq!(snapshot.events[0].data, "first\n");
+        assert_eq!(snapshot.events[2].data, "third");
+    }
+
+    #[test]
+    fn output_history_evicts_old_events_within_retention_limit() {
+        let mut history = TerminalOutputHistory::default();
+
+        for index in 0..300 {
+            let data = format!("event-{index:04}-{}", "x".repeat(2000));
+            history.append("session-a".to_owned(), data);
+        }
+
+        let snapshot = history.snapshot();
+        assert_eq!(snapshot.through_sequence, 300);
+        assert!(
+            snapshot.events.len() < 300,
+            "history should evict older events"
+        );
+
+        let retained_bytes: usize = snapshot.events.iter().map(|event| event.data.len()).sum();
+        assert!(
+            retained_bytes <= 256 * 1024,
+            "retained {retained_bytes} bytes exceeds 256 KiB"
+        );
+
+        let newest = snapshot.events.last().expect("history keeps recent events");
+        assert_eq!(newest.sequence, 300);
+        assert!(newest.data.starts_with("event-0299-"));
+        assert!(newest.data.ends_with("xxxxxxxxxx"));
+    }
+
+    #[test]
+    fn unknown_session_operations_report_missing_sessions() {
+        let mut manager = SessionManager::default();
+
+        let snapshot_error = manager.output_snapshot("ghost").unwrap_err();
+        assert!(
+            snapshot_error.contains("Terminal session was not found"),
+            "{snapshot_error}"
+        );
+
+        let write_error = manager.write("ghost", "hello").unwrap_err();
+        assert!(
+            write_error.contains("Terminal session was not found"),
+            "{write_error}"
+        );
+
+        let resize_error = manager.resize("ghost", 80, 24).unwrap_err();
+        assert!(
+            resize_error.contains("Terminal session was not found"),
+            "{resize_error}"
+        );
+
+        let close_error = manager.close("ghost").unwrap_err();
+        assert!(
+            close_error.contains("Terminal session was not found"),
+            "{close_error}"
+        );
+    }
+
+    #[test]
+    fn process_roots_report_unknown_sessions_and_limit_batch_size() {
+        let manager = SessionManager::default();
+
+        let ids: Vec<String> = (0..2).map(|index| format!("unknown-{index}")).collect();
+        let roots = manager.process_roots(&ids).expect("process roots");
+        assert_eq!(roots.len(), ids.len());
+
+        let too_many: Vec<String> = (0..129).map(|index| format!("unknown-{index}")).collect();
+        let error = manager.process_roots(&too_many).unwrap_err();
+        assert!(error.contains("Too many terminal sessions"), "{error}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn normalize_windows_working_directory_strips_extended_prefixes() {
+        assert_eq!(
+            normalize_windows_working_directory(PathBuf::from(r"\\?\UNC\server\share\dir")),
+            PathBuf::from(r"\\server\share\dir")
+        );
+        assert_eq!(
+            normalize_windows_working_directory(PathBuf::from(r"\\?\C:\Proj")),
+            PathBuf::from(r"C:\Proj")
+        );
+        assert_eq!(
+            normalize_windows_working_directory(PathBuf::from(r"C:\Proj\Sub")),
+            PathBuf::from(r"C:\Proj\Sub")
+        );
+    }
+
+    #[test]
+    fn resolve_working_directory_rejects_missing_folders() {
+        let error =
+            resolve_working_directory(Some("definitely-not-a-real-folder-yerminal".to_owned()))
+                .unwrap_err();
+        assert!(
+            error.contains("Working directory does not exist"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn resolve_working_directory_canonicalizes_existing_folders() {
+        let dir = tempfile::tempdir().expect("create temp directory");
+
+        let resolved = resolve_working_directory(Some(dir.path().to_string_lossy().into_owned()))
+            .expect("resolve working directory");
+
+        assert!(resolved.is_dir());
+        #[cfg(windows)]
+        assert!(
+            !resolved.to_string_lossy().contains(r"\\?\"),
+            "canonical path should drop the extended prefix: {}",
+            resolved.to_string_lossy()
+        );
+    }
+
+    #[test]
+    fn resolve_working_directory_defaults_to_current_directory() {
+        let resolved = resolve_working_directory(None).expect("resolve default directory");
+        assert!(resolved.is_dir());
+    }
+
+    #[test]
+    fn resolve_program_rejects_unknown_programs_on_path() {
+        let error = resolve_program("definitely-not-a-real-program-xyz").unwrap_err();
+        assert!(error.contains("was not found on PATH"), "{error}");
+    }
+
+    #[test]
+    fn resolve_program_finds_path_executables() {
+        #[cfg(windows)]
+        let program = "cmd";
+        #[cfg(not(windows))]
+        let program = "sh";
+
+        let resolved = resolve_program(program).expect("resolve program");
+        assert!(
+            std::path::Path::new(&resolved).is_file(),
+            "resolved program must exist: {resolved}"
+        );
+    }
+
+    #[test]
+    fn resolve_program_rejects_missing_local_paths() {
+        let separator = std::path::MAIN_SEPARATOR;
+        let missing = format!(".{separator}definitely-not-here{separator}tool.exe");
+
+        let error = resolve_program(&missing).unwrap_err();
+        assert!(
+            error.contains("Configured executable was not found"),
+            "{error}"
+        );
+        assert!(
+            !error.contains("on PATH"),
+            "local path failures should not mention PATH: {error}"
+        );
+    }
+
+    #[test]
+    fn shell_kind_labels_use_friendly_names() {
+        assert_eq!(ShellKind::Powershell.label(), "PowerShell");
+        assert_eq!(ShellKind::Bash.label(), "Bash");
+        assert_eq!(ShellKind::Zsh.label(), "Zsh");
+    }
+
+    #[test]
+    fn bundled_agent_config_parses_with_valid_profiles() {
+        let content = include_str!("../agents.toml");
+        let config = toml::from_str::<AgentConfig>(content)
+            .expect("bundled agents.toml should parse as AgentConfig");
+
+        assert!(!config.agents.is_empty(), "bundled agents list is empty");
+        assert!(config.agents.len() <= 20, "profiles exceed supported limit");
+        for profile in &config.agents {
+            assert!(!profile.id.is_empty(), "profile id is empty");
+            assert!(!profile.command.is_empty(), "profile command is empty");
+            assert!(profile.args.len() <= 32, "profile has too many args");
+            assert!(profile.id.len() <= 64, "profile id is too long");
+        }
+    }
+
+    // Note: a portable-pty ConPTY smoke test (spawn `cmd /C echo`, read through
+    // the master) was attempted here and removed. In this headless environment,
+    // ConPTY children (cmd /C echo) never exit and the master pipe produces no
+    // output and never EOFs, so the smoke test could only time out. Session
+    // lifecycle paths that need a Tauri AppHandle are out of scope anyway; real
+    // PTY behavior is covered by the app's manual testing.
 }
