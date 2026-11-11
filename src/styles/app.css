@@ -261,8 +261,6 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .change-kind { width: 15px; flex: 0 0 15px; text-align: center; color: #d3ae70; font-weight: 700; }.change-kind.added, .change-kind.untracked { color: #7dc99a; }.change-kind.deleted { color: #dc7b82; }.change-kind.renamed { color: #93b0e6; }
 .change-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }.change-badge { padding: 2px 4px; border-radius: 3px; background: #282943; color: #aaa9dd; font: 9px Inter, sans-serif; }.change-badge.unstaged { background: #3b2f25; color: #d2ac79; }
 .git-commit-box { display: grid; flex: 0 0 auto; gap: 7px; padding: 10px 12px; border-bottom: 1px solid #292a31; background: #17181d; }
-.git-commit-box-heading { display: flex; align-items: center; justify-content: space-between; color: #d0d0d8; font-size: 10px; font-weight: 600; }
-.git-staged-count { min-width: 18px; padding: 2px 5px; border-radius: 8px; background: #2a2939; color: #c2b8f7; font-size: 9px; text-align: center; }
 .git-commit-box textarea { width: 100%; min-height: 42px; max-height: 90px; resize: vertical; padding: 7px 8px; border: 1px solid #34353d; border-radius: 5px; outline: none; background: #101115; color: #d8d8e0; font: 10px/1.45 Inter, "Segoe UI", sans-serif; }
 .git-commit-box textarea::placeholder { color: #737580; }
 .git-commit-box textarea:focus { border-color: #7567a7; box-shadow: 0 0 0 2px #7868a51f; }
@@ -275,7 +273,6 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .change-group { flex: 0 0 auto; }
 .change-group-heading { height: 27px; display: flex; align-items: center; gap: 7px; padding: 0 12px; color: #9d9faa; font-size: 9px; font-weight: 650; text-transform: uppercase; letter-spacing: .045em; }
 .change-group-heading span:last-child { min-width: 15px; padding: 1px 4px; border-radius: 7px; background: #282930; color: #aeb0ba; text-align: center; font-size: 8px; }
-.change-group-empty { padding: 4px 13px 9px 20px; color: #62646e; font-size: 9px; }
 .change-row { min-height: 31px; gap: 0; padding: 2px 7px 2px 0; }
 .change-main-row { min-width: 0; min-height: 27px; flex: 1; display: flex; align-items: center; gap: 8px; overflow: hidden; padding: 3px 0 3px 13px; border: 0; background: transparent; color: #c4c5cb; text-align: left; font: 10px "Cascadia Code", Consolas, monospace; }
 .change-main-row:hover { color: #f0eef8; }

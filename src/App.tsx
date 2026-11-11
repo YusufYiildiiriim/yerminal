@@ -1506,30 +1506,29 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onError }: { repoInfo: R
 
   return <section className={`git-repository-section${expanded ? " is-expanded" : ""}`}>
     <header className="git-repository-heading">
-      <button className="git-repository-toggle" aria-expanded={expanded} onClick={toggleExpanded} type="button">
+      <button className="git-repository-toggle" aria-expanded={expanded} onClick={toggleExpanded} type="button" title={repoInfo.root}>
         <span className="git-repository-chevron" aria-hidden="true">{expanded ? "⌄" : "›"}</span>
-        <span className="git-repository-name"><strong>{repoName}</strong><small title={repoInfo.root}>{repoInfo.root}</small></span>
+        <span className="git-repository-name"><strong>{repoName}</strong></span>
         <span className="git-repository-branch" title="Current branch">{repoInfo.branch || "Detached HEAD"}</span>
-        <span className="git-repository-counts"><span>{stagedChanges.length} staged</span><span>{unstagedChanges.length} changes</span></span>
+        <span className="git-repository-counts">{stagedChanges.length} staged · {unstagedChanges.length} changes</span>
       </button>
       <button className="icon-button refresh-button git-repository-refresh" aria-label={`Refresh ${repoName} changes`} title="Refresh repository" onClick={() => void refresh()} type="button">↻</button>
     </header>
     <div className="git-repository-body" hidden={!expanded}>
-      <section className="git-commit-box" aria-label="Commit staged changes">
-        <div className="git-commit-box-heading"><span>Commit staged changes</span><span className="git-staged-count">{stagedChanges.length}</span></div>
+      {changes.length > 0 && <section className="git-commit-box" aria-label="Commit staged changes">
         <textarea aria-label="Commit message" placeholder="Message (required)" rows={2} maxLength={65536} value={commitMessage} onChange={(event) => setCommitMessage(event.currentTarget.value)} />
         <button className="git-commit-button" onClick={() => void commitStaged()} disabled={isCommitting || Boolean(fileAction) || stagedChanges.length === 0 || !commitMessage.trim()} type="button"><span aria-hidden="true">✓</span><span>{isCommitting ? "Committing…" : "Commit staged"}</span><small>{stagedChanges.length}</small></button>
-      </section>
+      </section>}
       <div className="change-list" aria-label="Repository changes">
         {changes.length === 0 ? <div className="change-empty">Working tree clean</div> : <>
-          <section className="change-group" aria-label="Staged changes">
+          {stagedChanges.length > 0 && <section className="change-group" aria-label="Staged changes">
             <header className="change-group-heading"><span>Staged Changes</span><span>{stagedChanges.length}</span></header>
-            {stagedChanges.length === 0 ? <div className="change-group-empty">No staged changes</div> : stagedChanges.map((change) => renderChangeRow(change, true))}
-          </section>
-          <section className="change-group" aria-label="Changes">
+            {stagedChanges.map((change) => renderChangeRow(change, true))}
+          </section>}
+          {unstagedChanges.length > 0 && <section className="change-group" aria-label="Changes">
             <header className="change-group-heading"><span>Changes</span><span>{unstagedChanges.length}</span></header>
-            {unstagedChanges.length === 0 ? <div className="change-group-empty">No unstaged changes</div> : unstagedChanges.map((change) => renderChangeRow(change, false))}
-          </section>
+            {unstagedChanges.map((change) => renderChangeRow(change, false))}
+          </section>}
         </>}
       </div>
       {selected && createPortal(

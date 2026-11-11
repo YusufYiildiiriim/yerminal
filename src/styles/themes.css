@@ -123,7 +123,7 @@
   background: color-mix(in srgb, var(--theme-accent) 7%, var(--theme-surface));
   color: var(--theme-text);
 }
-.app-shell[data-theme] :is(.tool-header h1, .workspace-explorer-header h1, .git-commit-box-heading) {
+.app-shell[data-theme] :is(.tool-header h1, .workspace-explorer-header h1) {
   color: var(--theme-text);
   letter-spacing: -.015em;
 }
