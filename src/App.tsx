@@ -1036,7 +1036,7 @@ function App() {
     const additions = selection === null ? [] : typeof selection === "string" ? [selection] : selection;
     if (additions.length === 0) return;
     dismissToast();
-    await activateWorkspaceFolder(additions[additions.length - 1], additions);
+    await activateWorkspaceFolder(additions[additions.length - 1], additions, { changeTerminalDirectory: false });
   }, [activeTerminalWorkspace, activateWorkspaceFolder, dismissToast, repoPath, showToast]);
 
   const removeWorkspaceFolder = useCallback((path: string) => {
