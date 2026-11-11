@@ -50,7 +50,7 @@ type WorkspaceEntry = { name: string; path: string; isDir: boolean; size: number
 const WORKSPACE_FILE_PREVIEW_LIMIT = 1024 * 1024;
 type EditorWorkspaceState = { tabs: EditorFileTab[]; groups: EditorGroupState[]; activeGroupId: string };
 type EditorSnapshot = { shortId: string; message: string; changeKind: string; author: string; timestamp: number };
-type EditorFileRequest = { id: string; root: string; path: string; name: string; size?: number; sourceCommitId?: string; sourceLabel?: string; snapshot?: EditorSnapshot };
+type EditorFileRequest = { id: string; root: string; path: string; name: string; size?: number; sourceCommitId?: string; sourceLabel?: string; snapshot?: EditorSnapshot; view?: "text" | "diff"; diffStaged?: boolean };
 const COMMIT_PAGE_SIZE = 50;
 type PersistedWorkspace = { folders: string[]; activePath: string };
 type TerminalWorkspace = { id: string; name: string; rootPath: string; folderPaths: string[]; terminalIds: string[]; activeTerminalId: string | null; layout: LayoutNode | null };
@@ -395,7 +395,9 @@ function App() {
     setActiveMainView("code");
     const workspace = editorWorkspaces[workspaceId] ?? createEmptyEditorWorkspaceState();
     const existing = workspace.tabs.find((tab) => tab.id === tabId);
-    const shouldLoad = !existing || existing.status === "error";
+    const isDiffRequest = request.view === "diff";
+    // Diff tabs reload on every open so the patch never goes stale.
+    const shouldLoad = !existing || existing.status === "error" || (isDiffRequest && existing.view === "diff");
     const operationId = shouldLoad ? ++nextEditorOperationIdRef.current : null;
     if (operationId !== null) editorOperationIdsRef.current.set(operationKey, operationId);
     setEditorWorkspaces((current) => {
@@ -412,8 +414,8 @@ function App() {
         };
       });
       const tabs = currentTab
-        ? currentWorkspace.tabs.map((tab) => tab.id === tabId && tab.status === "error" ? { ...tab, status: "loading" as const, error: null } : tab)
-        : [...currentWorkspace.tabs, { id: tabId, root: request.root, path: request.path, name: request.name, status: "loading" as const, content: null, savedContent: null, error: null, sourceLabel: request.sourceLabel ?? null, sourceCommitId: request.sourceCommitId ?? null, snapshot: request.snapshot ?? null, isSaving: false, saveError: null }];
+        ? currentWorkspace.tabs.map((tab) => tab.id === tabId && (tab.status === "error" || (isDiffRequest && tab.view === "diff")) ? { ...tab, status: "loading" as const, error: null } : tab)
+        : [...currentWorkspace.tabs, { id: tabId, root: request.root, path: request.path, name: request.name, status: "loading" as const, content: null, savedContent: null, error: null, sourceLabel: request.sourceLabel ?? null, sourceCommitId: request.sourceCommitId ?? null, snapshot: request.snapshot ?? null, view: request.view, diffStaged: request.diffStaged ?? null, isSaving: false, saveError: null }];
       return { ...current, [workspaceId]: { ...currentWorkspace, tabs, groups, activeGroupId: targetGroupId } };
     });
     if (!shouldLoad || operationId === null) return;
@@ -434,6 +436,21 @@ function App() {
     }
     if (!isTauri()) {
       updateTab((tab) => ({ ...tab, status: "error", error: "File preview is available in the desktop app." }));
+      return;
+    }
+
+    if (request.view === "diff") {
+      try {
+        const diff = await invoke<string>("git_diff", { path: request.root, filePath: request.path, staged: request.diffStaged });
+        if (!isCurrentOperation()) return;
+        if (diff.length > WORKSPACE_FILE_PREVIEW_LIMIT) {
+          updateTab((tab) => ({ ...tab, status: "error", error: "This diff exceeds the 1 MiB preview limit." }));
+          return;
+        }
+        updateTab((tab) => ({ ...tab, status: "ready", content: diff, savedContent: diff, sourceLabel: request.diffStaged ? "Index snapshot" : "Working tree snapshot", sourceCommitId: null, snapshot: null, saveError: null }));
+      } catch (reason) {
+        updateTab((tab) => ({ ...tab, status: "error", error: String(reason) }));
+      }
       return;
     }
 
@@ -469,7 +486,7 @@ function App() {
         ...current,
         [workspaceId]: {
           ...workspace,
-          tabs: workspace.tabs.map((tab) => tab.id === tabId && !tab.sourceCommitId
+          tabs: workspace.tabs.map((tab) => tab.id === tabId && !tab.sourceCommitId && tab.view !== "diff"
             ? { ...tab, content, saveError: null }
             : tab),
         },
@@ -481,7 +498,7 @@ function App() {
     const workspaceId = targetWorkspaceId ?? activeTerminalWorkspace?.id;
     if (!workspaceId || !isTauri()) return;
     const tab = editorWorkspaces[workspaceId]?.tabs.find((candidate) => candidate.id === tabId);
-    if (!tab || tab.status !== "ready" || tab.sourceCommitId || tab.content === null || tab.savedContent === null) return;
+    if (!tab || tab.status !== "ready" || tab.sourceCommitId || tab.view === "diff" || tab.content === null || tab.savedContent === null) return;
     if (normalizeEditorNewlines(tab.content) === normalizeEditorNewlines(tab.savedContent)) return;
 
     const operationKey = editorOperationKey(workspaceId, tabId);
@@ -557,7 +574,7 @@ function App() {
     const dirtyFiles = new Map<string, { workspaceId: string; tabId: string; path: string; content: string; isSaving: boolean }>();
     for (const [workspaceId, workspace] of Object.entries(editorWorkspaces)) {
       for (const tab of workspace.tabs) {
-        if (tab.status !== "ready" || tab.sourceCommitId || tab.content === null || tab.savedContent === null) continue;
+        if (tab.status !== "ready" || tab.sourceCommitId || tab.view === "diff" || tab.content === null || tab.savedContent === null) continue;
         if (normalizeEditorNewlines(tab.content) === normalizeEditorNewlines(tab.savedContent)) continue;
         dirtyFiles.set(editorOperationKey(workspaceId, tab.id), { workspaceId, tabId: tab.id, path: tab.path, content: tab.content, isSaving: tab.isSaving });
       }
@@ -1148,7 +1165,7 @@ function App() {
             </nav>
             <div className="workspace-sidebar-content">
             <section className="tool-content" aria-label={tools.find((tool) => tool.id === activeTool)?.label}>
-              {activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} /> : <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } })} />}
+              {activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenDiff={(change, staged) => void openEditorFile({ id: `gitdiff:${repoPath}:${staged ? "index" : "worktree"}:${change.path}`, root: repoPath, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onError={showToast} /> : <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } })} />}
             </section>
             </div>
           </div>
@@ -1377,7 +1394,7 @@ function formatFileSize(size: number): string {
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
-function GitChanges({ repoPaths, onOpenRepository, onError }: { repoPaths: string[]; onOpenRepository: () => void; onError: (message: string) => void }) {
+function GitChanges({ repoPaths, onOpenRepository, onOpenDiff, onError }: { repoPaths: string[]; onOpenRepository: () => void; onOpenDiff: (change: FileChange, staged: boolean) => void; onError: (message: string) => void }) {
   const [repositories, setRepositories] = useState<RepositoryInfo[]>([]);
   const [refreshNonce, setRefreshNonce] = useState(0);
 
@@ -1402,26 +1419,20 @@ function GitChanges({ repoPaths, onOpenRepository, onError }: { repoPaths: strin
   return <div className="tool-view git-changes-view">
     <header className="tool-header"><div><h1>Git Changes</h1><p>{repositories.length > 0 ? `${repositories.length} ${repositories.length === 1 ? "repository" : "repositories"}` : repoPaths.length ? "Searching opened folders for Git repositories" : "Review your working trees"}</p></div><button className="icon-button refresh-button" aria-label="Refresh repositories and changes" onClick={() => setRefreshNonce((value) => value + 1)} type="button">↻</button></header>
     {repositories.length === 0 ? <div className="empty-repository"><div className="empty-icon">⌂</div><h2>{repoPaths.length ? "No Git repository found" : "No repository opened"}</h2><p>{repoPaths.length ? "Add a folder that belongs to a Git repository to view its changes." : "Open a folder to view its changes."}</p><button className="primary-button" onClick={onOpenRepository} type="button">Open Folder</button></div> : <div className="git-repository-list" aria-label="Git repositories">
-      {repositories.map((repoInfo) => <GitRepositoryChanges key={repoInfo.root.replaceAll("\\", "/").replace(/\/+$/, "").toLocaleLowerCase()} repoInfo={repoInfo} refreshNonce={refreshNonce} onError={onError} />)}
+      {repositories.map((repoInfo) => <GitRepositoryChanges key={repoInfo.root.replaceAll("\\", "/").replace(/\/+$/, "").toLocaleLowerCase()} repoInfo={repoInfo} refreshNonce={refreshNonce} onOpenDiff={onOpenDiff} onError={onError} />)}
     </div>}
     <div className="panel-footnote"><span className="read-only-mark">◇</span> Stage, unstage, discard, and commit changes</div>
   </div>;
 }
 
-function GitRepositoryChanges({ repoInfo, refreshNonce, onError }: { repoInfo: RepositoryInfo; refreshNonce: number; onError: (message: string) => void }) {
+function GitRepositoryChanges({ repoInfo, refreshNonce, onOpenDiff, onError }: { repoInfo: RepositoryInfo; refreshNonce: number; onOpenDiff: (change: FileChange, staged: boolean) => void; onError: (message: string) => void }) {
   const repoPath = repoInfo.root;
   const [changes, setChanges] = useState<FileChange[]>([]);
-  const [selected, setSelected] = useState<FileChange | null>(null);
-  const [selectedStaged, setSelectedStaged] = useState(false);
-  const [diff, setDiff] = useState("");
-  const [diffLoading, setDiffLoading] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
   const [fileAction, setFileAction] = useState<{ path: string; action: string } | null>(null);
   const [discardTarget, setDiscardTarget] = useState<string | null>(null);
   const [isCommitting, setIsCommitting] = useState(false);
   const [expanded, setExpanded] = useState(true);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const lastFocusedRowRef = useRef<HTMLButtonElement>(null);
   const stagedChanges = changes.filter((change) => change.staged);
   const unstagedChanges = changes.filter((change) => change.unstaged);
 
@@ -1461,33 +1472,10 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onError }: { repoInfo: R
   };
 
   useEffect(() => { void refresh(); }, [refresh, refreshNonce]);
-  useEffect(() => { setSelected(null); setSelectedStaged(false); setCommitMessage(""); setDiscardTarget(null); }, [repoPath]);
-  useEffect(() => {
-    if (!selected || !repoInfo || !repoPath || !isTauri()) { setDiff(""); setDiffLoading(false); return; }
-    let active = true;
-    setDiff("");
-    setDiffLoading(true);
-    void invoke<string>("git_diff", { path: repoPath, filePath: selected.path, staged: selectedStaged })
-      .then((result) => { if (active) setDiff(result); })
-      .catch((reason: unknown) => { if (active) onError(String(reason)); })
-      .finally(() => { if (active) setDiffLoading(false); });
-    return () => { active = false; };
-  }, [onError, repoInfo, repoPath, selected, selectedStaged]);
-  useEffect(() => {
-    if (!selected) return;
-    closeButtonRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSelected(null);
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      lastFocusedRowRef.current?.focus();
-    };
-  }, [selected]);
+  useEffect(() => { setCommitMessage(""); setDiscardTarget(null); }, [repoPath]);
 
-  const renderChangeRow = (change: FileChange, staged: boolean) => <div className={`change-row ${selected?.path === change.path && selectedStaged === staged ? "selected" : ""}`} key={`${staged ? "staged" : "unstaged"}:${change.path}`}>
-    <button className="change-main-row" onClick={(event) => { lastFocusedRowRef.current = event.currentTarget; setSelected(change); setSelectedStaged(staged); }} type="button" title={change.path}>
+  const renderChangeRow = (change: FileChange, staged: boolean) => <div className="change-row" key={`${staged ? "staged" : "unstaged"}:${change.path}`}>
+    <button className="change-main-row" onClick={() => onOpenDiff(change, staged)} type="button" title={change.path}>
       <span className={`change-kind ${change.kind}`}>{change.kind === "modified" ? "M" : change.kind === "deleted" ? "D" : change.kind === "untracked" ? "?" : change.kind === "renamed" ? "R" : "A"}</span>
       <span className="change-path">{change.path}</span>
       {staged && <span className="change-badge">S</span>}
@@ -1502,7 +1490,7 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onError }: { repoInfo: R
   </div>;
 
   const repoName = repoInfo.root.split(/[\\/]/).filter(Boolean).pop() ?? repoInfo.root;
-  const toggleExpanded = () => setExpanded((current) => { if (current) setSelected(null); return !current; });
+  const toggleExpanded = () => setExpanded((current) => !current);
 
   return <section className={`git-repository-section${expanded ? " is-expanded" : ""}`}>
     <header className="git-repository-heading">
@@ -1531,40 +1519,6 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onError }: { repoInfo: R
           </section>}
         </>}
       </div>
-      {selected && createPortal(
-        <div className="diff-preview-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelected(null); }}>
-          <section className="diff-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="diff-preview-title" aria-describedby="diff-preview-description" onKeyDown={(event) => {
-            if (event.key !== "Tab") return;
-            const focusable = event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex="0"]');
-            const first = focusable[0];
-            const last = focusable[focusable.length - 1];
-            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-          }}>
-            <header className="diff-preview-header">
-              <div className="diff-preview-file-icon">{selected.kind === "deleted" ? "−" : selected.kind === "untracked" || selected.kind === "added" ? "+" : "±"}</div>
-              <div className="diff-preview-heading">
-                <h2 id="diff-preview-title" title={selected.path}>{selected.path}</h2>
-                <p id="diff-preview-description"><span>{repoInfo?.root}</span><span className="diff-preview-separator">/</span>{selectedStaged ? "Index snapshot" : "Working tree snapshot"}</p>
-              </div>
-              <div className="diff-preview-header-actions">
-                {selected.staged && <span className="diff-preview-badge staged">Staged</span>}
-                {selected.unstaged && <span className="diff-preview-badge unstaged">Unstaged</span>}
-                {selected.staged && selected.unstaged && <div className="diff-sides" aria-label="Diff version">
-                  <button className={selectedStaged ? "active" : ""} onClick={() => setSelectedStaged(true)} type="button">Index</button>
-                  <button className={!selectedStaged ? "active" : ""} onClick={() => setSelectedStaged(false)} type="button">Working Tree</button>
-                </div>}
-                <button ref={closeButtonRef} className="diff-preview-close" onClick={() => setSelected(null)} aria-label="Close diff preview" title="Close preview (Esc)" type="button">×</button>
-              </div>
-            </header>
-            <div className="diff-preview-content">
-              {diffLoading ? <div className="diff-preview-loading">Loading file changes…</div> : <DiffViewer diff={diff} emptyMessage="No diff available for this selection." />}
-            </div>
-            <footer className="diff-preview-footer"><span>{diffLoading ? "Loading diff…" : `${diff ? diff.split(/\r?\n/).length : 0} lines`}</span><span>Press Esc to close</span></footer>
-          </section>
-        </div>,
-        document.body,
-      )}
       {discardTarget && createPortal(
         <div className="git-confirm-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDiscardTarget(null); }}>
           <section className="git-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="discard-title" aria-describedby="discard-description">

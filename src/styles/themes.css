@@ -171,7 +171,7 @@
   border-color: color-mix(in srgb, var(--theme-accent) 50%, var(--theme-border));
   color: var(--theme-accent);
 }
-.app-shell[data-theme] :is(.git-confirm-dialog, .diff-preview-dialog, .commit-preview-dialog, .titlebar-help-popover) {
+.app-shell[data-theme] :is(.git-confirm-dialog, .commit-preview-dialog, .titlebar-help-popover) {
   background: var(--theme-surface);
   border-color: var(--theme-border);
   border-radius: 12px;

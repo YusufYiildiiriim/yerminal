@@ -114,10 +114,10 @@
   outline: 2px solid var(--theme-accent, #b3a3ee);
   outline-offset: -2px;
 }
-:is(.diff-preview-dialog, .commit-preview-dialog) { min-width: 0; }
-:is(.diff-preview-header, .commit-preview-header) { gap: 12px; }
-:is(.diff-preview-heading p, .commit-preview-meta, .commit-preview-description) { font-size: 12px; }
-:is(.diff-preview-content, .commit-preview-diff-content) .diff-code {
+:is(.commit-preview-dialog) { min-width: 0; }
+:is(.commit-preview-header) { gap: 12px; }
+:is(.commit-preview-meta, .commit-preview-description) { font-size: 12px; }
+:is(.commit-preview-diff-content) .diff-code {
   font-size: var(--editor-font-size, 13px);
   font-family: var(--editor-font-family, "Cascadia Code", Consolas, monospace);
 }
@@ -163,16 +163,145 @@
   color: var(--theme-accent, #b3a3ee);
 }
 .app-shell[data-theme] .diff-line.meta { color: var(--theme-muted, #85848e); }
-:is(.diff-preview-close, .commit-preview-close, .commit-open-editor):focus-visible {
+/* Editor-area diff tabs (VS Code-style source control diff). */
+.app-shell[data-theme] .diff-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  background: var(--theme-editor, var(--theme-background, #101114));
+  color: var(--theme-text, #d4d4d8);
+}
+.app-shell[data-theme] .diff-view-strip {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 27px;
+  padding: 3px 12px;
+  border-bottom: 1px solid var(--theme-border, #34343c);
+  background: var(--theme-surface, #19191f);
+  font: 11px/1.4 "Segoe UI", sans-serif;
+}
+.app-shell[data-theme] .diff-view-file {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--theme-text, #efedf4);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell[data-theme] .diff-view-side {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border: 1px solid var(--theme-border, #34343c);
+  border-radius: 4px;
+  color: var(--theme-muted, #aaa8b4);
+  font-size: 10px;
+}
+.app-shell[data-theme] .diff-view-side.staged {
+  border-color: color-mix(in srgb, var(--theme-accent, #b3a3ee) 45%, var(--theme-border, #34343c));
+  color: var(--theme-accent, #b3a3ee);
+}
+.app-shell[data-theme] .diff-view-repo {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--theme-muted, #85848e);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell[data-theme] .diff-view-empty {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  color: var(--theme-muted, #85848e);
+  font-size: 12px;
+}
+.app-shell[data-theme] .diff-view-lines {
+  width: max-content;
+  min-width: 100%;
+}
+.app-shell[data-theme] .diff-view-line {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-height: 22px;
+}
+.app-shell[data-theme] .diff-view-number {
+  flex: 0 0 36px;
+  padding-right: 8px;
+  color: var(--theme-muted, #85848e);
+  font-family: var(--editor-font-family, "Cascadia Code", Consolas, monospace);
+  font-size: var(--editor-font-size, 13px);
+  line-height: 22px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+.app-shell[data-theme] .diff-view-marker {
+  flex: 0 0 20px;
+  color: var(--theme-muted, #85848e);
+  font-family: var(--editor-font-family, "Cascadia Code", Consolas, monospace);
+  font-size: var(--editor-font-size, 13px);
+  line-height: 22px;
+  text-align: center;
+  user-select: none;
+}
+.app-shell[data-theme] .diff-view-content {
+  flex: 1 1 auto;
+  padding-right: 20px;
+  font-family: var(--editor-font-family, "Cascadia Code", Consolas, monospace);
+  font-size: var(--editor-font-size, 13px);
+  line-height: 22px;
+  white-space: pre;
+}
+.app-shell[data-theme] .diff-view-line.added {
+  background: color-mix(in srgb, var(--theme-success, #34d399) 15%, var(--theme-editor, var(--theme-background, #101114)));
+  color: var(--theme-text, #d4d4d8);
+}
+.app-shell[data-theme] .diff-view-line.added .diff-view-number,
+.app-shell[data-theme] .diff-view-line.added .diff-view-marker {
+  color: var(--theme-success, #34d399);
+  font-weight: 600;
+}
+.app-shell[data-theme] .diff-view-line.removed {
+  background: color-mix(in srgb, #f87171 15%, var(--theme-editor, var(--theme-background, #101114)));
+  color: var(--theme-text, #d4d4d8);
+}
+.app-shell[data-theme] .diff-view-line.removed .diff-view-number,
+.app-shell[data-theme] .diff-view-line.removed .diff-view-marker {
+  color: #f87171;
+  font-weight: 600;
+}
+.app-shell[data-theme] .diff-view-line.hunk {
+  background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 12%, var(--theme-surface, #19191f));
+  color: var(--theme-accent, #b3a3ee);
+}
+.app-shell[data-theme] .diff-view-line.hunk .diff-view-content { flex: 1 1 auto; padding-left: 10px; }
+.app-shell[data-theme] .diff-view-line.meta { color: var(--theme-muted, #85848e); }
+.app-shell[data-theme] .diff-view-line.meta .diff-view-content { padding-left: 10px; }
+.app-shell[data-theme] .diff-view {
+  scrollbar-color: #45434f #15161a;
+  scrollbar-width: thin;
+}
+.app-shell[data-theme] .diff-view::-webkit-scrollbar { width: 8px; height: 8px; }
+.app-shell[data-theme] .diff-view::-webkit-scrollbar-track { background: #15161a; }
+.app-shell[data-theme] .diff-view::-webkit-scrollbar-thumb { border: 2px solid #15161a; border-radius: 8px; background: #45434f; }
+.app-shell[data-theme] .diff-view::-webkit-scrollbar-thumb:hover { background: #625c72; }
+:is(.commit-preview-close, .commit-open-editor):focus-visible {
   outline: 2px solid #b3a3ee;
   outline-offset: -2px;
 }
 @media (max-width: 720px) {
-  .diff-preview-backdrop, .commit-preview-backdrop { padding: 8px; }
-  .diff-preview-header, .commit-preview-header { padding: 12px; }
-  .diff-preview-heading p { white-space: normal; overflow-wrap: anywhere; }
-  .diff-preview-header-actions { gap: 3px; }
-  .diff-preview-badge { font-size: 10px; }
+  .commit-preview-backdrop { padding: 8px; }
+  .commit-preview-header { padding: 12px; }
   .commit-preview-body { grid-template-columns: minmax(135px, 38%) minmax(0, 1fr); }
   .commit-preview-footer { overflow: hidden; }
 }

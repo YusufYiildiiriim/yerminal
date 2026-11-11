@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, typ
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { highlightCode } from "./highlighter";
 import { CommitSnapshotBanner } from "./CommitSnapshotBanner";
+import { DiffView } from "../git/DiffView";
 import { useFloatingEditorLayout, type EditorLayoutMode, type EditorResizeDirection } from "./floatingEditorLayout";
 import "./floating-editor-layout.css";
 
@@ -16,6 +17,8 @@ export type EditorFileTab = {
   error: string | null;
   sourceLabel: string | null;
   sourceCommitId: string | null;
+  view?: "text" | "diff";
+  diffStaged?: boolean | null;
   snapshot: { shortId: string; message: string; changeKind: string; author: string; timestamp: number } | null;
   isSaving: boolean;
   saveError: string | null;
@@ -105,7 +108,7 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
   const [highlighting, setHighlighting] = useState(false);
   const editorContentRef = useRef<HTMLDivElement>(null);
   const [editorViewport, setEditorViewport] = useState({ top: 0, size: 1 });
-  const isReadOnly = Boolean(activeTab?.sourceCommitId);
+  const isReadOnly = Boolean(activeTab?.sourceCommitId) || activeTab?.view === "diff";
   const isDirty = Boolean(activeTab && activeTab.content !== null && normalizeNewlines(activeTab.content) !== normalizeNewlines(activeTab.savedContent));
   useEffect(() => {
     const element = editorContentRef.current;
@@ -139,7 +142,7 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
   useEffect(() => {
     let current = true;
     setHighlightedHtml(null);
-    if (!activeTab || activeTab.status !== "ready" || activeTab.content === null || !language?.id || language.id === "plaintext") {
+    if (!activeTab || activeTab.status !== "ready" || activeTab.content === null || activeTab.view === "diff" || !language?.id || language.id === "plaintext") {
       setHighlighting(false);
       return () => { current = false; };
     }
@@ -225,7 +228,7 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
         const element = event.currentTarget;
         setEditorViewport({ top: element.scrollTop / Math.max(1, element.scrollHeight), size: Math.min(1, element.clientHeight / Math.max(1, element.scrollHeight)) });
       }}>
-        {activeTab.status === "loading" ? <div className="code-editor-message" role="status"><span className="editor-loading-indicator" /><span>Loading file content…</span></div> : activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this file</strong><span>{activeTab.error}</span></div> : isReadOnly ? highlightedHtml ? <div className="code-editor-highlighted" dangerouslySetInnerHTML={{ __html: highlightedHtml }} /> : <pre className={"code-editor-plain" + (highlighting ? " is-highlighting" : "")} tabIndex={0} aria-label={"Contents of " + activeTab.name}><code>{activeTab.content}</code></pre> : <div className="code-editor-editable-surface">
+        {activeTab.view === "diff" ? activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this diff</strong><span>{activeTab.error}</span></div> : <DiffView diff={activeTab.content ?? ""} path={activeTab.path} root={activeTab.root} staged={activeTab.diffStaged === true} loading={activeTab.status === "loading"} emptyMessage="No diff available for this selection." /> : activeTab.status === "loading" ? <div className="code-editor-message" role="status"><span className="editor-loading-indicator" /><span>Loading file content…</span></div> : activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this file</strong><span>{activeTab.error}</span></div> : isReadOnly ? highlightedHtml ? <div className="code-editor-highlighted" dangerouslySetInnerHTML={{ __html: highlightedHtml }} /> : <pre className={"code-editor-plain" + (highlighting ? " is-highlighting" : "")} tabIndex={0} aria-label={"Contents of " + activeTab.name}><code>{activeTab.content}</code></pre> : <div className="code-editor-editable-surface">
           <div className="code-editor-editable-highlight" aria-hidden="true">{highlightedHtml ? <div className="code-editor-highlighted" dangerouslySetInnerHTML={{ __html: highlightedHtml }} /> : <pre className="code-editor-plain"><code>{activeTab.content}</code></pre>}</div>
           <textarea className="code-editor-input" aria-label={"Edit " + activeTab.name} autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false} value={activeTab.content ?? ""} onChange={(event) => onChange(activeTab.id, event.currentTarget.value)} onKeyDown={(event) => {
             if (event.key !== "Tab") return;
@@ -239,7 +242,7 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
           }} />
         </div>}
       </div>
-      {activeTab.status === "ready" && activeTab.content !== null && <EditorMinimap content={activeTab.content} highlightedHtml={highlightedHtml} viewport={editorViewport} onNavigate={(position) => {
+      {activeTab.status === "ready" && activeTab.content !== null && activeTab.view !== "diff" && <EditorMinimap content={activeTab.content} highlightedHtml={highlightedHtml} viewport={editorViewport} onNavigate={(position) => {
         const element = editorContentRef.current;
         if (!element) return;
         element.scrollTop = position * element.scrollHeight;
@@ -247,7 +250,7 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
       </div>
       <footer className="code-editor-statusbar" aria-live="polite">
         <span className="code-editor-path" title={activeTab.path}>{activeTab.root.split(/[\\/]/).filter(Boolean).pop() ?? activeTab.root}　›　{activeTab.path}</span>
-        <span className={activeTab.saveError ? "code-editor-save-error" : ""}>{activeTab.saveError ?? (activeTab.isSaving ? "Saving changes…" : isDirty ? "Unsaved changes" : isReadOnly ? "Read-only commit snapshot" : activeTab.status === "ready" ? "All changes saved" : activeTab.status === "loading" ? "Loading" : "Unavailable")}</span>
+        <span className={activeTab.saveError ? "code-editor-save-error" : ""}>{activeTab.saveError ?? (activeTab.isSaving ? "Saving changes…" : isDirty ? "Unsaved changes" : isReadOnly ? activeTab.view === "diff" ? "Read-only diff" : "Read-only commit snapshot" : activeTab.status === "ready" ? "All changes saved" : activeTab.status === "loading" ? "Loading" : "Unavailable")}</span>
         <span>{activeTab.status === "ready" ? (activeTab.content?.split(/\r?\n/).length ?? 0) + " lines" : ""}</span><span>UTF-8</span>
       </footer>
     </> : <div className="code-editor-empty"><div className="code-editor-empty-icon">⌘</div><h2>Open a file in this group</h2><p>Choose a file from the workspace explorer or Git history. It will open in this editor group.</p></div>}
