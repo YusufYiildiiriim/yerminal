@@ -22,11 +22,11 @@ jobs:
       release_id: ${{ steps.create.outputs.release_id }}
       tag_name: ${{ steps.create.outputs.tag_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create draft release
         id: create
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ github.token }}
           script: |
@@ -95,9 +95,9 @@ jobs:
             bundles: appimage,deb
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -148,7 +148,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Publish draft release
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           RELEASE_ID: ${{ needs.create-draft-release.outputs.release_id }}
         with:
