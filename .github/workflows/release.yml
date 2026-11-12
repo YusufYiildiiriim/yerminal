@@ -1,0 +1,163 @@
+name: Release builds
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  create-draft-release:
+    name: Create draft release
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create.outputs.release_id }}
+      tag_name: ${{ steps.create.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create draft release
+        id: create
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const fs = require('node:fs');
+            const config = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+            const baseTagName = `v${config.version}-build.${context.runNumber}`;
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+            const releaseByTag = (tagName) => releases.find((candidate) => candidate.tag_name === tagName);
+            const publishedAttemptDraft = () => releases
+              .filter((candidate) => candidate.draft && candidate.tag_name.startsWith(`${baseTagName}.attempt.`))
+              .sort((left, right) => right.created_at.localeCompare(left.created_at))[0];
+            const baseRelease = releaseByTag(baseTagName);
+            let release = baseRelease?.draft ? baseRelease : undefined;
+            let tagName = baseTagName;
+            if (!release && baseRelease) {
+              release = publishedAttemptDraft();
+              if (release) {
+                tagName = release.tag_name;
+              } else {
+                let attempt = context.runAttempt;
+                do {
+                  tagName = `${baseTagName}.attempt.${attempt++}`;
+                } while (releaseByTag(tagName));
+              }
+            }
+            if (!release) {
+              const releaseName = `yerminal v${config.version} (build ${context.runNumber})`;
+              const releaseBody = [
+                'Automated build from main. Windows installers are unsigned and may show a',
+                'SmartScreen warning. See the README for local build instructions and current',
+                'platform support status.',
+                '',
+                'This release is published after all platform builds finish successfully.',
+              ].join('\n');
+              ({ data: release } = await github.rest.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: tagName,
+                target_commitish: context.sha,
+                name: releaseName,
+                body: releaseBody,
+                draft: true,
+                prerelease: false,
+                generate_release_notes: true,
+              }));
+            }
+            core.setOutput('release_id', String(release.id));
+            core.setOutput('tag_name', tagName);
+
+  build-upload:
+    name: Build and upload (${{ matrix.platform }})
+    needs: create-draft-release
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            bundles: nsis,msi
+          - platform: ubuntu-22.04
+            bundles: appimage,deb
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libxdo-dev \
+            libwebkit2gtk-4.1-dev \
+            patchelf \
+            xdg-utils
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and upload release assets
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          releaseId: ${{ needs.create-draft-release.outputs.release_id }}
+          tagName: ${{ needs.create-draft-release.outputs.tag_name }}
+          releaseDraft: true
+          uploadUpdaterJson: false
+          releaseAssetNamePattern: yerminal-[version]-[platform][setup].[ext]
+          uploadWorkflowArtifacts: true
+          args: --bundles ${{ matrix.bundles }}
+
+  publish-release:
+    name: Publish complete release
+    needs:
+      - create-draft-release
+      - build-upload
+    if: ${{ needs.build-upload.result == 'success' }}
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish draft release
+        uses: actions/github-script@v7
+        env:
+          RELEASE_ID: ${{ needs.create-draft-release.outputs.release_id }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const releaseId = Number(process.env.RELEASE_ID);
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: releaseId,
+              draft: false,
+            });

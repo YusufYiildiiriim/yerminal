@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-Windows-0078D4?logo=windows11&logoColor=white" alt="Windows" />
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-0078D4?logo=windows11&logoColor=white" alt="Windows and Linux" />
   <img src="https://img.shields.io/badge/built%20with-Tauri%202-FF1313?logo=tauri&logoColor=white" alt="Tauri 2" />
   <img src="https://img.shields.io/badge/frontend-React%2019-61DAFB?logo=react&logoColor=white" alt="React 19" />
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License" />
@@ -44,15 +44,29 @@ yerminal gives every AI coding agent — Claude Code, Codex CLI, or a plain shel
 
 ## Getting started
 
-**Prerequisites:** [Node.js](https://nodejs.org) 20+, the Rust toolchain (MSVC on Windows), and the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/).
+**Prerequisites:** [Node.js](https://nodejs.org) `>=22.22.2`, the Rust toolchain, and the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform. Windows builds require the MSVC C++ build tools; MSI packaging also requires the Windows Script Host optional feature. Linux builds require Tauri's WebKitGTK and system library prerequisites.
 
 ```sh
-npm install
+npm ci
 npm run tauri dev     # run the desktop app in development
 npm run build         # production build of the frontend
 ```
 
-> yerminal is developed on Windows and uses ConPTY through `portable-pty`. Linux and macOS builds are unverified so far.
+### Build installers locally
+
+Run these from the repository root after installing the platform prerequisites above. The release workflow runs the corresponding commands through Tauri's CLI:
+
+```powershell
+# Windows: NSIS setup executable and MSI installer
+npm run tauri build -- --bundles nsis,msi
+```
+
+```sh
+# Linux: AppImage and Debian package
+npm run tauri build -- --bundles appimage,deb
+```
+
+[Download the latest release](https://github.com/YusufYiildiiriim/yerminal/releases/latest): Windows users can choose the NSIS setup executable (`.exe`) or MSI installer (`.msi`); Linux users can choose the AppImage (`.AppImage`) or Debian package (`.deb`). Installers are also written under `src-tauri/target/release/bundle/` when built locally. The Windows installers are currently unsigned; Windows may display a SmartScreen warning. A stable GitHub release is published for each push to `main`, tagged `v<app-version>-build.<run-number>`. Both platform builds upload to one draft release, which is published only after all builds succeed. If a build fails, rerunning the workflow resumes its draft. Rerunning an already published build starts a separate draft tagged `v<app-version>-build.<run-number>.attempt.<run-attempt>`; failed retries reuse that draft. Later pushes get a new build tag. Linux artifacts are built by CI, but Linux runtime behavior has not yet been verified. macOS builds are not provided.
 
 ## Configuration
 
@@ -94,7 +108,7 @@ src-tauri/               # Rust backend (Tauri 2)
 This is an early MVP — expect rough edges:
 
 - Git push, pull, and reset are not exposed (local operations only)
-- No filesystem watcher yet; the Changes and Graph views refresh manually
+- Explorer watches for filesystem changes; the Git Changes and Graph views still require manual refresh
 - xterm scrollback is capped at 3,000 lines
 - Windows is the only verified platform
 
