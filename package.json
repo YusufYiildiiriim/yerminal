@@ -8,7 +8,9 @@
     "frontend:dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "tauri": "node scripts/tauri.mjs"
+    "tauri": "node scripts/tauri.mjs",
+    "test:run": "vitest run",
+    "test": "vitest"
   },
   "dependencies": {
     "@shikijs/langs": "^4.6.0",
@@ -25,10 +27,15 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.0",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.10",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.7.0",
+    "jsdom": "^31.0.0",
     "typescript": "~5.8.3",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "vitest": "^5.1.0"
   }
 }
