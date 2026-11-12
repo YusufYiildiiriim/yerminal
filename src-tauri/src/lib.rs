@@ -211,6 +211,7 @@ fn write_workspace_text_file(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(Mutex::new(SessionManager::default()))
         .manage(Mutex::new(TerminalResourceMonitor::default()))
         .invoke_handler(tauri::generate_handler![

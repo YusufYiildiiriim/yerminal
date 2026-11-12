@@ -1757,6 +1757,7 @@ type TerminalWorkspaceLayoutProps = {
   onDockToTiledLayout: (sessionId: string, edge: TerminalDockEdge) => void;
   onModeState: (mode: TerminalLayoutMode, setMode: (mode: TerminalLayoutMode) => void) => void;
   activeTerminalId: string | null;
+  onLinkHint?: (message: string) => void;
   onFocus: (sessionId: string) => void;
   onExit: (sessionId: string) => void;
   onClose: (sessionId: string) => void;
@@ -1764,7 +1765,7 @@ type TerminalWorkspaceLayoutProps = {
   onResize: (splitId: string, ratio: number) => void;
 };
 
-function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visibleTerminalIds, workspaceId, onDockToTiledLayout, onModeState, activeTerminalId, onFocus, onExit, onClose, onMove, onResize }: TerminalWorkspaceLayoutProps) {
+function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visibleTerminalIds, workspaceId, onDockToTiledLayout, onModeState, activeTerminalId, onLinkHint, onFocus, onExit, onClose, onMove, onResize }: TerminalWorkspaceLayoutProps) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const scrollportRef = useRef<HTMLDivElement>(null);
   const paneRefs = useRef(new Map<string, HTMLDivElement>());
@@ -1948,7 +1949,7 @@ function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visible
         </header>}
         <div className="terminal-pane-body">
           <Suspense key={terminal.id} fallback={<div className="terminal-placeholder">Loading terminal…</div>}>
-            <TerminalPane sessionId={terminal.id} shell={terminal.shell} profileId={terminal.profileId} workingDirectory={terminal.workingDirectory} active={terminal.id === activeTerminalId} visible={Boolean(rect)} onFocus={onFocus} onExit={onExit} />
+            <TerminalPane sessionId={terminal.id} shell={terminal.shell} profileId={terminal.profileId} workingDirectory={terminal.workingDirectory} active={terminal.id === activeTerminalId} visible={Boolean(rect)} onLinkHint={onLinkHint} onFocus={onFocus} onExit={onExit} />
           </Suspense>
         </div>
       </div>;

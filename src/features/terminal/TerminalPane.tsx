@@ -1,26 +1,31 @@
 import { useEffect, useRef } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
+import { registerUrlLinks } from "./terminalLinks";
 import "@xterm/xterm/css/xterm.css";
 
 type TerminalOutput = { sessionId: string; sequence: number; data: string };
 type TerminalOutputSnapshot = { throughSequence: number; events: TerminalOutput[] };
 type ShellKind = "powershell" | "bash" | "zsh";
-type TerminalPaneProps = { sessionId: string; shell: ShellKind; profileId?: string; workingDirectory: string | null; active: boolean; visible: boolean; onFocus: (sessionId: string) => void; onExit: (sessionId: string) => void };
+type TerminalPaneProps = { sessionId: string; shell: ShellKind; profileId?: string; workingDirectory: string | null; active: boolean; visible: boolean; onLinkHint?: (message: string) => void; onFocus: (sessionId: string) => void; onExit: (sessionId: string) => void };
 
-export function TerminalPane({ sessionId, shell, profileId, workingDirectory, active, visible, onFocus, onExit }: TerminalPaneProps) {
+export function TerminalPane({ sessionId, shell, profileId, workingDirectory, active, visible, onLinkHint, onFocus, onExit }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const resizeSyncRef = useRef<() => void>(() => {});
   const activeRef = useRef(active);
   const visibleRef = useRef(visible);
+  const onLinkHintRef = useRef(onLinkHint);
   const onFocusRef = useRef(onFocus);
   const onExitRef = useRef(onExit);
+  const linkHintShownRef = useRef(false);
   activeRef.current = active;
   visibleRef.current = visible;
+  onLinkHintRef.current = onLinkHint;
   onFocusRef.current = onFocus;
   onExitRef.current = onExit;
 
@@ -77,6 +82,22 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
     terminal.open(hostRef.current);
     terminalRef.current = terminal;
     fitRef.current = fit;
+    const linkProvider = registerUrlLinks(terminal, {
+      open: (url) => {
+        if (isTauri()) {
+          void openUrl(url).catch((error: unknown) => {
+            onLinkHintRef.current?.(`Could not open link: ${String(error)}`);
+          });
+        } else {
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
+      },
+      hint: (message) => {
+        if (linkHintShownRef.current) return;
+        linkHintShownRef.current = true;
+        onLinkHintRef.current?.(message);
+      },
+    });
     const handleFocus = () => onFocusRef.current(sessionId);
     hostRef.current.addEventListener("focusin", handleFocus);
 
@@ -232,6 +253,7 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
       disposed = true;
       resizeObserver.disconnect();
       appearanceObserver.disconnect();
+      linkProvider.dispose();
       if (resizeTimer !== null) window.clearTimeout(resizeTimer);
       if (resizeSyncRef.current === fitAndSchedulePtyResize) resizeSyncRef.current = () => {};
       outputUnlisten?.();
