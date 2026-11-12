@@ -16,6 +16,7 @@ import { ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle } from "rea
 import { SettingsDialog, type AppSettings } from "./features/settings/SettingsDialog";
 import { WorkspaceViewLayout } from "./features/workspace/WorkspaceViewLayout";
 import { FolderContextMenu, type FolderContextMenuAction, type FolderContextMenuTarget } from "./features/explorer/FolderContextMenu";
+import { appendTerminalToLayout, openFolderInNewTerminal } from "./features/terminal/terminalWorkspaceActions";
 import "./styles/app.css";
 import "./styles/themes.css";
 import "./styles/sidebar-ux.css";
@@ -823,7 +824,7 @@ function App() {
     }
   }, [editingTerminalId]);
 
-  const createTerminal = useCallback(async (showInTabs = true): Promise<TerminalSession | null> => {
+  const createTerminal = useCallback(async (showInTabs = true, workingDirectory?: string): Promise<TerminalSession | null> => {
     dismissToast();
     if (!isTauri()) {
       showToast("Install Rust/Cargo and launch the desktop app with npm run tauri dev.");
@@ -838,14 +839,14 @@ function App() {
         name: activeWorkspaceTerminalIds.length === 0 ? (shell === "powershell" ? "PowerShell" : shell) : `Terminal ${activeWorkspaceTerminalIds.length + 1}`,
         shell,
         shellLabel: shell === "powershell" ? "PowerShell" : shell,
-        workingDirectory: repoPath || null,
+        workingDirectory: workingDirectory ?? (repoPath || null),
       };
       setTerminals((current) => [...current, terminal]);
       if (activeTerminalWorkspace) updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => ({
         ...workspace,
         terminalIds: [...workspace.terminalIds, id],
         activeTerminalId: id,
-        layout: showInTabs && workspace.terminalIds.length > 0 ? buildTerminalLayout([...workspace.terminalIds, id]) : workspace.layout,
+        layout: showInTabs && workspace.terminalIds.length > 0 ? (workingDirectory ? appendTerminalToLayout(workspace.layout ?? buildTerminalLayout(workspace.terminalIds), id) : buildTerminalLayout([...workspace.terminalIds, id])) : workspace.layout,
       }));
       return terminal;
     } catch (reason) {
@@ -1115,15 +1116,19 @@ function App() {
   const openTerminalAt = useCallback((root: string, folderPath: string) => {
     const workspace = activeTerminalWorkspace;
     if (!workspace || !workspace.folderPaths.includes(root)) return;
-    const terminal = terminals.find((item) => item.id === workspace.activeTerminalId && workspace.terminalIds.includes(item.id));
-    if (!terminal) {
-      showToast("No active terminal in this workspace");
-      return;
-    }
-    void sendTerminalDirectoryCommand(workspace.id, terminal, folderPath).catch((reason) => {
-      showToast(`Could not change terminal working directory: ${String(reason)}`);
+    void openFolderInNewTerminal({
+      isDesktop: isTauri(),
+      folderPath,
+      createTerminalAt: (path) => createTerminal(true, path),
+      activateTerminal: (id) => {
+        setTerminalViews((current) => ({ ...current, [workspace.id]: id }));
+        setActiveMainView("terminals");
+      },
+      onDesktopRequired: () => showToast("Install Rust/Cargo and launch the desktop app with npm run tauri dev."),
+    }).catch((reason: unknown) => {
+      showToast(`Could not open terminal: ${String(reason)}`);
     });
-  }, [activeTerminalWorkspace, sendTerminalDirectoryCommand, showToast, terminals]);
+  }, [activeTerminalWorkspace, createTerminal, showToast]);
 
   const revealInFileExplorer = useCallback((root: string, folderPath: string) => {
     const workspace = activeTerminalWorkspace;
@@ -2303,4 +2308,3 @@ function getLayoutGeometry(root: LayoutNode): LayoutGeometry {
   return { panes, dividers };
 }
 export default App;
-
