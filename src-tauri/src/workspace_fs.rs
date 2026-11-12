@@ -235,6 +235,87 @@ pub fn search_files(
     Ok(candidates.into_iter().map(|(_, _, entry)| entry).collect())
 }
 
+pub fn create_directory(root: &str, path: &str) -> Result<(), String> {
+    let root = canonical_root(root)?;
+    let candidate = Path::new(path);
+    let name = candidate
+        .file_name()
+        .ok_or_else(|| "Invalid workspace folder name".to_owned())?
+        .to_string_lossy()
+        .into_owned();
+    validate_new_entry_name(&name)?;
+    let parent = candidate_parent(&root, candidate)?;
+    if !parent.is_dir() {
+        return Err("Workspace item is not a folder".to_owned());
+    }
+    fs::create_dir(parent.join(&name)).map_err(|error| format!("Cannot create workspace folder: {error}"))
+}
+
+fn candidate_parent(root: &Path, candidate: &Path) -> Result<PathBuf, String> {
+    let parent = match candidate.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent.to_string_lossy().into_owned(),
+        _ => return Ok(root.to_path_buf()),
+    };
+    let parent = canonical_scoped_path(root, &parent)?;
+    if !parent.is_dir() {
+        return Err("Workspace item is not a folder".to_owned());
+    }
+    Ok(parent)
+}
+
+fn validate_new_entry_name(name: &str) -> Result<(), String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty()
+        || trimmed != name
+        || trimmed == "."
+        || trimmed == ".."
+        || trimmed.ends_with('.')
+        || name.contains('/')
+        || name.contains('\\')
+        || name.contains(':')
+        || name.contains('\0')
+    {
+        return Err("Invalid workspace item name".to_owned());
+    }
+    let stem = trimmed.split('.').next().unwrap_or(trimmed);
+    const RESERVED: [&str; 22] = [
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+    if RESERVED.iter().any(|reserved| reserved.eq_ignore_ascii_case(stem)) {
+        return Err("Invalid workspace item name".to_owned());
+    }
+    Ok(())
+}
+
+fn write_target_path(
+    root: &Path,
+    requested_path: &str,
+    content: &str,
+    expected_content: &str,
+) -> Result<PathBuf, String> {
+    match canonical_scoped_path(root, requested_path) {
+        Ok(file_path) => Ok(file_path),
+        Err(error) => {
+            // Only brand-new, empty file creation may skip the canonicalized
+            // path: the target does not exist yet, so validate its parent.
+            if !content.is_empty() || !expected_content.is_empty() || fs::metadata(requested_path).is_ok() {
+                return Err(error);
+            }
+            let candidate = Path::new(requested_path);
+            let name = candidate
+                .file_name()
+                .ok_or_else(|| "Invalid workspace file name".to_owned())?
+                .to_string_lossy()
+                .into_owned();
+            validate_new_entry_name(&name)?;
+            let parent = candidate_parent(root, candidate)?;
+            Ok(parent.join(name))
+        }
+    }
+}
+
 pub fn read_text_file(root: &str, path: &str) -> Result<String, String> {
     let root = canonical_root(root)?;
     let file = canonical_scoped_path(&root, path)?;
@@ -270,12 +351,26 @@ pub fn write_text_file(
     }
 
     let root = canonical_root(root)?;
-    let file_path = canonical_scoped_path(&root, path)?;
-    let mut file = fs::OpenOptions::new()
+    let file_path = write_target_path(&root, path, content, expected_content)?;
+    let mut file = match fs::OpenOptions::new()
         .read(true)
         .write(true)
         .open(&file_path)
-        .map_err(|error| format!("Cannot open workspace file for saving: {error}"))?;
+    {
+        Ok(file) => file,
+        Err(open_error) if open_error.kind() == std::io::ErrorKind::NotFound
+            && expected_content.is_empty()
+            && content.is_empty() =>
+        {
+            fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .open(&file_path)
+                .map_err(|error| format!("Cannot create workspace file: {error}"))?
+        }
+        Err(error) => return Err(format!("Cannot open workspace file for saving: {error}")),
+    };
     let metadata = file
         .metadata()
         .map_err(|error| format!("Cannot inspect workspace file: {error}"))?;
@@ -570,6 +665,86 @@ mod tests {
 
         let directory_error = read_text_file(&root, &fixture_path(&dir, "folder")).unwrap_err();
         assert!(directory_error.contains("not a file"), "{directory_error}");
+    }
+
+    #[test]
+    fn create_directory_creates_folders_inside_root() {
+        let (dir, root) = temp_root();
+        fs::create_dir_all(dir.path().join("existing")).expect("create fixture directory");
+
+        create_directory(&root, &fixture_path(&dir, "existing/new-folder"))
+            .expect("create nested workspace folder");
+        create_directory(&root, &fixture_path(&dir, "root-level"))
+            .expect("create workspace folder at root");
+
+        assert!(dir.path().join("existing/new-folder").is_dir());
+        assert!(dir.path().join("root-level").is_dir());
+
+        let exists_error = create_directory(&root, &fixture_path(&dir, "existing/new-folder")).unwrap_err();
+        assert!(exists_error.contains("Cannot create workspace folder"), "{exists_error}");
+    }
+
+    #[test]
+    fn create_directory_rejects_paths_outside_root() {
+        let (dir, root) = temp_root();
+        fs::create_dir_all(dir.path().join("sub")).expect("create fixture directory");
+        let outside = tempfile::tempdir().expect("create outside temp directory");
+
+        let outside_error =
+            create_directory(&root, &fixture_path(&outside, "sneaky")).unwrap_err();
+        assert!(
+            outside_error.contains("outside the included folder"),
+            "{outside_error}"
+        );
+
+        let escape = format!("{}\\..\\escape", dir.path().to_string_lossy());
+        let escape_error = create_directory(&root, &escape).unwrap_err();
+        assert!(
+            escape_error.contains("outside the included folder"),
+            "{escape_error}"
+        );
+
+        let parent_escape = format!("{}\\..", dir.path().to_string_lossy());
+        let name_error = create_directory(&root, &parent_escape).unwrap_err();
+        assert!(
+            name_error.contains("Invalid workspace folder name"),
+            "{name_error}"
+        );
+    }
+
+    #[test]
+    fn validate_new_entry_name_rejects_unsafe_names() {
+        for name in ["", "  ", ".", "..", "a/b", "a\\b", "a:b", "na\0me", " name "] {
+            assert!(validate_new_entry_name(name).is_err(), "{name}");
+        }
+        for name in ["notes.txt", "sub folder", "dots..inside"] {
+            assert!(validate_new_entry_name(name).is_ok(), "{name}");
+        }
+    }
+
+    #[test]
+    fn write_text_file_creates_missing_file_when_content_and_expected_are_empty() {
+        let (dir, root) = temp_root();
+        fs::create_dir_all(dir.path().join("notes")).expect("create fixture directory");
+
+        write_text_file(&root, &fixture_path(&dir, "notes/new.txt"), "", "")
+            .expect("create empty workspace file");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("notes/new.txt")).unwrap(),
+            ""
+        );
+
+        let content_error = write_text_file(
+            &root,
+            &fixture_path(&dir, "notes/other.txt"),
+            "content",
+            "",
+        )
+        .unwrap_err();
+        assert!(
+            content_error.contains("Cannot access workspace item"),
+            "{content_error}"
+        );
     }
 
     #[test]

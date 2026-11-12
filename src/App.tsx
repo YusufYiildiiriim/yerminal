@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { DiffViewer } from "./features/git/DiffViewer";
 import { TerminalResourceGraph } from "./features/terminal/TerminalResourceGraph";
 import { CodeWorkspace, type EditorFileTab, type EditorGroupState } from "./features/editor/CodeWorkspace";
@@ -12,6 +13,7 @@ import { useFloatingTerminalLayout, type TerminalDockEdge, type TerminalLayoutMo
 import { ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { SettingsDialog, type AppSettings } from "./features/settings/SettingsDialog";
 import { WorkspaceViewLayout } from "./features/workspace/WorkspaceViewLayout";
+import { FolderContextMenu, type FolderContextMenuAction, type FolderContextMenuTarget } from "./features/explorer/FolderContextMenu";
 import "./styles/app.css";
 import "./styles/themes.css";
 import "./styles/sidebar-ux.css";
@@ -188,6 +190,11 @@ function changeDirectoryCommand(shell: ShellKind, path: string): string {
   return `cd -- '${escapedPath}'\n`;
 }
 
+function joinWorkspacePath(parentPath: string, name: string): string {
+  const separator = parentPath.includes("\\") ? "\\" : "/";
+  return parentPath.endsWith(separator) ? `${parentPath}${name}` : `${parentPath}${separator}${name}`;
+}
+
 function editorOperationKey(workspaceId: string, tabId: string): string {
   return JSON.stringify([workspaceId, tabId]);
 }
@@ -270,6 +277,7 @@ function App() {
   const terminalTabsRef = useRef<HTMLDivElement>(null);
   const terminalTabScrollTargetRef = useRef<{ workspaceId: string; terminalId: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [workspaceFolderRefresh, setWorkspaceFolderRefresh] = useState<{ root: string; path: string; nonce: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [terminalUsageOpen, setTerminalUsageOpen] = useState(false);
@@ -1075,6 +1083,90 @@ function App() {
       showToast(`Could not change terminal working directory: ${String(reason)}`);
     });
   }, [activeTerminalWorkspace, sendTerminalDirectoryCommand, showToast, terminals, updateTerminalWorkspace]);
+
+  const createWorkspaceFile = useCallback(async (root: string, parentPath: string, name: string) => {
+    if (!isTauri()) {
+      showToast("Launch the desktop app to create files.");
+      return;
+    }
+    try {
+      await invoke<void>("write_workspace_text_file", { root, path: joinWorkspacePath(parentPath, name), content: "", expectedContent: "" });
+      setWorkspaceFolderRefresh({ root, path: parentPath, nonce: Date.now() });
+    } catch (reason) {
+      showToast(String(reason));
+    }
+  }, [showToast]);
+
+  const createWorkspaceFolder = useCallback(async (root: string, parentPath: string, name: string) => {
+    if (!isTauri()) {
+      showToast("Launch the desktop app to create folders.");
+      return;
+    }
+    try {
+      await invoke<void>("create_workspace_directory", { root, path: joinWorkspacePath(parentPath, name) });
+      setWorkspaceFolderRefresh({ root, path: parentPath, nonce: Date.now() });
+    } catch (reason) {
+      showToast(String(reason));
+    }
+  }, [showToast]);
+
+  const openTerminalAt = useCallback((root: string, folderPath: string) => {
+    const workspace = activeTerminalWorkspace;
+    if (!workspace || !workspace.folderPaths.includes(root)) return;
+    const terminal = terminals.find((item) => item.id === workspace.activeTerminalId && workspace.terminalIds.includes(item.id));
+    if (!terminal) {
+      showToast("No active terminal in this workspace");
+      return;
+    }
+    void sendTerminalDirectoryCommand(workspace.id, terminal, folderPath).catch((reason) => {
+      showToast(`Could not change terminal working directory: ${String(reason)}`);
+    });
+  }, [activeTerminalWorkspace, sendTerminalDirectoryCommand, showToast, terminals]);
+
+  const revealInFileExplorer = useCallback((root: string, folderPath: string) => {
+    const workspace = activeTerminalWorkspace;
+    if (!workspace || !workspace.folderPaths.includes(root)) return;
+    if (!isTauri()) {
+      showToast("Launch the desktop app to reveal folders.");
+      return;
+    }
+    void revealItemInDir(folderPath).catch((reason) => {
+      showToast(`Could not reveal folder: ${String(reason)}`);
+    });
+  }, [activeTerminalWorkspace, showToast]);
+
+  const copyWorkspacePath = useCallback((path: string) => {
+    navigator.clipboard.writeText(path).catch(() => {
+      showToast("Could not copy the path to the clipboard.");
+    });
+  }, [showToast]);
+
+  const handleFolderContextAction = useCallback((action: FolderContextMenuAction, target: { root: string; path: string; isWorkspaceRoot: boolean }) => {
+    switch (action) {
+      case "new-file": {
+        const name = window.prompt(`New file in ${target.path}`)?.trim();
+        if (name) void createWorkspaceFile(target.root, target.path, name);
+        return;
+      }
+      case "new-folder": {
+        const name = window.prompt(`New folder in ${target.path}`)?.trim();
+        if (name) void createWorkspaceFolder(target.root, target.path, name);
+        return;
+      }
+      case "open-terminal":
+        openTerminalAt(target.root, target.path);
+        return;
+      case "reveal":
+        revealInFileExplorer(target.root, target.path);
+        return;
+      case "copy-path":
+        copyWorkspacePath(target.path);
+        return;
+      case "remove-folder":
+        removeWorkspaceFolder(target.path);
+        return;
+    }
+  }, [copyWorkspacePath, createWorkspaceFile, createWorkspaceFolder, openTerminalAt, removeWorkspaceFolder, revealInFileExplorer]);
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
@@ -1165,7 +1257,7 @@ function App() {
             </nav>
             <div className="workspace-sidebar-content">
             <section className="tool-content" aria-label={tools.find((tool) => tool.id === activeTool)?.label}>
-              {activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenDiff={(change, staged) => void openEditorFile({ id: `gitdiff:${repoPath}:${staged ? "index" : "worktree"}:${change.path}`, root: repoPath, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onError={showToast} /> : <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } })} />}
+              {activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} onFolderContextAction={handleFolderContextAction} refreshRequest={workspaceFolderRefresh} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenDiff={(change, staged) => void openEditorFile({ id: `gitdiff:${repoPath}:${staged ? "index" : "worktree"}:${change.path}`, root: repoPath, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onError={showToast} /> : <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } })} />}
             </section>
             </div>
           </div>
@@ -1202,7 +1294,7 @@ function App() {
             onModeState={registerEditorLayoutControl}
           />} terminal={<div className={`terminal-workspace-view${terminalUsageOpen ? " has-terminal-usage" : ""}`}>
           <section className="terminal-surface" aria-label="Terminal workspace">
-            <TerminalWorkspaceLayout layout={layout} focusedTerminalId={focusedTerminalView} terminals={terminals} visibleTerminalIds={activeWorkspaceTerminalIds} workspaceId={activeTerminalWorkspace?.id ?? ""} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
+            <TerminalWorkspaceLayout layout={layout} focusedTerminalId={focusedTerminalView} terminals={terminals} visibleTerminalIds={activeWorkspaceTerminalIds} workspaceId={activeTerminalWorkspace?.id ?? ""} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} onLinkHint={showToast} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
             {activeWorkspaceTerminals.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Welcome to <span>yerminal</span></div><p>Create a terminal to begin.</p><button className="primary-button" onClick={() => void createTerminal()} type="button">New Terminal</button></div>}
 
             <div className="terminal-status" aria-live="polite" aria-atomic="true"><span className="status-indicator" /><strong>{activeTerminal?.name ?? "No terminal"}</strong>{activeTerminal && <span className="terminal-status-active">Active</span>}<span className="status-separator">·</span><span>{activeTerminal?.shellLabel ?? "Ready"}</span></div>
@@ -1245,11 +1337,12 @@ function isSameOrDescendantTreePath(parent: string, child: string) {
   return normalizedChild === normalizedParent || normalizedChild.startsWith(normalizedParent.endsWith("\\") ? normalizedParent : `${normalizedParent}\\`);
 }
 
-function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOpenFile, collapseOtherFolders }: { folders: string[]; activePath: string; onAdd: () => void; onActivate: (path: string) => void; onRemove: (path: string) => void; onOpenFile: (root: string, entry: WorkspaceEntry) => void; collapseOtherFolders: boolean }) {
+function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOpenFile, onFolderContextAction, refreshRequest, collapseOtherFolders }: { folders: string[]; activePath: string; onAdd: () => void; onActivate: (path: string) => void; onRemove: (path: string) => void; onOpenFile: (root: string, entry: WorkspaceEntry) => void; onFolderContextAction: (action: FolderContextMenuAction, target: { root: string; path: string; isWorkspaceRoot: boolean }) => void; refreshRequest: { root: string; path: string; nonce: number } | null; collapseOtherFolders: boolean }) {
   const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
   const [entriesByPath, setEntriesByPath] = useState<Record<string, WorkspaceEntry[]>>({});
   const [loadingPaths, setLoadingPaths] = useState<Record<string, boolean>>({});
   const [errorsByPath, setErrorsByPath] = useState<Record<string, string>>({});
+  const [contextTarget, setContextTarget] = useState<FolderContextMenuTarget | null>(null);
   const loadedPathsRef = useRef(new Set<string>());
   const pendingPathsRef = useRef(new Set<string>());
   const treeGenerationRef = useRef(0);
@@ -1311,6 +1404,18 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOp
     if (expand) void loadDirectory(root, path);
   }, [collapseOtherFolders, expandedPaths, loadDirectory]);
 
+  useEffect(() => {
+    if (!refreshRequest) return;
+    loadedPathsRef.current.delete(refreshRequest.path);
+    pendingPathsRef.current.delete(refreshRequest.path);
+    void loadDirectory(refreshRequest.root, refreshRequest.path);
+  }, [loadDirectory, refreshRequest]);
+
+  const openFolderContextMenu = useCallback((root: string, path: string, isWorkspaceRoot: boolean, event: React.MouseEvent) => {
+    event.preventDefault();
+    setContextTarget({ root, path, isWorkspaceRoot, x: event.clientX, y: event.clientY });
+  }, []);
+
   const renderEntries = (entries: WorkspaceEntry[], root: string, depth: number): ReactElement[] => entries.map((entry) => {
     const expanded = Boolean(expandedPaths[entry.path]);
     const children = entriesByPath[entry.path] ?? [];
@@ -1326,6 +1431,7 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOp
       onToggle={() => toggleDirectory(root, entry.path)}
       onRetry={() => void loadDirectory(root, entry.path)}
       onOpen={() => onOpenFile(root, entry)}
+      onContextMenu={entry.isDir ? (event) => openFolderContextMenu(root, entry.path, false, event) : undefined}
       renderChildren={(childEntries, childDepth) => renderEntries(childEntries, root, childDepth)}
     />;
   });
@@ -1339,7 +1445,7 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOp
         const expanded = Boolean(expandedPaths[folder]);
         const entries = entriesByPath[folder] ?? [];
         return <section className={`workspace-root ${selected ? "selected" : ""}`} key={folder}>
-          <div className="workspace-root-row" role="treeitem" aria-level={1} aria-expanded={expanded}>
+          <div className="workspace-root-row" role="treeitem" aria-level={1} aria-expanded={expanded} onContextMenu={(event) => openFolderContextMenu(folder, folder, true, event)}>
             <button className="workspace-tree-toggle" aria-label={`${expanded ? "Collapse" : "Expand"} ${name}`} aria-expanded={expanded} onClick={() => toggleDirectory(folder, folder)} type="button">{expanded ? "⌄" : "›"}</button>
             <button className="workspace-folder-select" onClick={() => { onActivate(folder); if (selected) toggleDirectory(folder, folder); }} type="button" aria-pressed={selected} title={folder}>
               <span className="workspace-folder-icon" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M1.75 4.5a1 1 0 0 1 1-1h3.1l1.4 1.5h5.9a1 1 0 0 1 1 1v6.4H1.75z" /></svg></span>
@@ -1356,11 +1462,18 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOp
         </section>;
       })}
     </div>
-    <div className="panel-footnote workspace-explorer-footnote"><span className="read-only-mark">⌂</span> Read-only file explorer</div>
+    <div className="panel-footnote workspace-explorer-footnote"><span className="read-only-mark">⌂</span> Right-click folders for actions</div>
+    <FolderContextMenu
+      target={contextTarget}
+      onClose={() => setContextTarget(null)}
+      onAction={(action) => {
+        if (contextTarget) onFolderContextAction(action, { root: contextTarget.root, path: contextTarget.path, isWorkspaceRoot: contextTarget.isWorkspaceRoot });
+      }}
+    />
   </div>;
 }
 
-function WorkspaceTreeNode({ entry, depth, expanded, children, loading, error, onToggle, onRetry, onOpen, renderChildren }: {
+function WorkspaceTreeNode({ entry, depth, expanded, children, loading, error, onToggle, onRetry, onOpen, onContextMenu, renderChildren }: {
   entry: WorkspaceEntry;
 
   depth: number;
@@ -1371,12 +1484,13 @@ function WorkspaceTreeNode({ entry, depth, expanded, children, loading, error, o
   onToggle: () => void;
   onRetry: () => void;
   onOpen: (button: HTMLButtonElement) => void;
+  onContextMenu?: (event: React.MouseEvent) => void;
   renderChildren: (entries: WorkspaceEntry[], depth: number) => ReactElement[];
 }) {
   const extension = entry.extension ?? entry.name.split(".").pop() ?? "file";
   const fileBadge = entry.isDir ? "" : extension.slice(0, 2).toUpperCase();
   return <div className="workspace-tree-node" role="treeitem" aria-level={depth + 1} aria-expanded={entry.isDir ? expanded : undefined}>
-    <div className={`workspace-tree-row ${entry.isDir ? "directory" : "file"}`} style={{ paddingLeft: (depth + 1) * 16, "--tree-guide-width": `${depth * 16}px`, "--tree-branch-start": `${depth * 16 - 1}px` } as CSSProperties}>
+    <div className={`workspace-tree-row ${entry.isDir ? "directory" : "file"}`} style={{ paddingLeft: (depth + 1) * 16, "--tree-guide-width": `${depth * 16}px`, "--tree-branch-start": `${depth * 16 - 1}px` } as CSSProperties} onContextMenu={entry.isDir ? onContextMenu : undefined}>
       {entry.isDir ? <button className="workspace-tree-toggle" aria-label={`${expanded ? "Collapse" : "Expand"} ${entry.name}`} aria-expanded={expanded} onClick={onToggle} type="button">{expanded ? "⌄" : "›"}</button> : <span className="workspace-tree-toggle-spacer" />}
       {entry.isDir ? <button className="workspace-tree-entry" onClick={onToggle} title={entry.path} type="button"><span className="workspace-tree-file-icon folder" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M1.75 4.5a1 1 0 0 1 1-1h3.1l1.4 1.5h5.9a1 1 0 0 1 1 1v6.4H1.75z" /></svg></span><span className="workspace-tree-name">{entry.name}</span></button> : <button className="workspace-tree-entry" onClick={(event) => onOpen(event.currentTarget)} title={entry.path} type="button"><span className={`workspace-tree-file-icon ext-${extension.replace(/[^a-z0-9]/gi, "").toLowerCase()}`} aria-hidden="true">{fileBadge || "F"}</span><span className="workspace-tree-name">{entry.name}</span><span className="workspace-tree-size">{entry.size === null ? "" : formatFileSize(entry.size)}</span></button>}
     </div>

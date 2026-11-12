@@ -207,6 +207,11 @@ fn write_workspace_text_file(
 ) -> Result<(), String> {
     workspace_fs::write_text_file(&root, &path, &content, &expected_content)
 }
+
+#[tauri::command]
+fn create_workspace_directory(root: String, path: String) -> Result<(), String> {
+    workspace_fs::create_directory(&root, &path)
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -237,7 +242,8 @@ pub fn run() {
             list_workspace_directory,
             search_workspace_files,
             read_workspace_text_file,
-            write_workspace_text_file
+            write_workspace_text_file,
+            create_workspace_directory
         ])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
