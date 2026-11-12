@@ -236,7 +236,45 @@ async function run() {
   await waitFor("nested child folder row", () => findByScript(`return [...document.querySelectorAll(".workspace-tree-entry")].find((element) => element.textContent.trim() === "child") ?? null;`).catch((error) => { if (/No element matched/.test(error.message)) return null; throw error; }));
   console.log("PASS 3: Explorer expanded the nested folder and listed its child");
 
-  // 4. Right-click the folder, choose New File, answer the filename prompt, and verify disk output.
+  // 4. Open the folder in a distinct terminal, verify its actual cwd, and preserve the first session.
+  await rightClick(nestedEntry);
+  const openTerminalMenuItem = await waitFor("Open in Terminal menu item", () => findOptional("xpath", "//button[@role='menuitem' and normalize-space(.)='Open in Terminal']"));
+  assert.ok(openTerminalMenuItem, "The Open in Terminal action did not appear");
+  await click(openTerminalMenuItem);
+
+  await waitFor("two terminal sessions", async () => {
+    const count = await execute("return document.querySelectorAll('.terminal-instance').length;");
+    const tabs = await execute("return document.querySelectorAll('[role=tablist][aria-label=\"Terminal sessions\"] [role=tab]').length;");
+    return count === 2 && tabs === 2;
+  });
+  await waitFor("new terminal PowerShell prompt", async () => {
+    const output = await textContent('.terminal-pane-frame[data-active="true"] .xterm-rows');
+    return /PS [A-Z]:\\/i.test(output) ? output : null;
+  }, 30_000);
+  const cwdMarker = `YERMINAL_E2E_CWD_${Date.now()}`;
+  const cwdInput = await waitFor("new terminal input", () => findOptional("css selector", '.terminal-pane-frame[data-active="true"] .xterm-helper-textarea'));
+  const cwdCommand = `Write-Output ('${cwdMarker}=' + (Get-Location).Path)`;
+  const expectedCwdOutput = `${cwdMarker}=${nestedPath}`;
+  assert.ok(!cwdCommand.toLowerCase().includes(expectedCwdOutput.toLowerCase()), "The command line must not contain the full expected cwd output");
+  const cwdKeyValues = [...cwdCommand, "\uE007"];
+  await command("POST", `/element/${cwdInput}/value`, { text: cwdKeyValues.join(""), value: cwdKeyValues });
+  await waitFor("new terminal reports the target working directory", async () => {
+    const output = await textContent('.terminal-pane-frame[data-active="true"] .xterm-rows');
+    return output.toLowerCase().includes(expectedCwdOutput.toLowerCase());
+  }, 15_000);
+  const preservedSessions = await execute(`
+    return {
+      terminalCount: document.querySelectorAll(".terminal-instance").length,
+      tabCount: document.querySelectorAll('[role=tablist][aria-label="Terminal sessions"] [role=tab]').length,
+      originalOutputPresent: [...document.querySelectorAll(".terminal-pane-frame .xterm-rows")].some((element) => element.textContent.includes(arguments[0])),
+    };
+  `, [marker]);
+  assert.equal(preservedSessions.terminalCount, 2, "Opening a folder should keep both terminal sessions mounted");
+  assert.equal(preservedSessions.tabCount, 2, "Opening a folder should preserve the previous terminal tab");
+  assert.equal(preservedSessions.originalOutputPresent, true, "The previous terminal output should remain in its session");
+  console.log("PASS 4: Open in Terminal created a second session at the target folder and preserved the first session");
+
+  // 5. Right-click the folder, choose New File, answer the filename prompt, and verify disk output.
   await rightClick(nestedEntry);
   const menu = await waitFor("folder context menu", () => findOptional("css selector", '[role="menu"][aria-label="Folder actions"]'));
   assert.ok(menu, "The folder context menu did not open");
@@ -245,7 +283,7 @@ async function run() {
   await webdriver("POST", `/session/${sessionId}/alert/text`, { text: path.basename(resultFile) });
   await webdriver("POST", `/session/${sessionId}/alert/accept`, {});
   await waitFor("created file", () => stat(resultFile).catch(() => null), 10_000);
-  console.log("PASS 4: New File created a file inside the temporary workspace");
+  console.log("PASS 5: New File created a file inside the temporary workspace");
 }
 
 try {
