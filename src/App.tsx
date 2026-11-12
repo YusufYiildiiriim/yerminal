@@ -1,6 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { DiffViewer } from "./features/git/DiffViewer";
@@ -1337,6 +1339,15 @@ function isSameOrDescendantTreePath(parent: string, child: string) {
   return normalizedChild === normalizedParent || normalizedChild.startsWith(normalizedParent.endsWith("\\") ? normalizedParent : `${normalizedParent}\\`);
 }
 
+// Must stay in sync with the marker emitted by src-tauri/src/workspace_fs.rs
+// when a path no longer exists on disk: the explorer silently drops tree
+// entries carrying it instead of showing an inline error banner.
+const WORKSPACE_ITEM_MISSING_MARKER = "Workspace item no longer exists";
+
+function isWorkspaceItemMissing(reason: unknown): boolean {
+  return String(reason).includes(WORKSPACE_ITEM_MISSING_MARKER);
+}
+
 function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOpenFile, onFolderContextAction, refreshRequest, collapseOtherFolders }: { folders: string[]; activePath: string; onAdd: () => void; onActivate: (path: string) => void; onRemove: (path: string) => void; onOpenFile: (root: string, entry: WorkspaceEntry) => void; onFolderContextAction: (action: FolderContextMenuAction, target: { root: string; path: string; isWorkspaceRoot: boolean }) => void; refreshRequest: { root: string; path: string; nonce: number } | null; collapseOtherFolders: boolean }) {
   const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
   const [entriesByPath, setEntriesByPath] = useState<Record<string, WorkspaceEntry[]>>({});
@@ -1346,15 +1357,55 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOp
   const loadedPathsRef = useRef(new Set<string>());
   const pendingPathsRef = useRef(new Set<string>());
   const treeGenerationRef = useRef(0);
+  const metaByPathRef = useRef(new Map<string, { root: string; parentPath: string | null }>());
+  const expandedPathsRef = useRef(expandedPaths);
   const folderSignature = folders.join("\u0000");
 
-  const loadDirectory = useCallback(async (root: string, path: string) => {
+  useEffect(() => {
+    expandedPathsRef.current = expandedPaths;
+  }, [expandedPaths]);
+
+  // Silently removes a tree entry that no longer exists on disk, together
+  // with its cached state, so the tree mirrors the disk without an error.
+  const dropMissingPath = useCallback((path: string) => {
+    const meta = metaByPathRef.current.get(path);
+    metaByPathRef.current.delete(path);
+    loadedPathsRef.current.delete(path);
+    pendingPathsRef.current.delete(path);
+    setEntriesByPath((current) => {
+      const next = { ...current };
+      if (meta?.parentPath && next[meta.parentPath]) {
+        next[meta.parentPath] = next[meta.parentPath].filter((entry) => entry.path !== path);
+      }
+      delete next[path];
+      return next;
+    });
+    setExpandedPaths((current) => {
+      const next = { ...current };
+      delete next[path];
+      return next;
+    });
+    setLoadingPaths((current) => {
+      const next = { ...current };
+      delete next[path];
+      return next;
+    });
+    setErrorsByPath((current) => {
+      const next = { ...current };
+      delete next[path];
+      return next;
+    });
+  }, []);
+
+  const loadDirectory = useCallback(async (root: string, path: string, options: { parentPath?: string; force?: boolean } = {}) => {
     if (!isTauri()) {
       setErrorsByPath((current) => ({ ...current, [path]: "File browsing is available in the desktop app." }));
       return;
     }
-    if (loadedPathsRef.current.has(path) || pendingPathsRef.current.has(path)) return;
+    if (pendingPathsRef.current.has(path)) return;
+    if (!options.force && loadedPathsRef.current.has(path)) return;
     const generation = treeGenerationRef.current;
+    metaByPathRef.current.set(path, { root, parentPath: options.parentPath ?? null });
     pendingPathsRef.current.add(path);
     setLoadingPaths((current) => ({ ...current, [path]: true }));
     setErrorsByPath((current) => {
@@ -1368,21 +1419,44 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOp
       setEntriesByPath((current) => ({ ...current, [path]: entries }));
       loadedPathsRef.current.add(path);
     } catch (reason) {
-      if (generation === treeGenerationRef.current) setErrorsByPath((current) => ({ ...current, [path]: String(reason) }));
+      if (generation !== treeGenerationRef.current) return;
+      if (isWorkspaceItemMissing(reason) && options.parentPath) {
+        dropMissingPath(path);
+        return;
+      }
+      setErrorsByPath((current) => ({ ...current, [path]: String(reason) }));
     } finally {
       pendingPathsRef.current.delete(path);
       if (generation === treeGenerationRef.current) setLoadingPaths((current) => ({ ...current, [path]: false }));
     }
-  }, []);
+  }, [dropMissingPath]);
+
+  // Re-reads every currently expanded directory so the tree reflects disk
+  // changes that happened outside the app (focus regain, fs watcher events).
+  const refreshExpandedDirectories = useCallback(() => {
+    for (const [path, expanded] of Object.entries(expandedPathsRef.current)) {
+      if (!expanded) continue;
+      const meta = metaByPathRef.current.get(path);
+      void loadDirectory(meta?.root ?? path, path, { force: true, parentPath: meta?.parentPath ?? undefined });
+    }
+  }, [loadDirectory]);
 
   useEffect(() => {
     treeGenerationRef.current += 1;
     loadedPathsRef.current.clear();
     pendingPathsRef.current.clear();
+    metaByPathRef.current.clear();
     setExpandedPaths({});
     setEntriesByPath({});
     setLoadingPaths({});
     setErrorsByPath({});
+  }, [folderSignature]);
+
+  // Watch the workspace roots so external changes (deletes, renames, creates
+  // from other apps) refresh the tree without manual interaction.
+  useEffect(() => {
+    if (!isTauri() || folders.length === 0) return;
+    void invoke("watch_workspace_roots", { roots: folders }).catch(() => {});
   }, [folderSignature]);
 
   useEffect(() => {
@@ -1391,7 +1465,7 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOp
     void loadDirectory(activePath, activePath);
   }, [activePath, collapseOtherFolders, folderSignature, loadDirectory]);
 
-  const toggleDirectory = useCallback((root: string, path: string) => {
+  const toggleDirectory = useCallback((root: string, path: string, parentPath: string | null) => {
     const expand = !expandedPaths[path];
     setExpandedPaths((current) => {
       if (!expand) return { ...current, [path]: false };
@@ -1401,22 +1475,63 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOp
       );
       return Object.fromEntries([...ancestors, path].map((candidate) => [candidate, true]));
     });
-    if (expand) void loadDirectory(root, path);
+    // Re-read on every expand so a folder that disappeared or changed while
+    // collapsed is reconciled with the disk before its children are shown.
+    if (expand) void loadDirectory(root, path, { force: true, parentPath: parentPath ?? undefined });
   }, [collapseOtherFolders, expandedPaths, loadDirectory]);
 
   useEffect(() => {
     if (!refreshRequest) return;
-    loadedPathsRef.current.delete(refreshRequest.path);
-    pendingPathsRef.current.delete(refreshRequest.path);
-    void loadDirectory(refreshRequest.root, refreshRequest.path);
+    void loadDirectory(refreshRequest.root, refreshRequest.path, { force: true });
   }, [loadDirectory, refreshRequest]);
+
+  // The backend batches raw fs events; a single trailing refresh per burst is
+  // enough since every refresh re-reads the current disk state.
+  useEffect(() => {
+    if (!isTauri()) return;
+    let cancelled = false;
+    const unlisteners: Array<() => void> = [];
+    let debounceTimer: number | undefined;
+    const scheduleRefresh = () => {
+      window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(() => refreshExpandedDirectories(), 250);
+    };
+    void (async () => {
+      try {
+        const unlistenFsChanged = await listen<string[]>("workspace-fs-changed", (event) => {
+          if (event.payload.length > 0) scheduleRefresh();
+        });
+        if (cancelled) {
+          unlistenFsChanged();
+          return;
+        }
+        unlisteners.push(unlistenFsChanged);
+        const unlistenFocus = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+          if (focused) refreshExpandedDirectories();
+        });
+        if (cancelled) {
+          unlistenFocus();
+          return;
+        }
+        unlisteners.push(unlistenFocus);
+      } catch {
+        // Refresh listeners are best effort; expand-time re-reads still cover
+        // the core reconciliation.
+      }
+    })();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(debounceTimer);
+      unlisteners.forEach((unlisten) => unlisten());
+    };
+  }, [refreshExpandedDirectories]);
 
   const openFolderContextMenu = useCallback((root: string, path: string, isWorkspaceRoot: boolean, event: React.MouseEvent) => {
     event.preventDefault();
     setContextTarget({ root, path, isWorkspaceRoot, x: event.clientX, y: event.clientY });
   }, []);
 
-  const renderEntries = (entries: WorkspaceEntry[], root: string, depth: number): ReactElement[] => entries.map((entry) => {
+  const renderEntries = (entries: WorkspaceEntry[], root: string, depth: number, parentPath: string | null): ReactElement[] => entries.map((entry) => {
     const expanded = Boolean(expandedPaths[entry.path]);
     const children = entriesByPath[entry.path] ?? [];
     return <WorkspaceTreeNode
@@ -1428,11 +1543,11 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOp
       children={children}
       loading={Boolean(loadingPaths[entry.path])}
       error={errorsByPath[entry.path] ?? null}
-      onToggle={() => toggleDirectory(root, entry.path)}
-      onRetry={() => void loadDirectory(root, entry.path)}
+      onToggle={() => toggleDirectory(root, entry.path, parentPath)}
+      onRetry={() => void loadDirectory(root, entry.path, { force: true, parentPath: parentPath ?? undefined })}
       onOpen={() => onOpenFile(root, entry)}
       onContextMenu={entry.isDir ? (event) => openFolderContextMenu(root, entry.path, false, event) : undefined}
-      renderChildren={(childEntries, childDepth) => renderEntries(childEntries, root, childDepth)}
+      renderChildren={(childEntries, childDepth) => renderEntries(childEntries, root, childDepth, entry.path)}
     />;
   });
 
@@ -1446,8 +1561,8 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOp
         const entries = entriesByPath[folder] ?? [];
         return <section className={`workspace-root ${selected ? "selected" : ""}`} key={folder}>
           <div className="workspace-root-row" role="treeitem" aria-level={1} aria-expanded={expanded} onContextMenu={(event) => openFolderContextMenu(folder, folder, true, event)}>
-            <button className="workspace-tree-toggle" aria-label={`${expanded ? "Collapse" : "Expand"} ${name}`} aria-expanded={expanded} onClick={() => toggleDirectory(folder, folder)} type="button">{expanded ? "⌄" : "›"}</button>
-            <button className="workspace-folder-select" onClick={() => { onActivate(folder); if (selected) toggleDirectory(folder, folder); }} type="button" aria-pressed={selected} title={folder}>
+            <button className="workspace-tree-toggle" aria-label={`${expanded ? "Collapse" : "Expand"} ${name}`} aria-expanded={expanded} onClick={() => toggleDirectory(folder, folder, null)} type="button">{expanded ? "⌄" : "›"}</button>
+            <button className="workspace-folder-select" onClick={() => { onActivate(folder); if (selected) toggleDirectory(folder, folder, null); }} type="button" aria-pressed={selected} title={folder}>
               <span className="workspace-folder-icon" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M1.75 4.5a1 1 0 0 1 1-1h3.1l1.4 1.5h5.9a1 1 0 0 1 1 1v6.4H1.75z" /></svg></span>
               <span className="workspace-folder-label"><strong>{name}</strong><small>{folder}</small></span>
             </button>
@@ -1455,9 +1570,9 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOp
           </div>
           {expanded && <div className="workspace-tree-children" role="group">
             {loadingPaths[folder] && <div className="workspace-tree-message">Loading folder…</div>}
-            {errorsByPath[folder] && <div className="workspace-tree-error"><span>{errorsByPath[folder]}</span><button onClick={() => void loadDirectory(folder, folder)} type="button">Retry</button></div>}
+            {errorsByPath[folder] && <div className="workspace-tree-error"><span>{errorsByPath[folder]}</span><button onClick={() => void loadDirectory(folder, folder, { force: true })} type="button">Retry</button></div>}
             {!loadingPaths[folder] && !errorsByPath[folder] && entries.length === 0 && loadedPathsRef.current.has(folder) && <div className="workspace-tree-message">This folder is empty.</div>}
-            {renderEntries(entries, folder, 1)}
+            {renderEntries(entries, folder, 1, folder)}
           </div>}
         </section>;
       })}

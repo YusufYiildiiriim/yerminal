@@ -53,9 +53,17 @@ fn is_within_root(root: &Path, path: &Path) -> bool {
 }
 
 fn canonical_scoped_path(root: &Path, requested_path: &str) -> Result<PathBuf, String> {
-    let candidate = Path::new(requested_path)
-        .canonicalize()
-        .map_err(|error| format!("Cannot access workspace item: {error}"))?;
+    let candidate = match Path::new(requested_path).canonicalize() {
+        Ok(path) => path,
+        // A missing item is not an access failure: the explorer silently drops
+        // entries reported with this marker instead of showing an error banner
+        // ("Workspace item no longer exists"). Access failures such as
+        // permission errors keep the generic message and the Retry button.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(format!("Workspace item no longer exists: {error}"))
+        }
+        Err(error) => return Err(format!("Cannot access workspace item: {error}")),
+    };
     if !is_within_root(root, &candidate) {
         return Err("Workspace item is outside the included folder".to_owned());
     }
@@ -74,8 +82,14 @@ pub fn list_directory(root: &str, path: &str) -> Result<Vec<WorkspaceEntry>, Str
         return Err("Workspace item is not a folder".to_owned());
     }
 
-    let iterator = fs::read_dir(&directory)
-        .map_err(|error| format!("Cannot read workspace folder: {error}"))?;
+    let iterator = match fs::read_dir(&directory) {
+        Ok(iterator) => iterator,
+        // The folder vanished between canonicalization and read_dir.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(format!("Workspace item no longer exists: {error}"))
+        }
+        Err(error) => return Err(format!("Cannot read workspace folder: {error}")),
+    };
     let mut entries = Vec::new();
     for item in iterator {
         let item = item.map_err(|error| format!("Cannot read workspace entry: {error}"))?;
@@ -504,9 +518,27 @@ mod tests {
         let missing_error =
             list_directory(&root, &fixture_path(&dir, "does-not-exist")).unwrap_err();
         assert!(
-            missing_error.contains("Cannot access workspace item"),
+            missing_error.contains("Workspace item no longer exists"),
             "{missing_error}"
         );
+    }
+
+    #[test]
+    fn list_directory_reports_missing_item_marker_for_deleted_entries() {
+        let (dir, root) = temp_root();
+        add_file(dir.path(), "keep.txt", "ok");
+        let deleted = fixture_path(&dir, "deleted-folder");
+        fs::create_dir_all(&deleted).expect("create then remove fixture directory");
+        fs::remove_dir(&deleted).expect("remove fixture directory");
+
+        let error = list_directory(&root, &deleted).unwrap_err();
+        assert!(
+            error.starts_with("Workspace item no longer exists"),
+            "{error}"
+        );
+        // The explorer drops entries carrying this marker silently; access
+        // failures keep the generic message and the Retry button.
+        assert!(!error.contains("Cannot access workspace item"), "{error}");
     }
 
     #[test]
@@ -742,7 +774,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(
-            content_error.contains("Cannot access workspace item"),
+            content_error.contains("Workspace item no longer exists"),
             "{content_error}"
         );
     }
@@ -822,7 +854,7 @@ mod tests {
         let missing_error =
             write_text_file(&root, &fixture_path(&dir, "missing.txt"), "content", "").unwrap_err();
         assert!(
-            missing_error.contains("Cannot access workspace item"),
+            missing_error.contains("Workspace item no longer exists"),
             "{missing_error}"
         );
 

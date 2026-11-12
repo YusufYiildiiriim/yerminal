@@ -1,6 +1,7 @@
 pub mod git;
 pub mod terminal;
 pub mod workspace_fs;
+pub mod workspace_watch;
 
 use git::{CommitFileChange, CommitFileContent, CommitInfo, FileChange, RepositoryInfo};
 use std::sync::Mutex;
@@ -212,6 +213,15 @@ fn write_workspace_text_file(
 fn create_workspace_directory(root: String, path: String) -> Result<(), String> {
     workspace_fs::create_directory(&root, &path)
 }
+
+#[tauri::command]
+fn watch_workspace_roots(
+    app: tauri::AppHandle,
+    roots: Vec<String>,
+    state: State<'_, workspace_watch::WorkspaceWatchState>,
+) -> Result<(), String> {
+    workspace_watch::sync_roots(&app, state.inner(), roots)
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -219,6 +229,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(Mutex::new(SessionManager::default()))
         .manage(Mutex::new(TerminalResourceMonitor::default()))
+        .manage(workspace_watch::WorkspaceWatchState::default())
         .invoke_handler(tauri::generate_handler![
             create_terminal,
             create_agent_terminal,
@@ -243,7 +254,8 @@ pub fn run() {
             search_workspace_files,
             read_workspace_text_file,
             write_workspace_text_file,
-            create_workspace_directory
+            create_workspace_directory,
+            watch_workspace_roots
         ])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
