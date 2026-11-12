@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "tauri": "node scripts/tauri.mjs",
     "test:run": "vitest run",
-    "test": "vitest"
+    "test": "vitest",
+    "test:e2e": "node tests/e2e/desktop-smoke.mjs"
   },
   "dependencies": {
     "@shikijs/langs": "^4.6.0",

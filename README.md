@@ -58,15 +58,47 @@ Run these from the repository root after installing the platform prerequisites a
 
 ```powershell
 # Windows: NSIS setup executable and MSI installer
-npm run tauri build -- --bundles nsis,msi
+npm run tauri -- build --bundles nsis,msi
 ```
 
 ```sh
 # Linux: AppImage and Debian package
-npm run tauri build -- --bundles appimage,deb
+npm run tauri -- build --bundles appimage,deb
 ```
 
 [Download the latest release](https://github.com/YusufYiildiiriim/yerminal/releases/latest): Windows users can choose the NSIS setup executable (`.exe`) or MSI installer (`.msi`); Linux users can choose the AppImage (`.AppImage`) or Debian package (`.deb`). Installers are also written under `src-tauri/target/release/bundle/` when built locally. The Windows installers are currently unsigned; Windows may display a SmartScreen warning. A stable GitHub release is published for each push to `main`, tagged `v<app-version>-build.<run-number>`. Both platform builds upload to one draft release, which is published only after all builds succeed. If a build fails, rerunning the workflow resumes its draft. Rerunning an already published build starts a separate draft tagged `v<app-version>-build.<run-number>.attempt.<run-attempt>`; failed retries reuse that draft. Later pushes get a new build tag. Linux artifacts are built by CI, but Linux runtime behavior has not yet been verified. macOS builds are not provided.
+
+### Run Windows desktop E2E smoke tests
+
+The E2E suite launches the built Windows desktop executable through `tauri-driver` and Microsoft Edge WebDriver. It needs a real Tauri binary; it does not run against the Vite server or a browser-only mock. The test creates its workspace and WebView2 profile in temporary directories.
+
+From PowerShell at the repository root, install `tauri-driver` and the Edge driver matching the installed Microsoft Edge version:
+
+```powershell
+cargo install tauri-driver --locked
+cargo install --git https://github.com/chippers/msedgedriver-tool
+
+$e2eDriverDir = Join-Path $env:TEMP 'yerminal-e2e-drivers'
+New-Item -ItemType Directory -Force -Path $e2eDriverDir | Out-Null
+Push-Location $e2eDriverDir
+try {
+    & (Join-Path $env:USERPROFILE '.cargo\bin\msedgedriver-tool.exe')
+}
+finally {
+    Pop-Location
+}
+Copy-Item (Join-Path $e2eDriverDir 'msedgedriver.exe') (Join-Path $env:USERPROFILE '.cargo\bin\msedgedriver.exe') -Force
+```
+
+Build the actual desktop executable, then run the smoke flows:
+
+```powershell
+npm ci
+npm run tauri -- build --no-bundle
+npm run test:e2e
+```
+
+`npm run test:e2e` expects `src-tauri/target/release/yerminal.exe` to exist. The driver and Edge versions must match; regenerate `msedgedriver.exe` after Edge updates. These local E2E tests are not part of CI.
 
 ## Configuration
 
