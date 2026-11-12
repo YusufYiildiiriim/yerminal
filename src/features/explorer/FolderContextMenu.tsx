@@ -81,6 +81,10 @@ export function FolderContextMenu({ target, onClose, onAction }: {
 
   if (!target) return null;
 
+  // Theme tokens live on .app-shell[data-theme], so the menu must portal inside
+  // it to resolve var(--theme-*); position: fixed keeps viewport coordinates.
+  const portalHost = document.querySelector<HTMLElement>(".app-shell") ?? document.body;
+
   const items: FolderContextMenuItem[] = [...MENU_ITEMS];
   if (target.isWorkspaceRoot) items.push({ action: "remove-folder", label: "Remove from Workspace" });
 
@@ -105,6 +109,6 @@ export function FolderContextMenu({ target, onClose, onAction }: {
         </Fragment>
       ))}
     </div>,
-    document.body,
+    portalHost,
   );
 }
