@@ -61,13 +61,7 @@ fn write_terminal(
     session_id: String,
     data: String,
 ) -> Result<(), String> {
-    // Release the global manager lock before the blocking PTY write so one
-    // stalled terminal cannot freeze every other terminal command.
-    let input = manager
-        .lock()
-        .map_err(|_| "Terminal manager is unavailable".to_owned())?
-        .input(&session_id)?;
-    input.write(&data)
+    terminal::write_to_session(&manager, &session_id, &data)
 }
 
 #[tauri::command]

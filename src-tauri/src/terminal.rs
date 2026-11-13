@@ -245,6 +245,23 @@ fn validate_terminal_input(data: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Writes `data` to a session behind the shared manager mutex. The session
+/// handle is taken under the lock and the guard is dropped before the
+/// (potentially blocking) PTY write, so one stalled terminal cannot freeze
+/// every other terminal command.
+pub fn write_to_session(
+    manager: &Mutex<SessionManager>,
+    session_id: &str,
+    data: &str,
+) -> Result<(), String> {
+    validate_terminal_input(data)?;
+    let input = manager
+        .lock()
+        .map_err(|_| "Terminal manager is unavailable".to_owned())?
+        .input(session_id)?;
+    input.write(data)
+}
+
 /// Write handle for one terminal session that does not borrow the
 /// `SessionManager`, so the global manager lock is not held while writing.
 pub struct TerminalInput(Arc<TerminalSession>);
@@ -1129,6 +1146,73 @@ mod tests {
         };
         let events = collect_reader_events(&mut reader, &gate);
         assert_eq!(events, vec!["output:before".to_owned()]);
+    }
+
+    /// A PTY writer that blocks its first write until released, standing in
+    /// for a shell that is not draining its input.
+    struct BlockingWriter {
+        entered: std::sync::mpsc::Sender<()>,
+        release: std::sync::mpsc::Receiver<()>,
+        blocked_once: bool,
+    }
+
+    impl Write for BlockingWriter {
+        fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+            if !self.blocked_once {
+                self.blocked_once = true;
+                let _ = self.entered.send(());
+                let _ = self
+                    .release
+                    .recv_timeout(std::time::Duration::from_secs(10));
+            }
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn write_to_session_releases_the_manager_lock_during_the_pty_write() {
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let session = fake_session_with(
+            FakeChild {
+                exited: false,
+                try_wait_fails: false,
+            },
+            Some(Box::new(BlockingWriter {
+                entered: entered_tx,
+                release: release_rx,
+                blocked_once: false,
+            })),
+        );
+        let manager = Arc::new(Mutex::new(SessionManager::default()));
+        manager
+            .lock()
+            .unwrap()
+            .sessions
+            .insert("slow".to_owned(), session);
+
+        let writer_manager = Arc::clone(&manager);
+        let writer = std::thread::spawn(move || {
+            write_to_session(&writer_manager, "slow", "input")
+        });
+        entered_rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("writer reached the PTY");
+
+        let lock_free_during_write = manager.try_lock().is_ok();
+        release_tx.send(()).expect("release writer");
+        writer
+            .join()
+            .expect("writer thread")
+            .expect("write succeeds");
+        assert!(
+            lock_free_during_write,
+            "the manager lock must not be held while the PTY write blocks"
+        );
     }
 
     #[test]
