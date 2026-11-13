@@ -181,3 +181,24 @@ describe("merging groups", () => {
     for (const share of Object.values(shares)) expect(share).toBeGreaterThanOrEqual(1 / 4 - 1e-9);
   });
 });
+
+describe("closing the first group", () => {
+  it("merges into the next group and keeps a different active group", () => {
+    let state = createTerminalGroup(createTerminalGroup(createInitialTerminalGroups()));
+    state = {
+      ...state,
+      groups: [
+        { ...state.groups[0], terminalIds: ["a"], activeTerminalId: "a", layout: { type: "terminal", sessionId: "a" } },
+        { ...state.groups[1], terminalIds: ["b"], activeTerminalId: "b", layout: { type: "terminal", sessionId: "b" } },
+        { ...state.groups[2], terminalIds: ["c"], activeTerminalId: "c", layout: { type: "terminal", sessionId: "c" } },
+      ],
+      activeGroupId: state.groups[2].id,
+    };
+    const [first, second, third] = state.groups;
+    const closed = closeTerminalGroup(state, first.id);
+    expect(closed.groups.map((group) => group.id)).toEqual([second.id, third.id]);
+    expect(closed.groups[0].terminalIds).toEqual(["b", "a"]);
+    expect(closed.groups[1]).toBe(third);
+    expect(closed.activeGroupId).toBe(third.id);
+  });
+});
