@@ -9,12 +9,18 @@ const tauriMocks = vi.hoisted(() => ({
   open: vi.fn(),
   listen: vi.fn(async () => () => {}),
   onFocusChanged: vi.fn(async () => () => {}),
+  onCloseRequested: vi.fn(),
+  unlistenCloseRequested: vi.fn(),
+  destroy: vi.fn(async () => {}),
+  closeRequestedHandler: null as null | ((event: { preventDefault: () => void }) => unknown),
   openUrl: vi.fn(),
   revealItemInDir: vi.fn(),
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: tauriMocks.invoke, isTauri: tauriMocks.isTauri }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: tauriMocks.listen }));
-vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ onFocusChanged: tauriMocks.onFocusChanged }) }));
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ onFocusChanged: tauriMocks.onFocusChanged, onCloseRequested: tauriMocks.onCloseRequested, destroy: tauriMocks.destroy }),
+}));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: tauriMocks.open }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: tauriMocks.openUrl, revealItemInDir: tauriMocks.revealItemInDir }));
 vi.mock("../src/features/terminal/TerminalPane", () => ({ default: () => <div aria-label="Terminal session" /> }));
@@ -88,6 +94,15 @@ beforeEach(() => {
   tauriMocks.listen.mockImplementation(async () => () => {});
   tauriMocks.onFocusChanged.mockReset();
   tauriMocks.onFocusChanged.mockImplementation(async () => () => {});
+  tauriMocks.closeRequestedHandler = null;
+  tauriMocks.unlistenCloseRequested.mockReset();
+  tauriMocks.destroy.mockReset();
+  tauriMocks.destroy.mockResolvedValue(undefined);
+  tauriMocks.onCloseRequested.mockReset();
+  tauriMocks.onCloseRequested.mockImplementation(async (handler: (event: { preventDefault: () => void }) => unknown) => {
+    tauriMocks.closeRequestedHandler = handler;
+    return tauriMocks.unlistenCloseRequested;
+  });
   openMock.mockReset();
   openMock.mockResolvedValue([rootPath]);
 });
@@ -328,6 +343,69 @@ describe("Closing editor tabs", () => {
 
     finishWrite();
     expect(await screen.findByText("Unsaved changes", { selector: ".code-editor-statusbar span" })).toBeInTheDocument();
+  });
+});
+
+describe("Native window close guard", () => {
+  async function requestClose() {
+    await waitFor(() => expect(tauriMocks.closeRequestedHandler).not.toBeNull());
+    const event = { preventDefault: vi.fn() };
+    await act(async () => { await tauriMocks.closeRequestedHandler!(event); });
+    return event;
+  }
+
+  it("lets the window close normally when no editor tab is unsaved", async () => {
+    const user = userEvent.setup();
+    seedWorkspace();
+    const confirm = vi.spyOn(window, "confirm");
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /notes/ }));
+    await screen.findByRole("textbox", { name: "Edit notes.txt" });
+
+    const event = await requestClose();
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(tauriMocks.destroy).not.toHaveBeenCalled();
+  });
+
+  it("keeps the window open when closing with unsaved files is cancelled", async () => {
+    const user = userEvent.setup();
+    seedWorkspace();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<App />);
+    await openNotesAndEdit(user, "unsaved");
+
+    const event = await requestClose();
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm.mock.calls[0][0]).toMatch(/unsaved changes.*notes\.txt/i);
+    expect(tauriMocks.destroy).not.toHaveBeenCalled();
+  });
+
+  it("destroys the window after the user confirms discarding unsaved files", async () => {
+    const user = userEvent.setup();
+    seedWorkspace();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<App />);
+    await openNotesAndEdit(user, "unsaved");
+
+    const event = await requestClose();
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(tauriMocks.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops listening on unmount and does not register outside Tauri", async () => {
+    seedWorkspace();
+    const { unmount } = render(<App />);
+    await waitFor(() => expect(tauriMocks.onCloseRequested).toHaveBeenCalledTimes(1));
+    unmount();
+    await waitFor(() => expect(tauriMocks.unlistenCloseRequested).toHaveBeenCalledTimes(1));
+
+    tauriMocks.onCloseRequested.mockClear();
+    tauriMocks.isTauri.mockReturnValue(false);
+    render(<App />);
+    await act(async () => {});
+    expect(tauriMocks.onCloseRequested).not.toHaveBeenCalled();
   });
 });
 

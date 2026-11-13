@@ -675,6 +675,38 @@ function App() {
     return () => window.removeEventListener("beforeunload", blockUnload);
   }, [hasUnsavedEditorTabs]);
 
+  const editorWorkspacesRef = useRef(editorWorkspaces);
+  editorWorkspacesRef.current = editorWorkspaces;
+
+  // The native close button does not go through beforeunload, so guard it in Tauri as well.
+  useEffect(() => {
+    if (!isTauri()) return;
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+    void (async () => {
+      try {
+        const appWindow = getCurrentWindow();
+        const stop = await appWindow.onCloseRequested(async (event) => {
+          const unsavedNames = [...new Set(Object.values(editorWorkspacesRef.current)
+            .flatMap((workspace) => workspace.tabs)
+            .filter((tab) => tab.isSaving || isEditorTabUnsaved(tab))
+            .map((tab) => tab.name))];
+          if (unsavedNames.length === 0) return;
+          event.preventDefault();
+          if (window.confirm(`Discard unsaved changes to ${unsavedNames.join(", ")} and close Yerminal?`)) await appWindow.destroy();
+        });
+        if (cancelled) stop();
+        else unlisten = stop;
+      } catch {
+        // Without the listener the window still closes; beforeunload remains the fallback.
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
   const createEditorGroup = useCallback(() => {
     const workspaceId = activeTerminalWorkspace?.id;
     if (!workspaceId) return;
