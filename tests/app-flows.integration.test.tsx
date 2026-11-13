@@ -374,7 +374,8 @@ describe("Workspace deletion with unsaved editor tabs", () => {
   });
 
   it("drops the deleted workspace's editor state so auto-save never writes its tabs", async () => {
-    const user = userEvent.setup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     seedTwoWorkspaces({ autoSave: true });
     vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<App />);
@@ -383,7 +384,8 @@ describe("Workspace deletion with unsaved editor tabs", () => {
     await user.click(screen.getByRole("button", { name: "Delete workspace" }));
     await waitFor(() => expect(JSON.parse(localStorage.getItem("yerminal.terminal-workspaces") ?? "{}").workspaces).toHaveLength(1));
 
-    await new Promise((resolve) => setTimeout(resolve, 1400));
+    // Well past the 1s auto-save debounce.
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
     expect(writeCalls()).toHaveLength(0);
   });
 });
