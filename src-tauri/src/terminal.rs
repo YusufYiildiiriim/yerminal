@@ -333,12 +333,14 @@ impl SessionManager {
     /// process has exited is reaped instead, so `create` spawns a fresh one
     /// rather than reattaching the UI to a dead terminal.
     fn existing_info(&mut self, id: &str) -> Option<TerminalInfo> {
+        // Only a reported exit status proves the process is gone; a wait error
+        // or a poisoned lock keeps the session rather than killing a live shell.
         let exited = self.sessions.get(id).is_some_and(|session| {
             session
                 .child
                 .lock()
-                .map(|mut child| !matches!(child.try_wait(), Ok(None)))
-                .unwrap_or(true)
+                .map(|mut child| matches!(child.try_wait(), Ok(Some(_))))
+                .unwrap_or(false)
         });
         if exited {
             let _ = self.close(id);
@@ -977,6 +979,7 @@ mod tests {
     #[derive(Debug)]
     struct FakeChild {
         exited: bool,
+        try_wait_fails: bool,
     }
 
     impl portable_pty::ChildKiller for FakeChild {
@@ -988,12 +991,16 @@ mod tests {
         fn clone_killer(&self) -> Box<dyn portable_pty::ChildKiller + Send + Sync> {
             Box::new(FakeChild {
                 exited: self.exited,
+                try_wait_fails: self.try_wait_fails,
             })
         }
     }
 
     impl Child for FakeChild {
         fn try_wait(&mut self) -> std::io::Result<Option<portable_pty::ExitStatus>> {
+            if self.try_wait_fails {
+                return Err(std::io::Error::other("transient wait failure"));
+            }
             Ok(self
                 .exited
                 .then(|| portable_pty::ExitStatus::with_exit_code(0)))
@@ -1017,10 +1024,26 @@ mod tests {
     /// A session backed by a real (child-less) PTY and a fake child process,
     /// so lifecycle logic can be tested without an AppHandle.
     fn fake_session(exited: bool) -> Arc<TerminalSession> {
+        fake_session_with(
+            FakeChild {
+                exited,
+                try_wait_fails: false,
+            },
+            None,
+        )
+    }
+
+    fn fake_session_with(
+        child: FakeChild,
+        writer: Option<Box<dyn Write + Send>>,
+    ) -> Arc<TerminalSession> {
         let pair = native_pty_system()
             .openpty(PtySize::default())
             .expect("open test pty");
-        let writer = pair.master.take_writer().expect("take test pty writer");
+        let writer = match writer {
+            Some(writer) => writer,
+            None => pair.master.take_writer().expect("take test pty writer"),
+        };
         Arc::new(TerminalSession {
             process_id: None,
             process_start_time: None,
@@ -1028,7 +1051,7 @@ mod tests {
             working_directory: "fake-cwd".to_owned(),
             writer: Mutex::new(writer),
             master: Mutex::new(pair.master),
-            child: Mutex::new(Box::new(FakeChild { exited })),
+            child: Mutex::new(Box::new(child)),
             output_history: Arc::new(Mutex::new(TerminalOutputHistory::default())),
             output_gate: Arc::new(OutputGate::new()),
         })
@@ -1106,6 +1129,41 @@ mod tests {
         };
         let events = collect_reader_events(&mut reader, &gate);
         assert_eq!(events, vec!["output:before".to_owned()]);
+    }
+
+    #[test]
+    fn existing_info_keeps_sessions_whose_status_cannot_be_read() {
+        let mut manager = SessionManager::default();
+        manager.sessions.insert(
+            "flaky".to_owned(),
+            fake_session_with(
+                FakeChild {
+                    exited: false,
+                    try_wait_fails: true,
+                },
+                None,
+            ),
+        );
+        assert!(
+            manager.existing_info("flaky").is_some(),
+            "a try_wait error is not proof the process exited"
+        );
+        assert!(manager.sessions.contains_key("flaky"));
+
+        let poisoned = fake_session(false);
+        let holder = Arc::clone(&poisoned);
+        let _ = std::thread::spawn(move || {
+            let _guard = holder.child.lock().unwrap();
+            panic!("poison the child lock");
+        })
+        .join();
+        assert!(poisoned.child.is_poisoned());
+        manager.sessions.insert("poisoned".to_owned(), poisoned);
+        assert!(
+            manager.existing_info("poisoned").is_some(),
+            "a poisoned lock is not proof the process exited"
+        );
+        assert!(manager.sessions.contains_key("poisoned"));
     }
 
     #[test]
