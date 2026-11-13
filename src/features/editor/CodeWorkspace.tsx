@@ -73,6 +73,8 @@ type EditorGroupPaneProps = {
   onCloseGroup: (groupId: string) => void;
 };
 
+const HIGHLIGHT_DEBOUNCE_MS = 150;
+
 function normalizeNewlines(content: string | null): string {
   return (content ?? "").replace(/\r\n/g, "\n");
 }
@@ -104,8 +106,17 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
   const groupTabs = group.tabIds.map((id) => tabs.find((tab) => tab.id === id)).filter((tab): tab is EditorFileTab => Boolean(tab));
   const activeTab = groupTabs.find((tab) => tab.id === group.activeTabId) ?? null;
   const language = useMemo(() => activeTab ? detectLanguage(activeTab.path) : null, [activeTab?.path]);
-  const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
+  // The last highlight is kept (tagged with its tab, language and source text) until a newer one is ready,
+  // so edits never flash the editor back to plain text between keystrokes.
+  const [highlight, setHighlight] = useState<{ key: string; source: string; html: string } | null>(null);
   const [highlighting, setHighlighting] = useState(false);
+  const highlightKey = activeTab && language?.id ? activeTab.id + "\u0000" + language.id : null;
+  const currentHighlight = highlight && highlight.key === highlightKey ? highlight : null;
+  const highlightedHtml = currentHighlight?.html ?? null;
+  // The editable overlay is the only visible text (the textarea is transparent), so it must match exactly.
+  const editableHighlightedHtml = currentHighlight && currentHighlight.source === activeTab?.content ? currentHighlight.html : null;
+  const highlightRef = useRef(highlight);
+  highlightRef.current = highlight;
   const editorContentRef = useRef<HTMLDivElement>(null);
   const [editorViewport, setEditorViewport] = useState({ top: 0, size: 1 });
   const isReadOnly = Boolean(activeTab?.sourceCommitId) || activeTab?.view === "diff";
@@ -140,19 +151,28 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
   };
 
   useEffect(() => {
-    let current = true;
-    setHighlightedHtml(null);
-    if (!activeTab || activeTab.status !== "ready" || activeTab.content === null || activeTab.view === "diff" || !language?.id || language.id === "plaintext") {
+    if (!activeTab || !highlightKey || activeTab.status !== "ready" || activeTab.content === null || activeTab.view === "diff" || !language?.id || language.id === "plaintext") {
       setHighlighting(false);
-      return () => { current = false; };
+      return;
     }
+    let current = true;
+    const source = activeTab.content;
+    const languageId = language.id;
+    const key = highlightKey;
     setHighlighting(true);
-    void highlightCode(activeTab.content, language.id)
-      .then((html) => { if (current) setHighlightedHtml(html); })
-      .catch(() => { if (current) setHighlightedHtml(null); })
-      .finally(() => { if (current) setHighlighting(false); });
-    return () => { current = false; };
-  }, [activeTab?.content, activeTab?.id, activeTab?.status, language?.id]);
+    // Highlight a freshly opened tab right away; debounce re-highlighting while its text is being edited.
+    const delay = highlightRef.current?.key === key ? HIGHLIGHT_DEBOUNCE_MS : 0;
+    const timer = window.setTimeout(() => {
+      void highlightCode(source, languageId)
+        .then((html) => { if (current) setHighlight({ key, source, html }); })
+        .catch(() => { if (current) setHighlight(null); })
+        .finally(() => { if (current) setHighlighting(false); });
+    }, delay);
+    return () => {
+      current = false;
+      window.clearTimeout(timer);
+    };
+  }, [activeTab?.content, activeTab?.id, activeTab?.status, activeTab?.view, highlightKey, language?.id]);
 
   return <section
     className={"editor-group-pane" + (isActive ? " active" : "") + (layoutMode === "free" ? " free" : "")}
@@ -229,7 +249,7 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
         setEditorViewport({ top: element.scrollTop / Math.max(1, element.scrollHeight), size: Math.min(1, element.clientHeight / Math.max(1, element.scrollHeight)) });
       }}>
         {activeTab.view === "diff" ? activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this diff</strong><span>{activeTab.error}</span></div> : <DiffView diff={activeTab.content ?? ""} path={activeTab.path} root={activeTab.root} staged={activeTab.diffStaged === true} loading={activeTab.status === "loading"} emptyMessage="No diff available for this selection." /> : activeTab.status === "loading" ? <div className="code-editor-message" role="status"><span className="editor-loading-indicator" /><span>Loading file content…</span></div> : activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this file</strong><span>{activeTab.error}</span></div> : isReadOnly ? highlightedHtml ? <div className="code-editor-highlighted" dangerouslySetInnerHTML={{ __html: highlightedHtml }} /> : <pre className={"code-editor-plain" + (highlighting ? " is-highlighting" : "")} tabIndex={0} aria-label={"Contents of " + activeTab.name}><code>{activeTab.content}</code></pre> : <div className="code-editor-editable-surface">
-          <div className="code-editor-editable-highlight" aria-hidden="true">{highlightedHtml ? <div className="code-editor-highlighted" dangerouslySetInnerHTML={{ __html: highlightedHtml }} /> : <pre className="code-editor-plain"><code>{activeTab.content}</code></pre>}</div>
+          <div className="code-editor-editable-highlight" aria-hidden="true">{editableHighlightedHtml ? <div className="code-editor-highlighted" dangerouslySetInnerHTML={{ __html: editableHighlightedHtml }} /> : <pre className="code-editor-plain"><code>{activeTab.content}</code></pre>}</div>
           <textarea className="code-editor-input" aria-label={"Edit " + activeTab.name} autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false} value={activeTab.content ?? ""} onChange={(event) => onChange(activeTab.id, event.currentTarget.value)} onKeyDown={(event) => {
             if (event.key !== "Tab") return;
             event.preventDefault();
