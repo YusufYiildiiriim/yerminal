@@ -73,7 +73,7 @@ describe("CodeWorkspace syntax highlighting", () => {
     expect(editableHtml()).toBe(html("const a = 1234;"));
   });
 
-  it("ignores a highlight result for content that has since changed", async () => {
+  it("guard: drops a highlight result that resolves after the content changed (existing behaviour, fails if the stale check is removed)", async () => {
     const pending: Array<{ code: string; resolve: (value: string) => void }> = [];
     highlighter.highlightCode.mockImplementation((code: string) => new Promise<string>((resolve) => pending.push({ code, resolve })));
     const view = render(workspace("const a = 1;"));
