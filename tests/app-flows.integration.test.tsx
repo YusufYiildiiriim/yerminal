@@ -480,7 +480,7 @@ describe("Stored settings and workspace migration", () => {
     expect(rootStyle().getPropertyValue("--terminal-font-size")).toBe("13px");
   });
 
-  it("clamps out-of-range font sizes to 8-40px and rejects unknown values", async () => {
+  it("clamps out-of-range font sizes to the settings dialog's 8-32px range and rejects unknown values", async () => {
     localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({
       theme: "neon",
       editorFontSize: 99,
@@ -491,13 +491,21 @@ describe("Stored settings and workspace migration", () => {
     }));
     render(<App />);
 
-    await waitFor(() => expect(rootStyle().getPropertyValue("--editor-font-size")).toBe("40px"));
+    await waitFor(() => expect(rootStyle().getPropertyValue("--editor-font-size")).toBe("32px"));
     expect(rootStyle().getPropertyValue("--terminal-font-size")).toBe("8px");
     expect(document.documentElement).toHaveAttribute("data-theme", "obsidian");
     expect(rootStyle().getPropertyValue("--editor-font-family")).toBe('"Cascadia Code", Consolas, monospace');
     expect(JSON.parse(localStorage.getItem("yerminal.app-settings.v1") ?? "{}")).toMatchObject({
-      theme: "obsidian", editorFontSize: 40, terminalFontSize: 8, quickOpenScope: "active", autoSave: false,
+      theme: "obsidian", editorFontSize: 32, terminalFontSize: 8, quickOpenScope: "active", autoSave: false,
     });
+  });
+
+  it("clamps stored sizes between 32 and 40px down to 32px for the editor and the terminal", async () => {
+    localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({ editorFontSize: 36, terminalFontSize: 40 }));
+    render(<App />);
+
+    await waitFor(() => expect(rootStyle().getPropertyValue("--editor-font-size")).toBe("32px"));
+    expect(rootStyle().getPropertyValue("--terminal-font-size")).toBe("32px");
   });
 
   it("migrates the legacy single-workspace folder list into a terminal workspace", async () => {

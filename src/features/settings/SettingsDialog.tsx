@@ -3,6 +3,12 @@ import "./settings.css";
 
 export type ThemeId = "obsidian" | "nordic" | "foundry";
 export type AppSettings = { theme: ThemeId; editorFontFamily: string; editorFontSize: number; terminalFontFamily: string; terminalFontSize: number; quickOpenScope: "active" | "all"; collapseOtherFolders: boolean; autoSave: boolean };
+/** Supported font sizes (px) for the editor and terminal; also used when loading stored settings. */
+export const MIN_FONT_SIZE = 8;
+export const MAX_FONT_SIZE = 32;
+export function clampFontSize(value: number): number {
+  return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, value));
+}
 type Shortcut = { keys: string; label: string };
 type Section = "appearance" | "editor" | "explorer" | "terminal" | "shortcuts";
 type Props = { settings: AppSettings; shortcuts: readonly Shortcut[]; onSettingsChange: (value: AppSettings) => void; onClose: () => void };
@@ -20,7 +26,7 @@ const themes: { id: ThemeId; label: string; description: string }[] = [
 function FontFields({ family, size, onFamily, onSize }: { family: string; size: number; onFamily: (value: string) => void; onSize: (value: number) => void }) {
   return <div className="settings-fields">
     <label className="settings-field"><span><strong>Font family</strong><small>A CSS font stack, in order of preference.</small></span><input type="text" value={family} maxLength={250} onChange={(event) => onFamily(event.currentTarget.value)} /></label>
-    <label className="settings-field"><span><strong>Font size</strong><small>Choose a comfortable reading size.</small></span><span className="settings-size"><input type="number" min={8} max={32} value={size} onChange={(event) => { const value = event.currentTarget.valueAsNumber; if (Number.isFinite(value)) onSize(Math.min(32, Math.max(8, value))); }} /> px</span></label>
+    <label className="settings-field"><span><strong>Font size</strong><small>Choose a comfortable reading size.</small></span><span className="settings-size"><input type="number" min={MIN_FONT_SIZE} max={MAX_FONT_SIZE} value={size} onChange={(event) => { const value = event.currentTarget.valueAsNumber; if (Number.isFinite(value)) onSize(clampFontSize(value)); }} /> px</span></label>
   </div>;
 }
 export function SettingsDialog({ settings, shortcuts, onSettingsChange, onClose }: Props) {

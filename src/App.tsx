@@ -13,7 +13,7 @@ import type { EditorLayoutMode } from "./features/editor/floatingEditorLayout";
 import { FloatingTerminalDockGuides, FloatingTerminalModeToggle } from "./features/terminal/FloatingTerminalLayoutControls";
 import { useFloatingTerminalLayout, type TerminalDockEdge, type TerminalLayoutMode } from "./features/terminal/floatingTerminalLayout";
 import { ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { SettingsDialog, type AppSettings } from "./features/settings/SettingsDialog";
+import { clampFontSize, SettingsDialog, type AppSettings } from "./features/settings/SettingsDialog";
 import { WorkspaceViewLayout } from "./features/workspace/WorkspaceViewLayout";
 import { FolderContextMenu, type FolderContextMenuAction, type FolderContextMenuTarget } from "./features/explorer/FolderContextMenu";
 import { appendTerminalToLayout, closeTerminalGroup as closeTerminalGroupState, createInitialTerminalGroups, createTerminalGroup, moveTerminalBetweenGroups, openFolderInNewTerminal, removeTerminalFromGroups, selectTerminalGroup as selectTerminalGroupState, type TerminalGroup } from "./features/terminal/terminalWorkspaceActions";
@@ -261,8 +261,8 @@ function readAppSettings(): AppSettings {
       theme: raw.theme === "nordic" || raw.theme === "foundry" ? raw.theme : "obsidian",
       editorFontFamily: typeof raw.editorFontFamily === "string" && raw.editorFontFamily.trim() ? raw.editorFontFamily : DEFAULT_SETTINGS.editorFontFamily,
       terminalFontFamily: typeof raw.terminalFontFamily === "string" && raw.terminalFontFamily.trim() ? raw.terminalFontFamily : DEFAULT_SETTINGS.terminalFontFamily,
-      editorFontSize: typeof raw.editorFontSize === "number" && Number.isFinite(raw.editorFontSize) ? Math.max(8, Math.min(40, raw.editorFontSize)) : DEFAULT_SETTINGS.editorFontSize,
-      terminalFontSize: typeof raw.terminalFontSize === "number" && Number.isFinite(raw.terminalFontSize) ? Math.max(8, Math.min(40, raw.terminalFontSize)) : DEFAULT_SETTINGS.terminalFontSize,
+      editorFontSize: typeof raw.editorFontSize === "number" && Number.isFinite(raw.editorFontSize) ? clampFontSize(raw.editorFontSize) : DEFAULT_SETTINGS.editorFontSize,
+      terminalFontSize: typeof raw.terminalFontSize === "number" && Number.isFinite(raw.terminalFontSize) ? clampFontSize(raw.terminalFontSize) : DEFAULT_SETTINGS.terminalFontSize,
       quickOpenScope: raw.quickOpenScope === "all" ? "all" : "active",
       collapseOtherFolders: raw.collapseOtherFolders === true,
       autoSave: raw.autoSave === true,
