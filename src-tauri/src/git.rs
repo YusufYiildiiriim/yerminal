@@ -65,11 +65,7 @@ pub fn repository_info(path: &str) -> Result<RepositoryInfo, String> {
         .unwrap_or_else(|| repo.path())
         .to_string_lossy()
         .into_owned();
-    let branch = repo
-        .head()
-        .ok()
-        .and_then(|head| head.shorthand().map(str::to_owned))
-        .unwrap_or_else(|| "(detached HEAD)".to_owned());
+    let branch = head_label(&repo);
     let state = match repo.state() {
         RepositoryState::Clean => "clean",
         RepositoryState::Merge => "merge in progress",
@@ -90,6 +86,25 @@ pub fn repository_info(path: &str) -> Result<RepositoryInfo, String> {
         branch,
         state,
     })
+}
+
+/// Branch label for HEAD: the branch name (also for an unborn branch with no
+/// commits yet), or "(detached HEAD)" when HEAD points directly at a commit.
+fn head_label(repo: &Repository) -> String {
+    const DETACHED: &str = "(detached HEAD)";
+    if repo.head_detached().unwrap_or(false) {
+        return DETACHED.to_owned();
+    }
+    let Ok(head) = repo.find_reference("HEAD") else {
+        return DETACHED.to_owned();
+    };
+    match head.symbolic_target() {
+        Some(target) => target
+            .strip_prefix("refs/heads/")
+            .unwrap_or(target)
+            .to_owned(),
+        None => DETACHED.to_owned(),
+    }
 }
 
 pub fn status(path: &str) -> Result<Vec<FileChange>, String> {
@@ -775,7 +790,15 @@ mod tests {
     fn repository_info_reports_unborn_head_and_rejects_non_repositories() {
         let (dir, path) = init_repo();
         let info = repository_info(&path).expect("repository info");
-        assert_eq!(info.branch, "(detached HEAD)");
+        let expected = git2::Repository::open(dir.path())
+            .unwrap()
+            .find_reference("HEAD")
+            .unwrap()
+            .symbolic_target()
+            .unwrap()
+            .trim_start_matches("refs/heads/")
+            .to_owned();
+        assert_eq!(info.branch, expected, "unborn HEAD reports its branch name");
         assert_eq!(info.state, "clean");
 
         let outside = tempfile::tempdir().expect("create outside temp directory");
@@ -785,6 +808,19 @@ mod tests {
         assert!(error.contains("No Git repository found"), "{error}");
 
         let _ = dir;
+    }
+
+    #[test]
+    fn repository_info_labels_detached_head() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "readme.md", "# repo");
+        let oid = stage_and_commit(&path, "readme.md", "initial commit");
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        repo.set_head_detached(git2::Oid::from_str(&oid).unwrap())
+            .expect("detach HEAD");
+
+        let info = repository_info(&path).expect("repository info");
+        assert_eq!(info.branch, "(detached HEAD)");
     }
 
     #[test]
