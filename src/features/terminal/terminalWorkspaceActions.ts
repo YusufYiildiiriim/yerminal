@@ -35,9 +35,9 @@ export function closeTerminalGroup(state: TerminalGroups, groupId: string): Term
   const destinationIndex = closingIndex > 0 ? closingIndex - 1 : 1;
   const closing = state.groups[closingIndex];
   const destination = state.groups[destinationIndex];
-  const terminalIds = [...destination.terminalIds, ...closing.terminalIds.filter((id) => !destination.terminalIds.includes(id))];
-  let layout = layoutForGroup(destination);
-  for (const sessionId of closing.terminalIds) layout = appendTerminalToLayout(layout, sessionId);
+  const incomingIds = closing.terminalIds.filter((id) => !destination.terminalIds.includes(id));
+  const terminalIds = [...destination.terminalIds, ...incomingIds];
+  const layout = mergeLayouts(layoutForGroup(destination), incomingLayout(closing, incomingIds));
   const groups = state.groups.filter((group) => group.id !== groupId).map((group) => group.id === destination.id
     ? { ...group, terminalIds, activeTerminalId: closing.activeTerminalId ?? group.activeTerminalId ?? terminalIds[0] ?? null, layout }
     : group);
@@ -84,6 +84,31 @@ export function buildEvenTerminalLayout(sessionIds: string[]): TerminalLayoutNod
   const remainder = buildEvenTerminalLayout(rest);
   if (!remainder) return terminal;
   return { type: "split", id: crypto.randomUUID(), direction: "horizontal", ratio: 1 / sessionIds.length, children: [terminal, remainder] };
+}
+
+function layoutLeafCount(node: TerminalLayoutNode): number {
+  return node.type === "terminal" ? 1 : layoutLeafCount(node.children[0]) + layoutLeafCount(node.children[1]);
+}
+
+function layoutLeafIds(node: TerminalLayoutNode | null): string[] {
+  if (!node) return [];
+  return node.type === "terminal" ? [node.sessionId] : [...layoutLeafIds(node.children[0]), ...layoutLeafIds(node.children[1])];
+}
+
+/** Reuses the closing group's own layout when it holds exactly the incoming sessions. */
+function incomingLayout(group: TerminalGroup, incomingIds: string[]): TerminalLayoutNode | null {
+  const existing = layoutLeafIds(group.layout);
+  const sameSessions = existing.length === incomingIds.length && incomingIds.every((id) => existing.includes(id));
+  return sameSessions ? group.layout : buildEvenTerminalLayout(incomingIds);
+}
+
+/** Places two layouts side by side, sizing each side by how many terminals it holds. */
+function mergeLayouts(first: TerminalLayoutNode | null, second: TerminalLayoutNode | null): TerminalLayoutNode | null {
+  if (!first) return second;
+  if (!second) return first;
+  const firstCount = layoutLeafCount(first);
+  const ratio = firstCount / (firstCount + layoutLeafCount(second));
+  return { type: "split", id: crypto.randomUUID(), direction: "horizontal", ratio, children: [first, second] };
 }
 
 function removeTerminal(layout: TerminalLayoutNode | null, sessionId: string): TerminalLayoutNode | null {

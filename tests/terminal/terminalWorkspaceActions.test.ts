@@ -156,3 +156,28 @@ describe("null layouts", () => {
     expect(layoutSessionIds(closed.groups[0].layout)).toEqual(["a", "b", "c"]);
   });
 });
+
+function areaShares(node: TerminalLayoutNode | null, share = 1, shares: Record<string, number> = {}): Record<string, number> {
+  if (!node) return shares;
+  if (node.type === "terminal") {
+    shares[node.sessionId] = share;
+    return shares;
+  }
+  areaShares(node.children[0], share * node.ratio, shares);
+  areaShares(node.children[1], share * (1 - node.ratio), shares);
+  return shares;
+}
+
+describe("merging groups", () => {
+  it("gives every terminal an even share when a group is closed into its neighbour", () => {
+    const withSecond = createTerminalGroup(createInitialTerminalGroups());
+    const groups = [
+      { ...withSecond.groups[0], terminalIds: ["a"], activeTerminalId: "a", layout: { type: "terminal" as const, sessionId: "a" } },
+      { ...withSecond.groups[1], terminalIds: ["b", "c", "d"], activeTerminalId: "b", layout: null },
+    ];
+    const closed = closeTerminalGroup({ groups, activeGroupId: groups[0].id }, groups[1].id);
+    const shares = areaShares(closed.groups[0].layout);
+    expect(Object.keys(shares).sort()).toEqual(["a", "b", "c", "d"]);
+    for (const share of Object.values(shares)) expect(share).toBeGreaterThanOrEqual(1 / 4 - 1e-9);
+  });
+});
