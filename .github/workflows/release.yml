@@ -17,7 +17,7 @@ jobs:
     name: Create draft release
     permissions:
       contents: write
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     outputs:
       release_id: ${{ steps.create.outputs.release_id }}
       tag_name: ${{ steps.create.outputs.tag_name }}
@@ -63,7 +63,7 @@ jobs:
                 'SmartScreen warning. See the README for local build instructions and current',
                 'platform support status.',
                 '',
-                'This release is published after all platform builds finish successfully.',
+                'This release is published after the Windows build finishes successfully.',
               ].join('\n');
               ({ data: release } = await github.rest.repos.createRelease({
                 owner: context.repo.owner,
@@ -91,8 +91,6 @@ jobs:
         include:
           - platform: windows-latest
             bundles: nsis,msi
-          - platform: ubuntu-22.04
-            bundles: appimage,deb
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v5
@@ -104,22 +102,6 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes \
-            build-essential \
-            curl \
-            file \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libxdo-dev \
-            libwebkit2gtk-4.1-dev \
-            patchelf \
-            xdg-utils
 
       - name: Install frontend dependencies
         run: npm ci
@@ -145,7 +127,7 @@ jobs:
     if: ${{ needs.build-upload.result == 'success' }}
     permissions:
       contents: write
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Publish draft release
         uses: actions/github-script@v8
