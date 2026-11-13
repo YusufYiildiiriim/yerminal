@@ -185,6 +185,32 @@ describe("App user flows", () => {
   });
 });
 
+describe("Window close guard", () => {
+  function dispatchBeforeUnload() {
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    return event;
+  }
+
+  it("blocks unloading only while an editor tab has unsaved changes", async () => {
+    const user = userEvent.setup();
+    seedWorkspace();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /notes/ }));
+    const editor = await screen.findByRole("textbox", { name: "Edit notes.txt" });
+    expect(dispatchBeforeUnload().defaultPrevented).toBe(false);
+
+    await user.clear(editor);
+    await user.type(editor, "edited");
+    expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
+
+    await user.clear(editor);
+    await user.type(editor, "disk baseline");
+    expect(dispatchBeforeUnload().defaultPrevented).toBe(false);
+  });
+});
+
 describe("Workspace deletion with unsaved editor tabs", () => {
   it("warns about unsaved files and keeps the workspace and edits when cancelled", async () => {
     const user = userEvent.setup();

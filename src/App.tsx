@@ -659,6 +659,22 @@ function App() {
     autoSaveQueuedRef.current.clear();
   }, []);
 
+  const hasUnsavedEditorTabs = useMemo(
+    () => Object.values(editorWorkspaces).some((workspace) => workspace.tabs.some((tab) => tab.isSaving || isEditorTabUnsaved(tab))),
+    [editorWorkspaces],
+  );
+
+  useEffect(() => {
+    if (!hasUnsavedEditorTabs) return;
+    const blockUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      // Legacy browsers only show the prompt when returnValue is set.
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", blockUnload);
+    return () => window.removeEventListener("beforeunload", blockUnload);
+  }, [hasUnsavedEditorTabs]);
+
   const createEditorGroup = useCallback(() => {
     const workspaceId = activeTerminalWorkspace?.id;
     if (!workspaceId) return;
