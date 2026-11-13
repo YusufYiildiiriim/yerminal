@@ -252,14 +252,48 @@ pub fn run() {
             watch_workspace_roots
         ])
         .on_window_event(|window, event| {
-            if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
-                if let Some(manager) = window.app_handle().try_state::<Mutex<SessionManager>>() {
-                    if let Ok(mut manager) = manager.lock() {
-                        manager.close_all();
-                    }
-                }
+            if should_close_sessions(event) {
+                close_all_sessions(window.app_handle());
             }
         })
-        .run(tauri::generate_context!())
-        .expect("failed to run yerminal");
+        .build(tauri::generate_context!())
+        .expect("failed to build yerminal")
+        .run(|app, event| {
+            // Safety net for exits that do not destroy the window first.
+            if let tauri::RunEvent::Exit = event {
+                close_all_sessions(app);
+            }
+        });
+}
+
+/// Whether a window event means the terminals should be shut down. Only
+/// `Destroyed` qualifies: `CloseRequested` fires before the frontend's
+/// unsaved-changes guard, which may still cancel the close.
+fn should_close_sessions(event: &tauri::WindowEvent) -> bool {
+    matches!(event, tauri::WindowEvent::Destroyed)
+}
+
+fn close_all_sessions(app: &tauri::AppHandle) {
+    if let Some(manager) = app.try_state::<Mutex<SessionManager>>() {
+        if let Ok(mut manager) = manager.lock() {
+            manager.close_all();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sessions_close_only_when_the_window_is_destroyed() {
+        assert!(should_close_sessions(&tauri::WindowEvent::Destroyed));
+        assert!(!should_close_sessions(&tauri::WindowEvent::Focused(false)));
+        assert!(!should_close_sessions(&tauri::WindowEvent::Moved(
+            tauri::PhysicalPosition::new(0, 0)
+        )));
+        assert!(!should_close_sessions(&tauri::WindowEvent::Resized(
+            tauri::PhysicalSize::new(800, 600)
+        )));
+    }
 }
