@@ -21,6 +21,9 @@ type DragState = {
   pointerId: number;
   offsetX: number;
   offsetY: number;
+  startX: number;
+  startY: number;
+  moved: boolean;
 };
 
 export type TerminalResizeDirection = "left" | "right" | "top" | "bottom" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -61,6 +64,7 @@ const MIN_WIDTH_PX = 240;
 const MIN_HEIGHT_PX = 160;
 const MIN_SIZE_PERCENT = 14;
 const KEYBOARD_RESIZE_STEP = 4;
+const DRAG_THRESHOLD_PX = 3;
 
 function storageKey(workspaceId: string) {
   return `${STORAGE_PREFIX}${workspaceId}`;
@@ -261,6 +265,9 @@ export function useFloatingTerminalLayout(
       pointerId: event.pointerId,
       offsetX: event.clientX - paneBounds.left,
       offsetY: event.clientY - paneBounds.top,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
     };
     setDraggingSessionId(sessionId);
   }, []);
@@ -274,6 +281,7 @@ export function useFloatingTerminalLayout(
     if (!bounds || !pane) return;
     const paneBounds = pane.getBoundingClientRect();
     const current = getRect(sessionId);
+    if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >= DRAG_THRESHOLD_PX) drag.moved = true;
     const maxX = Math.max(0, (bounds.width - paneBounds.width) / bounds.width * 100);
     const maxY = Math.max(0, (bounds.height - paneBounds.height) / bounds.height * 100);
     const x = Math.max(0, Math.min(maxX, (event.clientX - drag.offsetX - bounds.left) / bounds.width * 100));
@@ -282,14 +290,14 @@ export function useFloatingTerminalLayout(
       const target = value.workspaceId === workspaceId ? value : readSnapshot(workspaceId, sessionIds);
       return { ...target, positions: { ...target.positions, [sessionId]: { ...current, x, y } } };
     });
-    setDockTarget(edgeAtPoint(event.clientX, event.clientY, surface.getBoundingClientRect()));
+    setDockTarget(drag.moved ? edgeAtPoint(event.clientX, event.clientY, surface.getBoundingClientRect()) : null);
   }, [getRect, sessionIdsKey, workspaceId]);
 
   const endDrag = useCallback((sessionId: string, event: ReactPointerEvent<HTMLElement>) => {
     const drag = dragRef.current;
     if (!drag || drag.sessionId !== sessionId || drag.pointerId !== event.pointerId) return;
     const surface = surfaceRef.current;
-    const edge = surface ? edgeAtPoint(event.clientX, event.clientY, surface.getBoundingClientRect()) : null;
+    const edge = drag.moved && surface ? edgeAtPoint(event.clientX, event.clientY, surface.getBoundingClientRect()) : null;
     dragRef.current = null;
     setDraggingSessionId(null);
     setDockTarget(null);
