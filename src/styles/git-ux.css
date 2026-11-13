@@ -231,19 +231,44 @@
   color: var(--theme-muted, #85848e);
   font-size: 12px;
 }
+.app-shell[data-theme] .diff-view-columns {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  border-bottom: 1px solid var(--theme-border, #34343c);
+  background: var(--theme-surface, #19191f);
+  color: var(--theme-muted, #85848e);
+  font: 10px/22px "Segoe UI", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.app-shell[data-theme] .diff-view-columns > span { padding: 0 10px; }
+.app-shell[data-theme] .diff-view-columns > span + span { border-left: 1px solid var(--theme-border, #34343c); }
 .app-shell[data-theme] .diff-view-lines {
-  width: max-content;
-  min-width: 100%;
+  flex: 1 0 auto;
+  min-width: 0;
 }
 .app-shell[data-theme] .diff-view-line {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: stretch;
-  width: 100%;
   min-height: 22px;
 }
+.app-shell[data-theme] .diff-view-cell {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 22px;
+}
+.app-shell[data-theme] .diff-view-cell + .diff-view-cell { border-left: 1px solid var(--theme-border, #34343c); }
 .app-shell[data-theme] .diff-view-number {
   flex: 0 0 36px;
+  position: sticky;
+  left: 0;
+  z-index: 1;
   padding-right: 8px;
+  border-right: 1px solid var(--theme-border, #34343c);
+  background: var(--theme-editor, var(--theme-background, #101114));
   color: var(--theme-muted, #85848e);
   font-family: var(--editor-font-family, "Cascadia Code", Consolas, monospace);
   font-size: var(--editor-font-size, 13px);
@@ -262,38 +287,51 @@
   user-select: none;
 }
 .app-shell[data-theme] .diff-view-content {
-  flex: 1 1 auto;
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
   padding-right: 20px;
   font-family: var(--editor-font-family, "Cascadia Code", Consolas, monospace);
   font-size: var(--editor-font-size, 13px);
   line-height: 22px;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 4;
 }
-.app-shell[data-theme] .diff-view-line.added {
+.app-shell[data-theme] .diff-view-note {
+  display: block;
+  color: var(--theme-muted, #85848e);
+  font-size: 11px;
+  line-height: 16px;
+}
+.app-shell[data-theme] .diff-view-cell.added {
   background: color-mix(in srgb, var(--theme-success, #34d399) 15%, var(--theme-editor, var(--theme-background, #101114)));
   color: var(--theme-text, #d4d4d8);
 }
-.app-shell[data-theme] .diff-view-line.added .diff-view-number,
-.app-shell[data-theme] .diff-view-line.added .diff-view-marker {
+.app-shell[data-theme] .diff-view-cell.added .diff-view-number,
+.app-shell[data-theme] .diff-view-cell.added .diff-view-marker {
   color: var(--theme-success, #34d399);
   font-weight: 600;
 }
-.app-shell[data-theme] .diff-view-line.removed {
+.app-shell[data-theme] .diff-view-cell.removed {
   background: color-mix(in srgb, #f87171 15%, var(--theme-editor, var(--theme-background, #101114)));
   color: var(--theme-text, #d4d4d8);
 }
-.app-shell[data-theme] .diff-view-line.removed .diff-view-number,
-.app-shell[data-theme] .diff-view-line.removed .diff-view-marker {
+.app-shell[data-theme] .diff-view-cell.removed .diff-view-number,
+.app-shell[data-theme] .diff-view-cell.removed .diff-view-marker {
   color: #f87171;
   font-weight: 600;
 }
+.app-shell[data-theme] .diff-view-cell.empty { background: color-mix(in srgb, var(--theme-muted, #85848e) 4%, var(--theme-editor, var(--theme-background, #101114))); }
 .app-shell[data-theme] .diff-view-line.hunk {
+  grid-column: 1 / -1;
   background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 12%, var(--theme-surface, #19191f));
   color: var(--theme-accent, #b3a3ee);
 }
-.app-shell[data-theme] .diff-view-line.hunk .diff-view-content { flex: 1 1 auto; padding-left: 10px; }
-.app-shell[data-theme] .diff-view-line.meta { color: var(--theme-muted, #85848e); }
-.app-shell[data-theme] .diff-view-line.meta .diff-view-content { padding-left: 10px; }
+.app-shell[data-theme] .diff-view-line:is(.hunk, .meta) { display: block; min-height: 22px; padding: 0 10px; }
+.app-shell[data-theme] .diff-view-line.hunk .diff-view-content,
+.app-shell[data-theme] .diff-view-line.meta .diff-view-content { padding: 0; }
+.app-shell[data-theme] .diff-view-line.meta { grid-column: 1 / -1; color: var(--theme-muted, #85848e); }
 .app-shell[data-theme] .diff-view {
   scrollbar-color: #45434f #15161a;
   scrollbar-width: thin;
