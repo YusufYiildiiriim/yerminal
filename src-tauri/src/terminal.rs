@@ -235,6 +235,34 @@ impl TerminalResourceMonitor {
         metrics
     }
 }
+pub const MAX_TERMINAL_INPUT_BYTES: usize = 64 * 1024;
+
+fn validate_terminal_input(data: &str) -> Result<(), String> {
+    if data.len() > MAX_TERMINAL_INPUT_BYTES {
+        return Err("Terminal input chunk is too large".to_owned());
+    }
+    Ok(())
+}
+
+/// Write handle for one terminal session that does not borrow the
+/// `SessionManager`, so the global manager lock is not held while writing.
+pub struct TerminalInput(Arc<TerminalSession>);
+
+impl TerminalInput {
+    pub fn write(&self, data: &str) -> Result<(), String> {
+        validate_terminal_input(data)?;
+        let mut writer = self
+            .0
+            .writer
+            .lock()
+            .map_err(|_| "Terminal input is unavailable".to_owned())?;
+        writer
+            .write_all(data.as_bytes())
+            .and_then(|_| writer.flush())
+            .map_err(|error| format!("Could not write to terminal: {error}"))
+    }
+}
+
 #[derive(Default)]
 pub struct SessionManager {
     sessions: HashMap<String, Arc<TerminalSession>>,
@@ -431,16 +459,15 @@ impl SessionManager {
             .collect())
     }
 
+    /// Looks up a session's input handle so callers can release the manager
+    /// lock before performing the (potentially blocking) PTY write.
+    pub fn input(&self, id: &str) -> Result<TerminalInput, String> {
+        self.session(id).map(TerminalInput)
+    }
+
     pub fn write(&self, id: &str, data: &str) -> Result<(), String> {
-        let session = self.session(id)?;
-        let mut writer = session
-            .writer
-            .lock()
-            .map_err(|_| "Terminal input is unavailable".to_owned())?;
-        writer
-            .write_all(data.as_bytes())
-            .and_then(|_| writer.flush())
-            .map_err(|error| format!("Could not write to terminal: {error}"))
+        validate_terminal_input(data)?;
+        self.input(id)?.write(data)
     }
 
     pub fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<(), String> {
@@ -759,6 +786,29 @@ mod tests {
             close_error.contains("Terminal session was not found"),
             "{close_error}"
         );
+    }
+
+    #[test]
+    fn write_rejects_oversized_input_before_session_lookup() {
+        let manager = SessionManager::default();
+
+        let at_limit = "a".repeat(64 * 1024);
+        let missing = manager.write("ghost", &at_limit).unwrap_err();
+        assert!(
+            missing.contains("Terminal session was not found"),
+            "{missing}"
+        );
+
+        let over_limit = "a".repeat(64 * 1024 + 1);
+        let too_large = manager.write("ghost", &over_limit).unwrap_err();
+        assert!(too_large.contains("too large"), "{too_large}");
+
+        assert!(validate_terminal_input("").is_ok());
+        assert!(validate_terminal_input(&at_limit).is_ok());
+        assert!(validate_terminal_input(&over_limit).is_err());
+        // Multi-byte input is limited by encoded size, not character count.
+        let multibyte = "ş".repeat(MAX_TERMINAL_INPUT_BYTES / 2 + 1);
+        assert!(validate_terminal_input(&multibyte).is_err());
     }
 
     #[test]

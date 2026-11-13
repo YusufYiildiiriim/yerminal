@@ -61,13 +61,13 @@ fn write_terminal(
     session_id: String,
     data: String,
 ) -> Result<(), String> {
-    if data.len() > 64 * 1024 {
-        return Err("Terminal input chunk is too large".to_owned());
-    }
-    manager
+    // Release the global manager lock before the blocking PTY write so one
+    // stalled terminal cannot freeze every other terminal command.
+    let input = manager
         .lock()
         .map_err(|_| "Terminal manager is unavailable".to_owned())?
-        .write(&session_id, &data)
+        .input(&session_id)?;
+    input.write(&data)
 }
 
 #[tauri::command]
