@@ -1,5 +1,60 @@
 import { describe, expect, it, vi } from "vitest";
-import { appendTerminalToLayout, openFolderInNewTerminal, type TerminalLayoutNode } from "../../src/features/terminal/terminalWorkspaceActions";
+import { appendTerminalToLayout, closeTerminalGroup, createInitialTerminalGroups, createTerminalGroup, moveTerminalBetweenGroups, openFolderInNewTerminal, removeTerminalFromGroups, selectTerminalGroup, type TerminalLayoutNode } from "../../src/features/terminal/terminalWorkspaceActions";
+
+describe("terminal groups", () => {
+  it("creates and selects groups without crossing workspace state", () => {
+    const workspaceA = createTerminalGroup(createInitialTerminalGroups());
+    const workspaceB = createInitialTerminalGroups();
+    expect(workspaceA.groups).toHaveLength(2);
+    expect(workspaceA.activeGroupId).toBe(workspaceA.groups[1].id);
+    expect(selectTerminalGroup(workspaceA, workspaceA.groups[0].id).activeGroupId).toBe(workspaceA.groups[0].id);
+    expect(workspaceB.groups).toHaveLength(1);
+    expect(workspaceB.activeGroupId).toBe(workspaceB.groups[0].id);
+  });
+
+  it("moves a live session between groups while preserving its session id and the other layouts", () => {
+    const initial = createInitialTerminalGroups();
+    const destination = createTerminalGroup(initial);
+    const sourceId = initial.activeGroupId;
+    const firstGroup = { ...destination.groups[0], terminalIds: ["one", "two"], activeTerminalId: "one", layout: appendTerminalToLayout(appendTerminalToLayout(null, "one"), "two") };
+    const otherGroup = destination.groups[1];
+    const state = { ...destination, groups: [firstGroup, otherGroup], activeGroupId: sourceId };
+
+    const moved = moveTerminalBetweenGroups(state, "one", otherGroup.id);
+
+    expect(moved.activeGroupId).toBe(otherGroup.id);
+    expect(moved.groups[0].terminalIds).toEqual(["two"]);
+    expect(moved.groups[0].activeTerminalId).toBe("two");
+    expect(moved.groups[1].terminalIds).toEqual(["one"]);
+    expect(moved.groups[1].activeTerminalId).toBe("one");
+    expect(moved.groups[1].layout).toEqual({ type: "terminal", sessionId: "one" });
+    expect(moveTerminalBetweenGroups(moved, "one", otherGroup.id)).toBe(moved);
+  });
+
+  it("closes a session from its group without closing or moving neighboring sessions", () => {
+    const initial = createInitialTerminalGroups();
+    const state = { ...initial, groups: [{ ...initial.groups[0], terminalIds: ["one", "two"], activeTerminalId: "one", layout: appendTerminalToLayout(appendTerminalToLayout(null, "one"), "two") }] };
+    const closed = removeTerminalFromGroups(state, "one");
+    expect(closed.groups[0].terminalIds).toEqual(["two"]);
+    expect(closed.groups[0].activeTerminalId).toBe("two");
+    expect(closed.groups[0].layout).toEqual({ type: "terminal", sessionId: "two" });
+  });
+
+  it("closes a group by moving its sessions into a neighbor without discarding their IDs", () => {
+    const initial = createInitialTerminalGroups();
+    const withSecond = createTerminalGroup(initial);
+    const groups = [
+      { ...withSecond.groups[0], terminalIds: ["one"], activeTerminalId: "one", layout: { type: "terminal" as const, sessionId: "one" } },
+      { ...withSecond.groups[1], terminalIds: ["two"], activeTerminalId: "two", layout: { type: "terminal" as const, sessionId: "two" } },
+    ];
+    const closed = closeTerminalGroup({ groups, activeGroupId: groups[0].id }, groups[0].id);
+    expect(closed.groups).toHaveLength(1);
+    expect(closed.activeGroupId).toBe(groups[1].id);
+    expect(closed.groups[0].terminalIds).toEqual(["two", "one"]);
+    expect(closed.groups[0].layout).toEqual(expect.objectContaining({ type: "split" }));
+    expect(closeTerminalGroup(closed, groups[1].id)).toBe(closed);
+  });
+});
 
 describe("openFolderInNewTerminal", () => {
   it("creates a distinct terminal at the selected folder and activates it", async () => {

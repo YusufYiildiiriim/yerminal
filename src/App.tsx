@@ -16,7 +16,7 @@ import { ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle } from "rea
 import { SettingsDialog, type AppSettings } from "./features/settings/SettingsDialog";
 import { WorkspaceViewLayout } from "./features/workspace/WorkspaceViewLayout";
 import { FolderContextMenu, type FolderContextMenuAction, type FolderContextMenuTarget } from "./features/explorer/FolderContextMenu";
-import { appendTerminalToLayout, openFolderInNewTerminal } from "./features/terminal/terminalWorkspaceActions";
+import { appendTerminalToLayout, closeTerminalGroup as closeTerminalGroupState, createInitialTerminalGroups, createTerminalGroup, moveTerminalBetweenGroups, openFolderInNewTerminal, removeTerminalFromGroups, selectTerminalGroup as selectTerminalGroupState, type TerminalGroup } from "./features/terminal/terminalWorkspaceActions";
 import "./styles/app.css";
 import "./styles/themes.css";
 import "./styles/sidebar-ux.css";
@@ -58,7 +58,7 @@ type EditorSnapshot = { shortId: string; message: string; changeKind: string; au
 type EditorFileRequest = { id: string; root: string; path: string; name: string; size?: number; sourceCommitId?: string; sourceLabel?: string; snapshot?: EditorSnapshot; view?: "text" | "diff"; diffStaged?: boolean };
 const COMMIT_PAGE_SIZE = 50;
 type PersistedWorkspace = { folders: string[]; activePath: string };
-type TerminalWorkspace = { id: string; name: string; rootPath: string; folderPaths: string[]; terminalIds: string[]; activeTerminalId: string | null; layout: LayoutNode | null };
+type TerminalWorkspace = { id: string; name: string; rootPath: string; folderPaths: string[]; terminalIds: string[]; activeTerminalId: string | null; layout: LayoutNode | null; groups: TerminalGroup[]; activeGroupId: string };
 type TerminalWorkspaceState = { workspaces: TerminalWorkspace[]; activeId: string };
 type PersistedTerminalWorkspace = { id: string; name: string; rootPath: string; folderPaths: string[] };
 
@@ -118,6 +118,31 @@ function normalizeWorkspaceFolders(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return mergeWorkspaceFolders([], value.filter((folder): folder is string => typeof folder === "string" && folder.length > 0));
 }
+
+function syncTerminalGroups(workspace: TerminalWorkspace, groups: TerminalGroup[], activeGroupId: string): TerminalWorkspace {
+  const activeGroup = groups.find((group) => group.id === activeGroupId) ?? groups[0] ?? createInitialTerminalGroups().groups[0];
+  const safeGroups = groups.length > 0 ? groups : [activeGroup];
+  return {
+    ...workspace,
+    groups: safeGroups,
+    activeGroupId: activeGroup.id,
+    terminalIds: safeGroups.flatMap((group) => group.terminalIds),
+    activeTerminalId: activeGroup.activeTerminalId,
+    layout: activeGroup.layout,
+  };
+}
+
+function updateActiveTerminalGroup(workspace: TerminalWorkspace, update: (group: TerminalGroup) => TerminalGroup): TerminalWorkspace {
+  const group = workspace.groups.find((item) => item.id === workspace.activeGroupId) ?? workspace.groups[0];
+  if (!group) return workspace;
+  return syncTerminalGroups(workspace, workspace.groups.map((item) => item.id === group.id ? update(item) : item), group.id);
+}
+
+function updateTerminalGroup(workspace: TerminalWorkspace, groupId: string, update: (group: TerminalGroup) => TerminalGroup): TerminalWorkspace {
+  if (!workspace.groups.some((group) => group.id === groupId)) return workspace;
+  return syncTerminalGroups(workspace, workspace.groups.map((group) => group.id === groupId ? update(group) : group), workspace.activeGroupId);
+}
+
 function readTerminalWorkspaceState(): TerminalWorkspaceState {
   const legacyWorkspace = readWorkspace();
   try {
@@ -148,6 +173,7 @@ function readTerminalWorkspaceState(): TerminalWorkspaceState {
           terminalIds: [],
           activeTerminalId: null,
           layout: null,
+          ...createInitialTerminalGroups(),
         });
       }
       if (workspaces.length > 0) {
@@ -180,7 +206,7 @@ function readTerminalWorkspaceState(): TerminalWorkspaceState {
     ? legacyWorkspace.activePath
     : folderPaths[0] ?? "";
   return {
-    workspaces: [{ id, name: "Workspace 1", rootPath, folderPaths, terminalIds: [], activeTerminalId: null, layout: null }],
+    workspaces: [{ id, name: "Workspace 1", rootPath, folderPaths, terminalIds: [], activeTerminalId: null, layout: null, ...createInitialTerminalGroups() }],
     activeId: id,
   };
 }
@@ -296,15 +322,19 @@ function App() {
   const selectTerminalView = (id: string | null) => {
     if (activeTerminalWorkspace) {
       setTerminalViews((current) => ({ ...current, [activeTerminalWorkspace.id]: id }));
-      if (!id && !activeTerminalWorkspace.layout && activeTerminalWorkspace.terminalIds.length > 1) {
-        updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => ({ ...workspace, layout: workspace.layout ?? buildTerminalLayout(workspace.terminalIds) }));
+      const group = activeTerminalWorkspace.groups.find((item) => item.id === activeTerminalWorkspace.activeGroupId) ?? activeTerminalWorkspace.groups[0];
+      if (!id && group && !group.layout && group.terminalIds.length > 1) {
+        updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => updateActiveTerminalGroup(workspace, (active) => ({ ...active, layout: active.layout ?? buildTerminalLayout(active.terminalIds) })));
       }
     }
     if (id) focusTerminal(id);
   };
   const workspaceFolders = activeTerminalWorkspace?.folderPaths ?? [];
   const activeWorkspaceTerminalIds = activeTerminalWorkspace?.terminalIds ?? [];
+  const activeTerminalGroup = activeTerminalWorkspace?.groups.find((group) => group.id === activeTerminalWorkspace.activeGroupId) ?? activeTerminalWorkspace?.groups[0] ?? null;
+  const activeGroupTerminalIds = activeTerminalGroup?.terminalIds ?? [];
   const activeWorkspaceTerminals = terminals.filter((terminal) => activeWorkspaceTerminalIds.includes(terminal.id));
+  const activeGroupTerminals = activeWorkspaceTerminals.filter((terminal) => activeGroupTerminalIds.includes(terminal.id));
   const repoPath = activeTerminalWorkspace?.rootPath ?? "";
   const activeTerminalId = activeTerminalWorkspace?.activeTerminalId ?? null;
   const layout = activeTerminalWorkspace?.layout ?? null;
@@ -743,14 +773,55 @@ function App() {
     }));
   }, []);
 
+  const addTerminalGroup = useCallback(() => {
+    const workspace = activeTerminalWorkspace;
+    if (!workspace) return;
+    updateTerminalWorkspace(workspace.id, (current) => {
+      const next = createTerminalGroup({ groups: current.groups, activeGroupId: current.activeGroupId });
+      return syncTerminalGroups(current, next.groups, next.activeGroupId);
+    });
+    setTerminalViews((current) => ({ ...current, [workspace.id]: null }));
+  }, [activeTerminalWorkspace, updateTerminalWorkspace]);
+
+  const chooseTerminalGroup = useCallback((groupId: string) => {
+    const workspace = activeTerminalWorkspace;
+    if (!workspace || groupId === workspace.activeGroupId) return;
+    updateTerminalWorkspace(workspace.id, (current) => {
+      const next = selectTerminalGroupState({ groups: current.groups, activeGroupId: current.activeGroupId }, groupId);
+      return syncTerminalGroups(current, next.groups, next.activeGroupId);
+    });
+    setTerminalViews((current) => ({ ...current, [workspace.id]: null }));
+  }, [activeTerminalWorkspace, updateTerminalWorkspace]);
+
+  const moveTerminalToGroup = useCallback((sessionId: string, groupId: string) => {
+    const workspace = activeTerminalWorkspace;
+    if (!workspace) return;
+    updateTerminalWorkspace(workspace.id, (current) => {
+      const next = moveTerminalBetweenGroups({ groups: current.groups, activeGroupId: current.activeGroupId }, sessionId, groupId);
+      return syncTerminalGroups(current, next.groups, next.activeGroupId);
+    });
+    setTerminalViews((current) => ({ ...current, [workspace.id]: null }));
+  }, [activeTerminalWorkspace, updateTerminalWorkspace]);
+
+  const closeTerminalGroup = useCallback((groupId: string) => {
+    const workspace = activeTerminalWorkspace;
+    if (!workspace) return;
+    updateTerminalWorkspace(workspace.id, (current) => {
+      const next = closeTerminalGroupState({ groups: current.groups, activeGroupId: current.activeGroupId }, groupId);
+      return next === current || next.groups === current.groups ? current : syncTerminalGroups(current, next.groups, next.activeGroupId);
+    });
+    setTerminalViews((current) => ({ ...current, [workspace.id]: null }));
+  }, [activeTerminalWorkspace, updateTerminalWorkspace]);
+
   const dockTerminalToTiledLayout = useCallback((sessionId: string, edge: TerminalDockEdge) => {
     const workspaceId = activeTerminalWorkspace?.id;
     if (!workspaceId) return;
     updateTerminalWorkspace(workspaceId, (workspace) => {
-      if (!workspace.terminalIds.includes(sessionId)) return workspace;
-      const remainingIds = workspace.terminalIds.filter((id) => id !== sessionId);
-      const remainingLayout = workspace.layout
-        ? removeTerminal(workspace.layout, sessionId)
+      const group = workspace.groups.find((item) => item.id === workspace.activeGroupId);
+      if (!group?.terminalIds.includes(sessionId)) return workspace;
+      const remainingIds = group.terminalIds.filter((id) => id !== sessionId);
+      const remainingLayout = group.layout
+        ? removeTerminal(group.layout, sessionId)
         : remainingIds.length > 0 ? buildTerminalLayout(remainingIds) : null;
       const terminalNode: LayoutNode = { type: "terminal", sessionId };
       const direction = edge === "left" || edge === "right" ? "horizontal" : "vertical";
@@ -758,7 +829,7 @@ function App() {
       const layout: LayoutNode = remainingLayout
         ? { type: "split", id: crypto.randomUUID(), direction, ratio: 0.5, children: before ? [terminalNode, remainingLayout] : [remainingLayout, terminalNode] }
         : terminalNode;
-      return { ...workspace, layout };
+      return updateTerminalGroup(workspace, group.id, (current) => ({ ...current, layout }));
     });
   }, [activeTerminalWorkspace?.id, updateTerminalWorkspace]);
 
@@ -767,8 +838,9 @@ function App() {
     if (mode === "floating" && workspace) {
       setTerminalViews((current) => ({ ...current, [workspace.id]: null }));
     }
-    if (mode === "tiled" && workspace && !workspace.layout && workspace.terminalIds.length > 1) {
-      updateTerminalWorkspace(workspace.id, (current) => ({ ...current, layout: buildTerminalLayout(current.terminalIds) }));
+    const group = workspace?.groups.find((item) => item.id === workspace.activeGroupId) ?? workspace?.groups[0];
+    if (mode === "tiled" && workspace && group && !group.layout && group.terminalIds.length > 1) {
+      updateTerminalWorkspace(workspace.id, (current) => updateActiveTerminalGroup(current, (active) => ({ ...active, layout: buildTerminalLayout(active.terminalIds) })));
     }
     floatingModeSetterRef.current?.(mode);
   }, [activeTerminalWorkspace, updateTerminalWorkspace]);
@@ -842,12 +914,12 @@ function App() {
         workingDirectory: workingDirectory ?? (repoPath || null),
       };
       setTerminals((current) => [...current, terminal]);
-      if (activeTerminalWorkspace) updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => ({
-        ...workspace,
-        terminalIds: [...workspace.terminalIds, id],
+      if (activeTerminalWorkspace) updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => updateActiveTerminalGroup(workspace, (group) => ({
+        ...group,
+        terminalIds: [...group.terminalIds, id],
         activeTerminalId: id,
-        layout: showInTabs && workspace.terminalIds.length > 0 ? (workingDirectory ? appendTerminalToLayout(workspace.layout ?? buildTerminalLayout(workspace.terminalIds), id) : buildTerminalLayout([...workspace.terminalIds, id])) : workspace.layout,
-      }));
+        layout: showInTabs && group.terminalIds.length > 0 ? (workingDirectory ? appendTerminalToLayout(group.layout ?? buildTerminalLayout(group.terminalIds), id) : buildTerminalLayout([...group.terminalIds, id])) : group.layout,
+      })));
       return terminal;
     } catch (reason) {
       showToast(String(reason));
@@ -873,15 +945,11 @@ function App() {
       ...current,
       workspaces: current.workspaces.map((workspace) => {
         if (!workspace.terminalIds.includes(id)) return workspace;
-        const terminalIds = workspace.terminalIds.filter((sessionId) => sessionId !== id);
-        return {
-          ...workspace,
-          terminalIds,
-          activeTerminalId: workspace.activeTerminalId === id ? terminalIds[0] ?? null : workspace.activeTerminalId,
-          layout: workspace.layout ? removeTerminal(workspace.layout, id) : null,
-        };
+        const next = removeTerminalFromGroups({ groups: workspace.groups, activeGroupId: workspace.activeGroupId }, id);
+        return syncTerminalGroups(workspace, next.groups, next.activeGroupId);
       }),
     }));
+    setTerminalViews((current) => Object.fromEntries(Object.entries(current).map(([workspaceId, selectedId]) => [workspaceId, selectedId === id ? null : selectedId])));
   }, [showToast]);
 
   const handleTerminalExit = useCallback((id: string) => {
@@ -890,7 +958,10 @@ function App() {
 
   const focusTerminal = useCallback((id: string) => {
     const owner = terminalWorkspaceState.workspaces.find((workspace) => workspace.terminalIds.includes(id));
-    if (owner) updateTerminalWorkspace(owner.id, (workspace) => ({ ...workspace, activeTerminalId: id }));
+    if (owner) {
+      const group = owner.groups.find((item) => item.terminalIds.includes(id));
+      if (group) updateTerminalWorkspace(owner.id, (workspace) => updateTerminalGroup(workspace, group.id, (current) => ({ ...current, activeTerminalId: id })));
+    }
   }, [terminalWorkspaceState.workspaces, updateTerminalWorkspace]);
 
   const splitActiveTerminal = useCallback(async (direction: "horizontal" | "vertical") => {
@@ -900,9 +971,11 @@ function App() {
     const created = await createTerminal(false);
     if (!created) return;
     updateTerminalWorkspace(workspace.id, (current) => {
-      const existingIds = current.terminalIds.filter((id) => id !== created.id);
-      const root = current.layout ?? buildTerminalLayout(existingIds);
-      return { ...current, layout: splitTerminal(root, activeId, created.id, direction) };
+      const group = current.groups.find((item) => item.id === current.activeGroupId);
+      if (!group) return current;
+      const existingIds = group.terminalIds.filter((id) => id !== created.id);
+      const root = group.layout ?? buildTerminalLayout(existingIds);
+      return updateTerminalGroup(current, group.id, (active) => ({ ...active, layout: splitTerminal(root, activeId, created.id, direction) }));
     });
   }, [activeTerminalWorkspace, createTerminal, updateTerminalWorkspace]);
 
@@ -914,27 +987,24 @@ function App() {
     }
     const created = await createTerminal(false);
     if (!created) return;
-    updateTerminalWorkspace(workspace.id, (current) => ({
-      ...current,
-      layout: buildTerminalLayout(current.terminalIds),
-    }));
+    updateTerminalWorkspace(workspace.id, (current) => updateActiveTerminalGroup(current, (group) => ({ ...group, layout: buildTerminalLayout(group.terminalIds) })));
   }, [activeTerminalWorkspace, createTerminal, updateTerminalWorkspace]);
 
   const moveTerminal = useCallback((sourceId: string, targetId: string) => {
     if (sourceId === targetId || !activeTerminalWorkspace) return;
-    updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => ({
-      ...workspace,
-      layout: workspace.layout ? swapTerminalPositions(workspace.layout, sourceId, targetId) : null,
+    updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => updateActiveTerminalGroup(workspace, (group) => ({
+      ...group,
+      layout: group.layout ? swapTerminalPositions(group.layout, sourceId, targetId) : null,
       activeTerminalId: sourceId,
-    }));
+    })));
   }, [activeTerminalWorkspace, updateTerminalWorkspace]);
 
   const resizeLayoutSplit = useCallback((splitId: string, ratio: number) => {
     if (!activeTerminalWorkspace) return;
-    updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => ({
-      ...workspace,
-      layout: workspace.layout ? updateSplitRatio(workspace.layout, splitId, ratio) : null,
-    }));
+    updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => updateActiveTerminalGroup(workspace, (group) => ({
+      ...group,
+      layout: group.layout ? updateSplitRatio(group.layout, splitId, ratio) : null,
+    })));
   }, [activeTerminalWorkspace, updateTerminalWorkspace]);
 
   const beginRenameTerminal = useCallback((terminal: TerminalSession) => {
@@ -1016,6 +1086,7 @@ function App() {
       terminalIds: [],
       activeTerminalId: null,
       layout: null,
+      ...createInitialTerminalGroups(),
     };
     setTerminalWorkspaceState((current) => ({ workspaces: [...current.workspaces, workspace], activeId: workspace.id }));
     setRepoInfo(null);
@@ -1191,19 +1262,19 @@ function App() {
       else if (event.shiftKey && key === "v") { event.preventDefault(); void splitActiveTerminal("vertical"); }
       else if (event.shiftKey && key === "g") { event.preventDefault(); setActiveTool("changes"); }
       else if (event.shiftKey && key === "b") { event.preventDefault(); setActiveTool("graph"); }
-      else if (key === "tab" && activeWorkspaceTerminals.length > 1) {
+      else if (key === "tab" && activeGroupTerminals.length > 1) {
         event.preventDefault();
-        const index = activeWorkspaceTerminals.findIndex((terminal) => terminal.id === activeTerminalId);
+        const index = activeGroupTerminals.findIndex((terminal) => terminal.id === activeTerminalId);
         const direction = event.shiftKey ? -1 : 1;
-        const next = (index + direction + activeWorkspaceTerminals.length) % activeWorkspaceTerminals.length;
-        const nextId = activeWorkspaceTerminals[next].id;
+        const next = (index + direction + activeGroupTerminals.length) % activeGroupTerminals.length;
+        const nextId = activeGroupTerminals[next].id;
         focusTerminal(nextId);
         if (focusedTerminalView && activeTerminalWorkspace) setTerminalViews((current) => ({ ...current, [activeTerminalWorkspace.id]: nextId }));
       }
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [activeTerminalId, activeTerminalWorkspace, activeWorkspaceTerminals, closeTerminal, createTerminal, focusTerminal, focusedTerminalView, quickOpenOpen, settingsOpen, splitActiveTerminal]);
+  }, [activeTerminalId, activeTerminalWorkspace, activeGroupTerminals, closeTerminal, createTerminal, focusTerminal, focusedTerminalView, quickOpenOpen, settingsOpen, splitActiveTerminal]);
 
   const activeTerminal = useMemo(
     () => terminals.find((terminal) => terminal.id === activeTerminalId),
@@ -1231,8 +1302,15 @@ function App() {
         <div className="titlebar-spacer" />
         <div className="titlebar-layout-controls">
           {activeMainView === "terminals" ? <>
+            <div className="terminal-group-toolbar" role="tablist" aria-label="Terminal groups">
+              {activeTerminalWorkspace?.groups.map((group) => <div key={group.id} className={`terminal-group-tab-item ${group.id === activeTerminalWorkspace.activeGroupId ? "selected" : ""}`}>
+                <button className="terminal-group-tab" type="button" role="tab" aria-selected={group.id === activeTerminalWorkspace.activeGroupId} onClick={() => chooseTerminalGroup(group.id)}>{group.name}<span>{group.terminalIds.length}</span></button>
+                {activeTerminalWorkspace.groups.length > 1 && <button className="terminal-group-close" type="button" aria-label={`Close ${group.name} and move its terminals`} title={`Close ${group.name} and move its terminals`} onClick={() => closeTerminalGroup(group.id)}>×</button>}
+              </div>)}
+              <button className="terminal-group-create" type="button" aria-label="New terminal group" title="New terminal group" onClick={addTerminalGroup}>＋</button>
+            </div>
             <FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={changeTerminalLayoutMode} />
-            <button className="icon-button titlebar-new-terminal" aria-label="Add terminal to workspace" title="Add terminal pane" onClick={() => { selectTerminalView(null); void addTerminalToWorkspace(); }} type="button">＋</button>
+            <button className="icon-button titlebar-new-terminal" aria-label="Add terminal to group" title="Add terminal to group" onClick={() => { selectTerminalView(null); void addTerminalToWorkspace(); }} type="button">＋</button>
           </> : <>
             <div className="layout-mode-toggle editor-layout-mode-toggle floating-editor-mode-toggle" role="group" aria-label="Editor group layout mode">
               <button className={editorLayoutMode === "tiled" ? "selected" : ""} type="button" aria-pressed={editorLayoutMode === "tiled"} onClick={() => changeEditorLayoutMode("tiled")} title="Use the default split editor layout">Split</button>
@@ -1275,11 +1353,12 @@ function App() {
             {activeMainView === "terminals" && terminalLayoutMode === "tiled" && <div className="terminal-session-toolbar">
               {focusedTerminalView && <button className="terminal-show-all" type="button" aria-label="Show all terminals" title="Show all terminals" onClick={() => selectTerminalView(null)}>Show all</button>}
               <div className="terminal-tabs" ref={terminalTabsRef} role="tablist" aria-label="Terminal sessions">
-                {activeWorkspaceTerminals.map((terminal) => <div key={terminal.id} data-terminal-id={terminal.id} className={`terminal-tab-item ${terminal.id === focusedTerminalView ? "selected" : ""} ${editingTerminalId === terminal.id ? "editing" : ""}`} role="presentation">
+                {activeGroupTerminals.map((terminal) => <div key={terminal.id} data-terminal-id={terminal.id} className={`terminal-tab-item ${terminal.id === focusedTerminalView ? "selected" : ""} ${editingTerminalId === terminal.id ? "editing" : ""}`} role="presentation">
                   {editingTerminalId === terminal.id ? <TerminalNameEditor terminalName={terminal.name} value={terminalNameDraft} inputRef={terminalNameInputRef} compact onChange={setTerminalNameDraft} onSave={saveTerminalName} onCancel={cancelTerminalRename} /> : <>
                     <button className={`terminal-tab ${terminal.id === focusedTerminalView ? "selected" : ""}`} onClick={() => selectTerminalView(terminal.id)} onDoubleClick={() => beginRenameTerminal(terminal)} onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); void closeTerminal(terminal.id); } }} type="button" role="tab" aria-selected={terminal.id === focusedTerminalView} aria-label={`${terminal.name}. Double-click to rename.`} title={terminal.name}><span className="terminal-tab-name">{terminal.name}</span>{terminal.id === activeTerminalId && <span className="terminal-active-label" aria-hidden="true">Active</span>}</button>
                     <button className="terminal-tab-rename" type="button" aria-label={`Rename ${terminal.name}`} title="Rename terminal" onClick={() => beginRenameTerminal(terminal)}>✎</button>
-                    {activeWorkspaceTerminals.length > 1 && <button className="tab-close" type="button" aria-label={`Close ${terminal.name}`} title={`Close ${terminal.name}`} onClick={() => void closeTerminal(terminal.id)}>×</button>}
+                    {activeTerminalWorkspace && activeTerminalWorkspace.groups.length > 1 && <select className="terminal-tab-move" aria-label={`Move ${terminal.name} to terminal group`} value="" onChange={(event) => { const groupId = event.currentTarget.value; if (groupId) moveTerminalToGroup(terminal.id, groupId); }}><option value="" disabled>Move to…</option>{activeTerminalWorkspace.groups.filter((group) => group.id !== activeTerminalWorkspace.activeGroupId).map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select>}
+                    {activeGroupTerminals.length > 1 && <button className="tab-close" type="button" aria-label={`Close ${terminal.name}`} title={`Close ${terminal.name}`} onClick={() => void closeTerminal(terminal.id)}>×</button>}
                   </>}
                 </div>)}
               </div>
@@ -1301,8 +1380,8 @@ function App() {
             onModeState={registerEditorLayoutControl}
           />} terminal={<div className={`terminal-workspace-view${terminalUsageOpen ? " has-terminal-usage" : ""}`}>
           <section className="terminal-surface" aria-label="Terminal workspace">
-            <TerminalWorkspaceLayout layout={layout} focusedTerminalId={focusedTerminalView} terminals={terminals} visibleTerminalIds={activeWorkspaceTerminalIds} workspaceId={activeTerminalWorkspace?.id ?? ""} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} onLinkHint={showToast} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
-            {activeWorkspaceTerminals.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Welcome to <span>yerminal</span></div><p>Create a terminal to begin.</p><button className="primary-button" onClick={() => void createTerminal()} type="button">New Terminal</button></div>}
+            <TerminalWorkspaceLayout layout={layout} focusedTerminalId={focusedTerminalView && activeGroupTerminalIds.includes(focusedTerminalView) ? focusedTerminalView : null} terminals={activeWorkspaceTerminals} visibleTerminalIds={activeGroupTerminalIds} workspaceId={`${activeTerminalWorkspace?.id ?? ""}:${activeTerminalGroup?.id ?? ""}`} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} onLinkHint={showToast} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
+            {activeGroupTerminalIds.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Terminal group is empty</div><p>Add a terminal to get started.</p><button className="primary-button" onClick={() => void addTerminalToWorkspace()} type="button">New Terminal</button></div>}
 
             <div className="terminal-status" aria-live="polite" aria-atomic="true"><span className="status-indicator" /><strong>{activeTerminal?.name ?? "No terminal"}</strong>{activeTerminal && <span className="terminal-status-active">Active</span>}<span className="status-separator">·</span><span>{activeTerminal?.shellLabel ?? "Ready"}</span></div>
           </section>

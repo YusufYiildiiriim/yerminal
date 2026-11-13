@@ -123,6 +123,16 @@
 .app-shell[data-theme] .titlebar-help-button { color: var(--theme-muted); font-size: 12px; }
 .app-shell[data-theme] .titlebar-layout-controls { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
 .app-shell[data-theme] .titlebar-layout-controls .editor-create-group { min-height: 30px; padding: 4px 10px; font-size: 12px; }
+.app-shell[data-theme] .terminal-group-toolbar { display: flex; align-items: center; gap: 3px; max-width: min(34vw, 360px); min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.app-shell[data-theme] .terminal-group-tab-item { display: inline-flex; align-items: center; gap: 2px; padding: 0 4px; border: 1px solid transparent; border-radius: 6px; white-space: nowrap; }
+.app-shell[data-theme] .terminal-group-tab-item.selected { border-color: var(--theme-border); background: var(--theme-raised); }
+.app-shell[data-theme] .terminal-group-tab, .app-shell[data-theme] .terminal-group-create, .app-shell[data-theme] .terminal-group-close { display: inline-flex; align-items: center; gap: 7px; min-height: 28px; padding: 4px 5px; border: 0; border-radius: 5px; background: transparent; color: var(--theme-muted); white-space: nowrap; }
+.app-shell[data-theme] .terminal-group-tab-item.selected .terminal-group-tab { color: var(--theme-text); }
+.app-shell[data-theme] .terminal-group-tab span { color: var(--theme-muted); font-size: 10px; }
+.app-shell[data-theme] .terminal-group-create { min-width: 30px; justify-content: center; padding-inline: 7px; color: var(--theme-accent); }
+.app-shell[data-theme] .terminal-group-close { min-width: 22px; justify-content: center; padding-inline: 3px; }
+.app-shell[data-theme] .terminal-group-tab-item button:hover { color: var(--theme-text); background: var(--theme-surface); }
+.app-shell[data-theme] .terminal-group-tab:focus-visible, .app-shell[data-theme] .terminal-group-create:focus-visible, .app-shell[data-theme] .terminal-group-close:focus-visible, .app-shell[data-theme] .terminal-tab-move:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 1px; }
 .app-shell[data-theme] .titlebar-new-terminal {
   width: 28px;
   height: 28px;
@@ -201,6 +211,7 @@
 
 /* Keep the rename input usable when its tab normally sizes to its content. */
 .app-shell[data-theme] .terminal-tab-item.editing { flex: 0 0 220px; min-width: 220px; }
+.app-shell[data-theme] .terminal-tab-move { width: 74px; min-width: 74px; padding: 3px 4px; border: 1px solid var(--theme-border); border-radius: 4px; background: var(--theme-surface); color: var(--theme-muted); font-size: 10px; }
 .app-shell[data-theme] .terminal-tab-item.editing .terminal-name-editor input { min-width: 0; }
 
 /* Keep the view switcher in the title bar like the Stitch workbench. */
