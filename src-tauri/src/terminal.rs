@@ -115,6 +115,7 @@ struct TerminalSession {
     master: Mutex<Box<dyn MasterPty + Send>>,
     child: Mutex<Box<dyn Child + Send + Sync>>,
     output_history: Arc<Mutex<TerminalOutputHistory>>,
+    output_gate: Arc<OutputGate>,
 }
 
 #[derive(Debug)]
@@ -417,6 +418,7 @@ impl SessionManager {
 
         let working_directory = cwd.to_string_lossy().into_owned();
         let output_history = Arc::new(Mutex::new(TerminalOutputHistory::default()));
+        let output_gate = Arc::new(OutputGate::new());
         let session = Arc::new(TerminalSession {
             process_id,
             process_start_time,
@@ -426,9 +428,12 @@ impl SessionManager {
             master: Mutex::new(pair.master),
             child: Mutex::new(child),
             output_history: Arc::clone(&output_history),
+            output_gate: Arc::clone(&output_gate),
         });
         self.sessions.insert(id.clone(), Arc::clone(&session));
-        if let Err(error) = spawn_output_reader(app, id.clone(), reader, output_history) {
+        if let Err(error) =
+            spawn_output_reader(app, id.clone(), reader, output_history, output_gate)
+        {
             let _ = self.close(&id);
             return Err(error);
         }
@@ -505,6 +510,8 @@ impl SessionManager {
             .sessions
             .remove(id)
             .ok_or_else(|| "Terminal session was not found".to_owned())?;
+        // Silence the reader first: the id may be reused by a new session.
+        session.output_gate.deactivate();
         if let Ok(mut child) = session.child.lock() {
             let _ = child.kill();
             let _ = child.wait();
@@ -514,6 +521,7 @@ impl SessionManager {
 
     pub fn close_all(&mut self) {
         for (_, session) in self.sessions.drain() {
+            session.output_gate.deactivate();
             if let Ok(mut child) = session.child.lock() {
                 let _ = child.kill();
                 let _ = child.wait();
@@ -780,37 +788,106 @@ impl Utf8ChunkDecoder {
     }
 }
 
+/// Lets a session's output reader emit events only while the session is still
+/// registered. `close` deactivates the gate while holding its lock, so once it
+/// returns a superseded reader can no longer emit `terminal-output` or
+/// `terminal-exited` under a session id that a fresh session now owns.
+#[derive(Debug)]
+struct OutputGate {
+    active: Mutex<bool>,
+}
+
+impl OutputGate {
+    fn new() -> Self {
+        Self {
+            active: Mutex::new(true),
+        }
+    }
+
+    fn emit_if_active(&self, emit: impl FnOnce()) -> bool {
+        let active = self
+            .active
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if *active {
+            emit();
+        }
+        *active
+    }
+
+    fn deactivate(&self) {
+        *self
+            .active
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = false;
+    }
+}
+
+enum ReaderEvent {
+    Output(TerminalOutput),
+    Exited,
+}
+
+/// Reads PTY output until EOF, recording it in the session history and
+/// passing each event to `emit` while the gate is active.
+fn run_output_reader(
+    session_id: &str,
+    reader: &mut dyn Read,
+    output_history: &Mutex<TerminalOutputHistory>,
+    gate: &OutputGate,
+    mut emit: impl FnMut(ReaderEvent),
+) {
+    let mut buffer = [0_u8; 8192];
+    let mut decoder = Utf8ChunkDecoder::default();
+    let mut emit_output = |data: String| {
+        if data.is_empty() {
+            return;
+        }
+        gate.emit_if_active(|| {
+            let event = output_history
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .append(session_id.to_owned(), data);
+            emit(ReaderEvent::Output(event));
+        });
+    };
+    loop {
+        match reader.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(length) => emit_output(decoder.decode(&buffer[..length])),
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => break,
+        }
+    }
+    emit_output(decoder.finish());
+    drop(emit_output);
+    gate.emit_if_active(|| emit(ReaderEvent::Exited));
+}
+
 fn spawn_output_reader(
     app: AppHandle,
     session_id: String,
     mut reader: Box<dyn Read + Send>,
     output_history: Arc<Mutex<TerminalOutputHistory>>,
+    gate: Arc<OutputGate>,
 ) -> Result<(), String> {
     thread::Builder::new()
         .name(format!("pty-output-{session_id}"))
         .spawn(move || {
-            let mut buffer = [0_u8; 8192];
-            let mut decoder = Utf8ChunkDecoder::default();
-            let emit_output = |data: String| {
-                if data.is_empty() {
-                    return;
-                }
-                let event = output_history
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .append(session_id.clone(), data);
-                let _ = app.emit("terminal-output", event);
-            };
-            loop {
-                match reader.read(&mut buffer) {
-                    Ok(0) => break,
-                    Ok(length) => emit_output(decoder.decode(&buffer[..length])),
-                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-                    Err(_) => break,
-                }
-            }
-            emit_output(decoder.finish());
-            let _ = app.emit("terminal-exited", session_id);
+            run_output_reader(
+                &session_id,
+                reader.as_mut(),
+                &output_history,
+                &gate,
+                |event| match event {
+                    ReaderEvent::Output(event) => {
+                        let _ = app.emit("terminal-output", event);
+                    }
+                    ReaderEvent::Exited => {
+                        let _ = app.emit("terminal-exited", session_id.clone());
+                    }
+                },
+            );
         })
         .map(|_| ())
         .map_err(|error| format!("Could not start terminal output worker: {error}"))
@@ -953,7 +1030,82 @@ mod tests {
             master: Mutex::new(pair.master),
             child: Mutex::new(Box::new(FakeChild { exited })),
             output_history: Arc::new(Mutex::new(TerminalOutputHistory::default())),
+            output_gate: Arc::new(OutputGate::new()),
         })
+    }
+
+    fn collect_reader_events(reader: &mut dyn Read, gate: &OutputGate) -> Vec<String> {
+        let history = Mutex::new(TerminalOutputHistory::default());
+        let mut events = Vec::new();
+        run_output_reader("s1", reader, &history, gate, |event| {
+            events.push(match event {
+                ReaderEvent::Output(output) => format!("output:{}", output.data),
+                ReaderEvent::Exited => "exited".to_owned(),
+            })
+        });
+        events
+    }
+
+    /// Yields one chunk, then runs `on_second_read` (simulating `close`
+    /// happening while the reader is blocked) and yields a trailing chunk.
+    struct InterleavedReader<F: FnMut()> {
+        reads: usize,
+        on_second_read: F,
+    }
+
+    impl<F: FnMut()> Read for InterleavedReader<F> {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            self.reads += 1;
+            let chunk: &[u8] = match self.reads {
+                1 => b"before",
+                2 => {
+                    (self.on_second_read)();
+                    b"after"
+                }
+                _ => b"",
+            };
+            buffer[..chunk.len()].copy_from_slice(chunk);
+            Ok(chunk.len())
+        }
+    }
+
+    #[test]
+    fn output_reader_emits_output_then_exit_while_active() {
+        let gate = OutputGate::new();
+        let events = collect_reader_events(&mut std::io::Cursor::new(b"hi".to_vec()), &gate);
+        assert_eq!(events, vec!["output:hi".to_owned(), "exited".to_owned()]);
+    }
+
+    #[test]
+    fn superseded_reader_does_not_emit_after_its_session_is_closed() {
+        let mut manager = SessionManager::default();
+        let dead = fake_session(true);
+        let gate = Arc::clone(&dead.output_gate);
+        manager.sessions.insert("s1".to_owned(), dead);
+        assert!(manager.existing_info("s1").is_none(), "exited session is reaped");
+
+        // Trailing output and the exit notification of the reaped session
+        // must not reach a new session that reuses the id.
+        let events = collect_reader_events(&mut std::io::Cursor::new(b"late".to_vec()), &gate);
+        assert!(events.is_empty(), "{events:?}");
+
+        // Closing while the reader is blocked mid-stream stops later events.
+        let live = fake_session(false);
+        let gate = Arc::clone(&live.output_gate);
+        let manager = Mutex::new(SessionManager::default());
+        manager
+            .lock()
+            .unwrap()
+            .sessions
+            .insert("s1".to_owned(), live);
+        let mut reader = InterleavedReader {
+            reads: 0,
+            on_second_read: || {
+                manager.lock().unwrap().close("s1").expect("close session");
+            },
+        };
+        let events = collect_reader_events(&mut reader, &gate);
+        assert_eq!(events, vec!["output:before".to_owned()]);
     }
 
     #[test]
