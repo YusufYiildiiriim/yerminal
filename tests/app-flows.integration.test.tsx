@@ -32,6 +32,29 @@ function seedWorkspace(settings: Record<string, unknown> = {}) {
   localStorage.setItem("yerminal.app-settings.v1", JSON.stringify(settings));
 }
 
+function seedTwoWorkspaces(settings: Record<string, unknown> = {}) {
+  localStorage.setItem("yerminal.terminal-workspaces", JSON.stringify({
+    workspaces: [
+      { id: "workspace-1", name: "Workspace 1", rootPath, folderPaths: [rootPath] },
+      { id: "workspace-2", name: "Workspace 2", rootPath, folderPaths: [rootPath] },
+    ],
+    activeId: "workspace-1",
+  }));
+  localStorage.setItem("yerminal.app-settings.v1", JSON.stringify(settings));
+}
+
+function writeCalls() {
+  return invokeMock.mock.calls.filter(([command]) => command === "write_workspace_text_file");
+}
+
+async function openNotesAndEdit(user: ReturnType<typeof userEvent.setup>, text: string) {
+  await user.click(await screen.findByRole("button", { name: /notes/ }));
+  const editor = await screen.findByRole("textbox", { name: "Edit notes.txt" });
+  await user.clear(editor);
+  await user.type(editor, text);
+  return editor;
+}
+
 function entriesFor(path: unknown) {
   if (path === rootPath) return [
     { name: "src", path: `${rootPath}\\src`, isDir: true, size: null, extension: null },
@@ -68,7 +91,11 @@ beforeEach(() => {
   openMock.mockReset();
   openMock.mockResolvedValue([rootPath]);
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 describe("App user flows", () => {
   it("adds a folder, re-reads nested directories on collapse/expand, and removes the folder", async () => {
@@ -155,5 +182,36 @@ describe("App user flows", () => {
     await user.click(screen.getByRole("button", { name: /M.*notes.*U/ }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("This diff exceeds the 1 MiB preview limit.");
+  });
+});
+
+describe("Workspace deletion with unsaved editor tabs", () => {
+  it("warns about unsaved files and keeps the workspace and edits when cancelled", async () => {
+    const user = userEvent.setup();
+    seedTwoWorkspaces();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<App />);
+
+    const editor = await openNotesAndEdit(user, "unsaved work");
+    await user.click(screen.getByRole("button", { name: "Delete workspace" }));
+
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm.mock.calls[0][0]).toMatch(/unsaved changes.*notes\.txt/i);
+    expect(editor).toHaveValue("unsaved work");
+    expect(JSON.parse(localStorage.getItem("yerminal.terminal-workspaces") ?? "{}").workspaces).toHaveLength(2);
+  });
+
+  it("drops the deleted workspace's editor state so auto-save never writes its tabs", async () => {
+    const user = userEvent.setup();
+    seedTwoWorkspaces({ autoSave: true });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<App />);
+
+    await openNotesAndEdit(user, "discard me");
+    await user.click(screen.getByRole("button", { name: "Delete workspace" }));
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("yerminal.terminal-workspaces") ?? "{}").workspaces).toHaveLength(1));
+
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+    expect(writeCalls()).toHaveLength(0);
   });
 });

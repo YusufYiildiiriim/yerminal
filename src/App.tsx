@@ -238,6 +238,10 @@ function normalizeEditorNewlines(content: string | null): string {
   return (content ?? "").replace(/\r\n/g, "\n");
 }
 
+function isEditorTabUnsaved(tab: EditorFileTab): boolean {
+  return tab.content !== null && normalizeEditorNewlines(tab.content) !== normalizeEditorNewlines(tab.savedContent);
+}
+
 function preserveEditorLineEndings(content: string, original: string): string {
   return original.includes("\r\n") ? content.replace(/\r?\n/g, "\r\n") : content.replace(/\r\n/g, "\n");
 }
@@ -1106,7 +1110,19 @@ function App() {
   const deleteWorkspace = useCallback(async () => {
     const target = activeTerminalWorkspace;
     if (!target || terminalWorkspaceState.workspaces.length <= 1) return;
-    if (!window.confirm(`Delete workspace "${target.name}" and close its terminals?`)) return;
+    const unsavedTabs = (editorWorkspaces[target.id]?.tabs ?? []).filter(isEditorTabUnsaved);
+    const unsavedWarning = unsavedTabs.length > 0
+      ? ` Unsaved changes in ${unsavedTabs.map((tab) => tab.name).join(", ")} will be discarded.`
+      : "";
+    if (!window.confirm(`Delete workspace "${target.name}" and close its terminals?${unsavedWarning}`)) return;
+    for (const key of [...editorOperationIdsRef.current.keys()]) {
+      if ((JSON.parse(key) as [string, string])[0] === target.id) editorOperationIdsRef.current.delete(key);
+    }
+    setEditorWorkspaces((current) => {
+      if (!(target.id in current)) return current;
+      const { [target.id]: _removed, ...rest } = current;
+      return rest;
+    });
 
     const closeResults = await Promise.allSettled(target.terminalIds.map((id) => isTauri() ? invoke("close_terminal", { sessionId: id }) : Promise.resolve()));
     const failed = closeResults.find((result) => result.status === "rejected");
@@ -1118,7 +1134,7 @@ function App() {
       return { workspaces, activeId: current.activeId === target.id ? workspaces[0]?.id ?? "" : current.activeId };
     });
     setRepoInfo(null);
-  }, [activeTerminalWorkspace, showToast, terminalWorkspaceState.workspaces]);
+  }, [activeTerminalWorkspace, editorWorkspaces, showToast, terminalWorkspaceState.workspaces]);
 
   const addWorkspaceFolders = useCallback(async () => {
     if (!isTauri()) {
