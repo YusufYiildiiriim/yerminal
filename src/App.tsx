@@ -2026,9 +2026,11 @@ function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visible
     return { panes, dividers: [] };
   }, [activeTerminalId, focusedTerminalId, floatingLayout.mode, floatingLayout.positions, layout, visibleTerminalIds.join("\u0000")]);
 
+  const activePaneVisible = Boolean(activeTerminalId && geometry.panes.has(activeTerminalId));
+
   useEffect(() => {
     const scrollport = scrollportRef.current;
-    if (!scrollport || !tiledAllTerminals || !activeTerminalId || !geometry.panes.has(activeTerminalId)) return;
+    if (!scrollport || !tiledAllTerminals || !activeTerminalId || !activePaneVisible) return;
 
     const revealActivePane = () => {
       const pane = paneRefs.current.get(activeTerminalId);
@@ -2049,7 +2051,7 @@ function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visible
       window.cancelAnimationFrame(frameId);
       observer.disconnect();
     };
-  }, [activeTerminalId, geometry, tiledAllTerminals]);
+  }, [activeTerminalId, activePaneVisible, tiledAllTerminals]);
 
   const findPaneAtPoint = (clientX: number, clientY: number, sourceId: string) => {
     for (const [paneId, pane] of paneRefs.current) {

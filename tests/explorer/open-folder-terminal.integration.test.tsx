@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const tauri = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -35,6 +35,20 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 const root = "C:\\work\\repo";
 const targetFolder = `${root}\\src`;
 
+const originalScrollBy = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollBy");
+const originalHasCapture = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "hasPointerCapture");
+const originalSetCapture = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "setPointerCapture");
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  for (const [name, descriptor] of [["scrollBy", originalScrollBy], ["hasPointerCapture", originalHasCapture], ["setPointerCapture", originalSetCapture]] as const) {
+    if (descriptor) Object.defineProperty(HTMLElement.prototype, name, descriptor);
+    else Reflect.deleteProperty(HTMLElement.prototype, name);
+  }
+});
+
 describe("Explorer Open in Terminal integration", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -54,6 +68,36 @@ describe("Explorer Open in Terminal integration", () => {
     });
   });
 
+  it("does not auto-scroll the terminal viewport while resizing a split", async () => {
+    const scrollBy = vi.fn();
+    const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains("terminal-layout-scrollport")) return { left: 0, right: 500, top: 0, bottom: 500, width: 500, height: 500, x: 0, y: 0, toJSON() {} };
+      if (this.classList.contains("terminal-layout-surface")) return { left: 0, right: 1000, top: 0, bottom: 500, width: 1000, height: 500, x: 0, y: 0, toJSON() {} };
+      if (this.classList.contains("terminal-pane-frame")) return { left: 400, right: 800, top: 0, bottom: 500, width: 400, height: 500, x: 400, y: 0, toJSON() {} };
+      return { left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON() {} };
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollBy", { configurable: true, value: scrollBy });
+    Object.defineProperty(HTMLElement.prototype, "hasPointerCapture", { configurable: true, value: () => true });
+    Object.defineProperty(HTMLElement.prototype, "setPointerCapture", { configurable: true, value: vi.fn() });
+    vi.stubGlobal("PointerEvent", MouseEvent);
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByTestId("mock-terminal");
+    const folderButton = await screen.findByRole("button", { name: "src" });
+    fireEvent.contextMenu(folderButton.closest(".workspace-tree-row")!);
+    await user.click(screen.getByRole("menuitem", { name: "Open in Terminal" }));
+    await user.click(await screen.findByRole("button", { name: "Show all terminals" }));
+    const divider = await screen.findByRole("separator", { name: "Resize terminal panes" });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    fireEvent.pointerDown(divider, { pointerId: 1, clientX: 500, clientY: 200 });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    scrollBy.mockClear();
+    fireEvent.pointerMove(divider, { pointerId: 1, clientX: 700, clientY: 200 });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(scrollBy).not.toHaveBeenCalled();
+    expect(divider).toHaveStyle({ left: "calc(70% - 3px)" });
+    bounds.mockRestore();
+  });
   it("creates and focuses a new target-folder session while keeping the prior session", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -62,6 +106,7 @@ describe("Explorer Open in Terminal integration", () => {
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("create_terminal", expect.objectContaining({ workingDirectory: root })));
     vi.mocked(invoke).mockClear();
 
+    await screen.findByTestId("mock-terminal");
     const folderButton = await screen.findByRole("button", { name: "src" });
     fireEvent.contextMenu(folderButton.closest(".workspace-tree-row")!);
     await user.click(screen.getByRole("menuitem", { name: "Open in Terminal" }));
