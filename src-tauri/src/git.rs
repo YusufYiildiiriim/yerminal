@@ -191,6 +191,14 @@ fn validated_worktree_path(repo: &Repository, file_path: &str) -> Result<PathBuf
     {
         return Err("Invalid repository-relative file path".to_owned());
     }
+    if components.iter().any(|component| {
+        component
+            .as_os_str()
+            .to_string_lossy()
+            .eq_ignore_ascii_case(".git")
+    }) {
+        return Err("Git metadata files cannot be changed from Git Changes".to_owned());
+    }
 
     let root = repo
         .workdir()
@@ -305,6 +313,15 @@ pub fn discard_worktree_file(path: &str, file_path: &str) -> Result<(), String> 
     } else {
         match fs::symlink_metadata(&worktree_file) {
             Ok(metadata) if metadata.file_type().is_file() || metadata.file_type().is_symlink() => {
+                // Only delete files Git itself reports as untracked; ignored
+                // files (e.g. `.env`) are never shown in Git Changes.
+                let file_status = repo
+                    .status_file(&relative)
+                    .map_err(|error| format!("Could not read file status: {error}"))?;
+                if !file_status.contains(Status::WT_NEW) || file_status.contains(Status::IGNORED)
+                {
+                    return Err("Only untracked files can be discarded this way".to_owned());
+                }
                 fs::remove_file(&worktree_file)
                     .map_err(|error| format!("Could not discard untracked file: {error}"))
             }
@@ -868,6 +885,62 @@ mod tests {
 
         assert!(!dir.path().join("untracked.txt").exists());
         assert!(status(&path).expect("status").is_empty());
+    }
+
+    #[test]
+    fn write_operations_reject_git_internal_paths() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "real.txt", "ok\n");
+        stage_and_commit(&path, "real.txt", "add real");
+        let head_before = fs::read_to_string(dir.path().join(".git/HEAD")).unwrap();
+
+        for internal in [".git/HEAD", ".GIT/HEAD", ".git/config", ".git"] {
+            let discard = discard_worktree_file(&path, internal).unwrap_err();
+            assert!(discard.contains("Git metadata"), "{internal}: {discard}");
+            let stage = stage_file(&path, internal).unwrap_err();
+            assert!(stage.contains("Git metadata"), "{internal}: {stage}");
+            let unstage = unstage_file(&path, internal).unwrap_err();
+            assert!(unstage.contains("Git metadata"), "{internal}: {unstage}");
+        }
+
+        assert_eq!(
+            fs::read_to_string(dir.path().join(".git/HEAD")).unwrap(),
+            head_before
+        );
+        assert!(dir.path().join(".git/config").exists());
+    }
+
+    #[test]
+    fn discard_keeps_ignored_files() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), ".gitignore", ".env\n");
+        stage_and_commit(&path, ".gitignore", "ignore env");
+        add_file(dir.path(), ".env", "SECRET=1\n");
+
+        let error = discard_worktree_file(&path, ".env").unwrap_err();
+        assert!(error.contains("untracked"), "{error}");
+        assert_eq!(
+            fs::read_to_string(dir.path().join(".env")).unwrap(),
+            "SECRET=1\n"
+        );
+    }
+
+    #[test]
+    fn discard_restores_the_staged_version_of_a_file() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "file.txt", "v1\n");
+        stage_and_commit(&path, "file.txt", "add v1");
+        add_file(dir.path(), "file.txt", "v2\n");
+        stage_file(&path, "file.txt").expect("stage v2");
+        add_file(dir.path(), "file.txt", "v3\n");
+
+        discard_worktree_file(&path, "file.txt").expect("discard worktree change");
+
+        assert_eq!(
+            fs::read_to_string(dir.path().join("file.txt")).unwrap(),
+            "v2\n"
+        );
+        assert_change(&status(&path).unwrap(), "file.txt", "modified", true, false);
     }
 
     #[test]
