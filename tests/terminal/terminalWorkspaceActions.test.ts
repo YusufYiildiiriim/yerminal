@@ -126,3 +126,33 @@ describe("openFolderInNewTerminal", () => {
     expect(appendTerminalToLayout(null, "first")).toEqual({ type: "terminal", sessionId: "first" });
   });
 });
+
+function layoutSessionIds(node: TerminalLayoutNode | null): string[] {
+  if (!node) return [];
+  if (node.type === "terminal") return [node.sessionId];
+  return [...layoutSessionIds(node.children[0]), ...layoutSessionIds(node.children[1])];
+}
+
+describe("null layouts", () => {
+  it("keeps existing terminals when moving a session into a group whose layout is not built yet", () => {
+    const withSecond = createTerminalGroup(createInitialTerminalGroups());
+    const groups = [
+      { ...withSecond.groups[0], terminalIds: ["a", "b"], activeTerminalId: "a", layout: null },
+      { ...withSecond.groups[1], terminalIds: ["c"], activeTerminalId: "c", layout: { type: "terminal" as const, sessionId: "c" } },
+    ];
+    const moved = moveTerminalBetweenGroups({ groups, activeGroupId: groups[1].id }, "c", groups[0].id);
+    expect(moved.groups[0].terminalIds).toEqual(["a", "b", "c"]);
+    expect(layoutSessionIds(moved.groups[0].layout)).toEqual(["a", "b", "c"]);
+  });
+
+  it("keeps every terminal when closing a group into a neighbour whose layout is not built yet", () => {
+    const withSecond = createTerminalGroup(createInitialTerminalGroups());
+    const groups = [
+      { ...withSecond.groups[0], terminalIds: ["a", "b"], activeTerminalId: "a", layout: null },
+      { ...withSecond.groups[1], terminalIds: ["c"], activeTerminalId: "c", layout: { type: "terminal" as const, sessionId: "c" } },
+    ];
+    const closed = closeTerminalGroup({ groups, activeGroupId: groups[1].id }, groups[1].id);
+    expect(closed.groups[0].terminalIds).toEqual(["a", "b", "c"]);
+    expect(layoutSessionIds(closed.groups[0].layout)).toEqual(["a", "b", "c"]);
+  });
+});

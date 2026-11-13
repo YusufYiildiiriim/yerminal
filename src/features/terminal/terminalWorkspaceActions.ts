@@ -36,7 +36,7 @@ export function closeTerminalGroup(state: TerminalGroups, groupId: string): Term
   const closing = state.groups[closingIndex];
   const destination = state.groups[destinationIndex];
   const terminalIds = [...destination.terminalIds, ...closing.terminalIds.filter((id) => !destination.terminalIds.includes(id))];
-  let layout = destination.layout;
+  let layout = layoutForGroup(destination);
   for (const sessionId of closing.terminalIds) layout = appendTerminalToLayout(layout, sessionId);
   const groups = state.groups.filter((group) => group.id !== groupId).map((group) => group.id === destination.id
     ? { ...group, terminalIds, activeTerminalId: closing.activeTerminalId ?? group.activeTerminalId ?? terminalIds[0] ?? null, layout }
@@ -55,7 +55,7 @@ export function moveTerminalBetweenGroups(state: TerminalGroups, sessionId: stri
     }
     if (group.id === target.id) {
       const terminalIds = [...group.terminalIds, sessionId];
-      return { ...group, terminalIds, activeTerminalId: sessionId, layout: appendTerminalToLayout(group.layout, sessionId) };
+      return { ...group, terminalIds, activeTerminalId: sessionId, layout: appendTerminalToLayout(layoutForGroup(group), sessionId) };
     }
     return group;
   });
@@ -69,6 +69,21 @@ export function removeTerminalFromGroups(state: TerminalGroups, sessionId: strin
     return { ...group, terminalIds, activeTerminalId: group.activeTerminalId === sessionId ? terminalIds[0] ?? null : group.activeTerminalId, layout: removeTerminal(group.layout, sessionId) };
   });
   return { ...state, groups };
+}
+
+/** A null layout means "derive it from terminalIds", so build that layout before changing it. */
+function layoutForGroup(group: TerminalGroup): TerminalLayoutNode | null {
+  return group.layout ?? buildEvenTerminalLayout(group.terminalIds);
+}
+
+/** Builds a horizontal chain in which every session gets an equal share of the width. */
+export function buildEvenTerminalLayout(sessionIds: string[]): TerminalLayoutNode | null {
+  const [first, ...rest] = sessionIds;
+  if (first === undefined) return null;
+  const terminal: TerminalLayoutNode = { type: "terminal", sessionId: first };
+  const remainder = buildEvenTerminalLayout(rest);
+  if (!remainder) return terminal;
+  return { type: "split", id: crypto.randomUUID(), direction: "horizontal", ratio: 1 / sessionIds.length, children: [terminal, remainder] };
 }
 
 function removeTerminal(layout: TerminalLayoutNode | null, sessionId: string): TerminalLayoutNode | null {
