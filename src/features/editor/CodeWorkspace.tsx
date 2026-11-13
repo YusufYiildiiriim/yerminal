@@ -224,7 +224,7 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
         </div>
       </header>
       <div className="code-editor-layout">
-      <div className="code-editor-content" key={activeTab.id} ref={editorContentRef} onScroll={(event) => {
+      <div className={"code-editor-content" + (activeTab.view === "diff" ? " is-diff" : "")} key={activeTab.id} ref={editorContentRef} onScroll={(event) => {
         const element = event.currentTarget;
         setEditorViewport({ top: element.scrollTop / Math.max(1, element.scrollHeight), size: Math.min(1, element.clientHeight / Math.max(1, element.scrollHeight)) });
       }}>

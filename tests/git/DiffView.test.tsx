@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DiffView } from "../../src/features/git/DiffView";
 
@@ -23,8 +23,14 @@ describe("DiffView", () => {
     expect(screen.getByText("app.ts")).toBeInTheDocument();
     expect(screen.getByText("repo")).toBeInTheDocument();
     expect(screen.getByText("Working Tree")).toBeInTheDocument();
-    expect(screen.getByText("diff --git a/src/app.ts b/src/app.ts")).toBeInTheDocument();
-    expect(screen.getByText("index 1234567..abcdef0 100644")).toBeInTheDocument();
+    const details = screen.getByText("Diff details").closest("details");
+    expect(details).not.toHaveAttribute("open");
+    const rawHeaders = details?.querySelector("pre");
+    expect(rawHeaders).toHaveTextContent("diff --git a/src/app.ts b/src/app.ts");
+    expect(rawHeaders).not.toBeVisible();
+    fireEvent.click(screen.getByText("Diff details"));
+    expect(rawHeaders).toHaveTextContent("index 1234567..abcdef0 100644");
+    expect(rawHeaders).toBeVisible();
     expect(screen.getByText("@@ -4,2 +4,3 @@ function run()")).toBeInTheDocument();
     expect(screen.getByText("old value")).toBeInTheDocument();
     expect(screen.getByText("new value")).toBeInTheDocument();

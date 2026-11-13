@@ -54,6 +54,8 @@ type DiffViewProps = { diff: string; path: string; root: string; staged: boolean
 
 export function DiffView({ diff, path, root, staged, loading = false, emptyMessage = "No diff available." }: DiffViewProps) {
   const rows = useMemo(() => parseDiffRows(diff), [diff]);
+  const headerRows = rows.filter((row) => row.kind === "meta" && /^(diff --git |index |--- |\+\+\+ )/.test(row.content));
+  const displayRows = rows.filter((row) => !headerRows.includes(row));
   const fileName = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
   const repoName = root.split(/[\\/]/).filter(Boolean).pop() ?? root;
 
@@ -65,8 +67,9 @@ export function DiffView({ diff, path, root, staged, loading = false, emptyMessa
       <span className={"diff-view-side" + (staged ? " staged" : "")}>{staged ? "Index" : "Working Tree"}</span>
       <span className="diff-view-repo" title={root}>{repoName}</span>
     </div>
-    {rows.length === 0 ? <div className="diff-view-empty">{emptyMessage}</div> : <div className="diff-view-lines">
-      {rows.map((row, index) => row.kind === "hunk" || row.kind === "meta"
+    {headerRows.length > 0 && <details className="diff-view-details"><summary>Diff details</summary><pre>{headerRows.map((row) => row.content).join("\n")}</pre></details>}
+    {displayRows.length === 0 ? <div className="diff-view-empty">{emptyMessage}</div> : <div className="diff-view-lines">
+      {displayRows.map((row, index) => row.kind === "hunk" || row.kind === "meta"
         ? <div className={`diff-view-line ${row.kind}`} key={index}><code className="diff-view-content">{row.content}</code></div>
         : <div className={`diff-view-line ${row.kind}`} key={index}>
           <span className="diff-view-number" aria-hidden="true">{row.oldNumber ?? ""}</span>

@@ -147,6 +147,7 @@ describe("App user flows", () => {
     await user.click(screen.getByRole("button", { name: "Git Changes" }));
     await waitFor(() => expect(invokeMock.mock.calls.some(([command]) => command === "git_status")).toBe(true));
     await user.click(await screen.findByRole("button", { name: /M.*notes.*U/ }));
+    expect((await screen.findByRole("region", { name: "File diff" })).parentElement).toHaveClass("is-diff");
     invokeMock.mockImplementation(async (command: string, args?: InvokeArgs) => {
       if (command === "git_diff") return "x".repeat(1024 * 1024 + 1);
       return defaultInvokeResult(command, args);

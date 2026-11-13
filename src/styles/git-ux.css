@@ -164,8 +164,11 @@
 }
 .app-shell[data-theme] .diff-line.meta { color: var(--theme-muted, #85848e); }
 /* Editor-area diff tabs (VS Code-style source control diff). */
+.app-shell[data-theme] .code-editor-content.is-diff { display: flex; overflow: hidden; }
+.app-shell[data-theme] .code-editor-content.is-diff > .code-editor-message { flex: 1; min-width: 0; }
 .app-shell[data-theme] .diff-view {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -187,6 +190,10 @@
   background: var(--theme-surface, #19191f);
   font: 11px/1.4 "Segoe UI", sans-serif;
 }
+.app-shell[data-theme] .diff-view-details { flex: 0 0 auto; color: var(--theme-muted); font: 11px/1.5 "Segoe UI", sans-serif; }
+.app-shell[data-theme] .diff-view-details summary { width: max-content; padding: 4px 12px; cursor: pointer; }
+.app-shell[data-theme] .diff-view-details pre { margin: 0; padding: 4px 12px 8px; white-space: pre; font: 11px/1.5 var(--editor-font-family, monospace); }
+.app-shell[data-theme] .diff-view-details summary:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }
 .app-shell[data-theme] .diff-view-file {
   min-width: 0;
   overflow: hidden;
