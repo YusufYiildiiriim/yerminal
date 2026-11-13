@@ -328,7 +328,21 @@ impl SessionManager {
         )
     }
 
-    fn existing_info(&self, id: &str) -> Option<TerminalInfo> {
+    /// Returns the running session registered under `id`. A session whose
+    /// process has exited is reaped instead, so `create` spawns a fresh one
+    /// rather than reattaching the UI to a dead terminal.
+    fn existing_info(&mut self, id: &str) -> Option<TerminalInfo> {
+        let exited = self.sessions.get(id).is_some_and(|session| {
+            session
+                .child
+                .lock()
+                .map(|mut child| !matches!(child.try_wait(), Ok(None)))
+                .unwrap_or(true)
+        });
+        if exited {
+            let _ = self.close(id);
+            return None;
+        }
         self.sessions.get(id).map(|session| TerminalInfo {
             id: id.to_owned(),
             shell: session.shell.clone(),
@@ -881,6 +895,91 @@ mod tests {
             close_error.contains("Terminal session was not found"),
             "{close_error}"
         );
+    }
+
+    #[derive(Debug)]
+    struct FakeChild {
+        exited: bool,
+    }
+
+    impl portable_pty::ChildKiller for FakeChild {
+        fn kill(&mut self) -> std::io::Result<()> {
+            self.exited = true;
+            Ok(())
+        }
+
+        fn clone_killer(&self) -> Box<dyn portable_pty::ChildKiller + Send + Sync> {
+            Box::new(FakeChild {
+                exited: self.exited,
+            })
+        }
+    }
+
+    impl Child for FakeChild {
+        fn try_wait(&mut self) -> std::io::Result<Option<portable_pty::ExitStatus>> {
+            Ok(self
+                .exited
+                .then(|| portable_pty::ExitStatus::with_exit_code(0)))
+        }
+
+        fn wait(&mut self) -> std::io::Result<portable_pty::ExitStatus> {
+            self.exited = true;
+            Ok(portable_pty::ExitStatus::with_exit_code(0))
+        }
+
+        fn process_id(&self) -> Option<u32> {
+            None
+        }
+
+        #[cfg(windows)]
+        fn as_raw_handle(&self) -> Option<std::os::windows::io::RawHandle> {
+            None
+        }
+    }
+
+    /// A session backed by a real (child-less) PTY and a fake child process,
+    /// so lifecycle logic can be tested without an AppHandle.
+    fn fake_session(exited: bool) -> Arc<TerminalSession> {
+        let pair = native_pty_system()
+            .openpty(PtySize::default())
+            .expect("open test pty");
+        let writer = pair.master.take_writer().expect("take test pty writer");
+        Arc::new(TerminalSession {
+            process_id: None,
+            process_start_time: None,
+            shell: "Fake".to_owned(),
+            working_directory: "fake-cwd".to_owned(),
+            writer: Mutex::new(writer),
+            master: Mutex::new(pair.master),
+            child: Mutex::new(Box::new(FakeChild { exited })),
+            output_history: Arc::new(Mutex::new(TerminalOutputHistory::default())),
+        })
+    }
+
+    #[test]
+    fn existing_info_reaps_exited_sessions_and_keeps_running_ones() {
+        let mut manager = SessionManager::default();
+        manager
+            .sessions
+            .insert("dead".to_owned(), fake_session(true));
+        manager
+            .sessions
+            .insert("live".to_owned(), fake_session(false));
+
+        assert!(
+            manager.existing_info("dead").is_none(),
+            "an exited session must not be reused"
+        );
+        assert!(!manager.sessions.contains_key("dead"));
+
+        let live = manager.existing_info("live").expect("running session is reused");
+        assert_eq!(live.shell, "Fake");
+        assert_eq!(live.working_directory, "fake-cwd");
+        assert!(manager.sessions.contains_key("live"));
+        assert!(manager.existing_info("missing").is_none());
+
+        manager.close("live").expect("close running session");
+        assert!(manager.sessions.is_empty());
     }
 
     fn decode_in_chunks(bytes: &[u8], split_at: &[usize]) -> String {
