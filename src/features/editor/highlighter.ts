@@ -39,11 +39,18 @@ const languageLoaders: Record<string, () => Promise<{ default: LanguageRegistrat
 let highlighterPromise: Promise<HighlighterCore> | null = null;
 
 function getHighlighter(): Promise<HighlighterCore> {
-  highlighterPromise ??= createHighlighterCore({
-    themes: [githubDark],
-    langs: [],
-    engine: createOnigurumaEngine(import("shiki/wasm")),
-  });
+  if (!highlighterPromise) {
+    const attempt: Promise<HighlighterCore> = createHighlighterCore({
+      themes: [githubDark],
+      langs: [],
+      engine: createOnigurumaEngine(import("shiki/wasm")),
+    }).catch((reason: unknown) => {
+      // Forget the failed attempt so a later call can retry initialization.
+      if (highlighterPromise === attempt) highlighterPromise = null;
+      throw reason;
+    });
+    highlighterPromise = attempt;
+  }
   return highlighterPromise;
 }
 
