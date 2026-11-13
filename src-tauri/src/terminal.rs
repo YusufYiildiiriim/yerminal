@@ -982,6 +982,87 @@ mod tests {
         assert!(manager.sessions.is_empty());
     }
 
+    #[test]
+    fn input_handle_writes_without_borrowing_the_manager() {
+        let mut manager = SessionManager::default();
+        manager
+            .sessions
+            .insert("live".to_owned(), fake_session(false));
+
+        let input = manager.input("live").expect("input handle");
+        // The handle stays usable after the manager (and its lock) is gone.
+        drop(manager);
+        input.write("echo hi\r").expect("write to pty");
+        let error = input.write(&"a".repeat(MAX_TERMINAL_INPUT_BYTES + 1)).unwrap_err();
+        assert!(error.contains("too large"), "{error}");
+    }
+
+    fn root(
+        session_id: &str,
+        process_id: Option<u32>,
+        process_start_time: Option<u64>,
+        running: bool,
+    ) -> TerminalProcessRoot {
+        TerminalProcessRoot {
+            session_id: session_id.to_owned(),
+            process_id,
+            process_start_time,
+            running,
+        }
+    }
+
+    #[test]
+    fn resource_monitor_reports_unavailable_roots() {
+        let mut monitor = TerminalResourceMonitor::default();
+        let pid = std::process::id();
+        let start = read_process_start_time(pid);
+        let usage = monitor.collect(vec![
+            root("no-pid", None, Some(1), true),
+            root("no-start", Some(pid), None, true),
+            root("exited", Some(pid), start, false),
+            root("reused-pid", Some(pid), start.map(|time| time + 1), true),
+        ]);
+
+        let ids: Vec<&str> = usage.iter().map(|item| item.session_id.as_str()).collect();
+        assert_eq!(ids, vec!["no-pid", "no-start", "exited", "reused-pid"]);
+        for item in &usage {
+            assert!(!item.available, "{} should be unavailable", item.session_id);
+            assert_eq!(item.process_count, 0);
+            assert_eq!(item.memory_bytes, 0);
+            assert_eq!(item.cpu_percent, None);
+        }
+    }
+
+    #[test]
+    fn resource_monitor_measures_the_current_process() {
+        let mut monitor = TerminalResourceMonitor::default();
+        if monitor.metrics_system.is_none() {
+            eprintln!("skipping: process metrics are unavailable on this platform");
+            return;
+        }
+        let pid = std::process::id();
+        let start = read_process_start_time(pid).expect("current process start time");
+
+        let first = monitor.collect(vec![root("self", Some(pid), Some(start), true)]);
+        assert_eq!(first.len(), 1);
+        assert!(first[0].available);
+        assert!(first[0].process_count >= 1);
+        assert!(first[0].memory_bytes > 0);
+        // CPU needs two samples of the same process set.
+        assert_eq!(first[0].cpu_percent, None);
+
+        // Other tests may briefly spawn child processes (which resets CPU
+        // readiness), so allow a few samples for a stable process set.
+        let cpu = (0..5)
+            .find_map(|_| {
+                let sample = monitor.collect(vec![root("self", Some(pid), Some(start), true)]);
+                assert!(sample[0].available);
+                sample[0].cpu_percent
+            })
+            .expect("cpu after repeated samples");
+        assert!((0.0..=100.0).contains(&cpu), "{cpu}");
+    }
+
     fn decode_in_chunks(bytes: &[u8], split_at: &[usize]) -> String {
         let mut decoder = Utf8ChunkDecoder::default();
         let mut output = String::new();
