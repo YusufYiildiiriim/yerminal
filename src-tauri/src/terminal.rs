@@ -676,6 +676,55 @@ fn resolve_program(program: &str) -> Result<String, String> {
     ))
 }
 
+/// Decodes a byte stream that arrives in arbitrary chunks as UTF-8. A
+/// multi-byte character split across two reads is carried over (at most 3
+/// bytes) instead of being replaced with U+FFFD; genuinely invalid bytes are
+/// still replaced.
+#[derive(Default)]
+struct Utf8ChunkDecoder {
+    pending: Vec<u8>,
+}
+
+impl Utf8ChunkDecoder {
+    fn decode(&mut self, chunk: &[u8]) -> String {
+        let mut bytes = std::mem::take(&mut self.pending);
+        bytes.extend_from_slice(chunk);
+        let mut output = String::with_capacity(bytes.len());
+        let mut rest = bytes.as_slice();
+        loop {
+            match std::str::from_utf8(rest) {
+                Ok(valid) => {
+                    output.push_str(valid);
+                    break;
+                }
+                Err(error) => {
+                    let (valid, after) = rest.split_at(error.valid_up_to());
+                    // `valid_up_to` guarantees this prefix is valid UTF-8.
+                    output.push_str(std::str::from_utf8(valid).unwrap_or_default());
+                    match error.error_len() {
+                        Some(invalid_length) => {
+                            output.push(char::REPLACEMENT_CHARACTER);
+                            rest = &after[invalid_length..];
+                        }
+                        None => {
+                            // Incomplete sequence at the end: wait for more bytes.
+                            self.pending = after.to_vec();
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        output
+    }
+
+    /// Flushes bytes left over when the stream ends.
+    fn finish(&mut self) -> String {
+        let pending = std::mem::take(&mut self.pending);
+        String::from_utf8_lossy(&pending).into_owned()
+    }
+}
+
 fn spawn_output_reader(
     app: AppHandle,
     session_id: String,
@@ -686,21 +735,26 @@ fn spawn_output_reader(
         .name(format!("pty-output-{session_id}"))
         .spawn(move || {
             let mut buffer = [0_u8; 8192];
+            let mut decoder = Utf8ChunkDecoder::default();
+            let emit_output = |data: String| {
+                if data.is_empty() {
+                    return;
+                }
+                let event = output_history
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .append(session_id.clone(), data);
+                let _ = app.emit("terminal-output", event);
+            };
             loop {
                 match reader.read(&mut buffer) {
                     Ok(0) => break,
-                    Ok(length) => {
-                        let data = String::from_utf8_lossy(&buffer[..length]).into_owned();
-                        let event = output_history
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner)
-                            .append(session_id.clone(), data);
-                        let _ = app.emit("terminal-output", event);
-                    }
+                    Ok(length) => emit_output(decoder.decode(&buffer[..length])),
                     Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
                     Err(_) => break,
                 }
             }
+            emit_output(decoder.finish());
             let _ = app.emit("terminal-exited", session_id);
         })
         .map(|_| ())
@@ -786,6 +840,52 @@ mod tests {
             close_error.contains("Terminal session was not found"),
             "{close_error}"
         );
+    }
+
+    fn decode_in_chunks(bytes: &[u8], split_at: &[usize]) -> String {
+        let mut decoder = Utf8ChunkDecoder::default();
+        let mut output = String::new();
+        let mut start = 0;
+        for &end in split_at.iter().chain(std::iter::once(&bytes.len())) {
+            output.push_str(&decoder.decode(&bytes[start..end]));
+            start = end;
+        }
+        output.push_str(&decoder.finish());
+        output
+    }
+
+    #[test]
+    fn utf8_decoder_joins_characters_split_across_chunks() {
+        let text = "aş ğ 🚀 ü";
+        let bytes = text.as_bytes();
+        // Every possible single split point, including inside each multi-byte char.
+        for split in 0..=bytes.len() {
+            assert_eq!(decode_in_chunks(bytes, &[split]), text, "split at {split}");
+        }
+        // The 4-byte emoji delivered one byte per read.
+        let emoji = "🚀".as_bytes();
+        assert_eq!(decode_in_chunks(emoji, &[1, 2, 3]), "🚀");
+
+        let mut decoder = Utf8ChunkDecoder::default();
+        assert_eq!(decoder.decode(&"ş".as_bytes()[..1]), "");
+        assert_eq!(decoder.decode(&"ş".as_bytes()[1..]), "ş");
+    }
+
+    #[test]
+    fn utf8_decoder_replaces_invalid_and_truncated_bytes() {
+        // A lone continuation byte and an invalid lead are replaced in place.
+        assert_eq!(decode_in_chunks(b"a\x80b\xFFc", &[]), "a\u{FFFD}b\u{FFFD}c");
+        // An invalid byte after a carried prefix does not swallow the next char.
+        assert_eq!(decode_in_chunks(b"x\xC5", &[]), "x\u{FFFD}");
+        assert_eq!(
+            decode_in_chunks(&[b'x', 0xC5, b'y'], &[2]),
+            "x\u{FFFD}y"
+        );
+        // A stream ending mid-character flushes a replacement on finish.
+        let mut decoder = Utf8ChunkDecoder::default();
+        assert_eq!(decoder.decode(&"ğ".as_bytes()[..1]), "");
+        assert_eq!(decoder.finish(), "\u{FFFD}");
+        assert_eq!(decoder.finish(), "");
     }
 
     #[test]
