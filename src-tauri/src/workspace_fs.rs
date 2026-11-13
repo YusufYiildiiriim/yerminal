@@ -847,6 +847,118 @@ mod tests {
         );
     }
 
+    /// Creates a symlink, or returns false where the platform refuses (e.g.
+    /// Windows without Developer Mode / SeCreateSymbolicLinkPrivilege).
+    fn try_symlink(target: &Path, link: &Path, is_dir: bool) -> bool {
+        #[cfg(unix)]
+        {
+            let _ = is_dir;
+            std::os::unix::fs::symlink(target, link).is_ok()
+        }
+        #[cfg(windows)]
+        {
+            if is_dir {
+                // Directory junctions need no privilege, unlike symlinks.
+                std::os::windows::fs::symlink_dir(target, link).is_ok()
+                    || std::process::Command::new("cmd")
+                        .arg("/C")
+                        .arg("mklink")
+                        .arg("/J")
+                        .arg(link)
+                        .arg(target)
+                        .output()
+                        .is_ok_and(|output| output.status.success())
+            } else {
+                std::os::windows::fs::symlink_file(target, link).is_ok()
+            }
+        }
+    }
+
+    #[test]
+    fn symlinks_escaping_the_root_are_skipped_and_unreadable() {
+        let (dir, root) = temp_root();
+        add_file(dir.path(), "inside.txt", "inside");
+        let outside = tempfile::tempdir().expect("create outside temp directory");
+        add_file(outside.path(), "secret.txt", "sneaky");
+        add_file(outside.path(), "vault/secret-nested.txt", "sneaky");
+
+        let file_link = dir.path().join("secret-link.txt");
+        let dir_link = dir.path().join("vault-link");
+        let has_file_link = try_symlink(&outside.path().join("secret.txt"), &file_link, false);
+        let has_dir_link = try_symlink(&outside.path().join("vault"), &dir_link, true);
+        if !has_file_link && !has_dir_link {
+            eprintln!("skipping: symlinks are not permitted in this environment");
+            return;
+        }
+
+        let names: Vec<String> = list_directory(&root, "")
+            .expect("list root")
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect();
+        assert_eq!(names, vec!["inside.txt".to_owned()]);
+
+        let results = search_files(&root, "secret", 10).expect("search");
+        assert!(results.is_empty(), "{results:?}");
+
+        if has_file_link {
+            let read_error =
+                read_text_file(&root, file_link.to_string_lossy().as_ref()).unwrap_err();
+            assert!(
+                read_error.contains("outside the included folder"),
+                "{read_error}"
+            );
+        }
+        if has_dir_link {
+            let list_error =
+                list_directory(&root, dir_link.to_string_lossy().as_ref()).unwrap_err();
+            assert!(
+                list_error.contains("outside the included folder"),
+                "{list_error}"
+            );
+            let nested = dir_link.join("secret-nested.txt");
+            let read_error = read_text_file(&root, nested.to_string_lossy().as_ref()).unwrap_err();
+            assert!(
+                read_error.contains("outside the included folder"),
+                "{read_error}"
+            );
+        }
+    }
+
+    #[test]
+    fn write_text_file_only_creates_empty_files_with_valid_names_and_parents() {
+        let (dir, root) = temp_root();
+
+        let with_expected =
+            write_text_file(&root, &fixture_path(&dir, "new.txt"), "", "previous").unwrap_err();
+        assert!(
+            with_expected.contains("Workspace item no longer exists"),
+            "{with_expected}"
+        );
+        let with_content =
+            write_text_file(&root, &fixture_path(&dir, "new.txt"), "content", "").unwrap_err();
+        assert!(
+            with_content.contains("Workspace item no longer exists"),
+            "{with_content}"
+        );
+        assert!(!dir.path().join("new.txt").exists());
+
+        for reserved in ["CON", "con.txt", "NUL.log", "COM1"] {
+            let error =
+                write_text_file(&root, &fixture_path(&dir, reserved), "", "").unwrap_err();
+            assert!(error.contains("Invalid workspace item name"), "{reserved}: {error}");
+        }
+
+        let missing_parent =
+            write_text_file(&root, &fixture_path(&dir, "missing-dir/new.txt"), "", "")
+                .unwrap_err();
+        assert!(
+            missing_parent.contains("Workspace item no longer exists"),
+            "{missing_parent}"
+        );
+        assert!(!dir.path().join("missing-dir").exists());
+    }
+
     #[test]
     fn write_text_file_rejects_missing_files_and_paths_outside_root() {
         let (dir, root) = temp_root();
