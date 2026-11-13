@@ -387,3 +387,67 @@ describe("Workspace deletion with unsaved editor tabs", () => {
     expect(writeCalls()).toHaveLength(0);
   });
 });
+
+describe("Stored settings and workspace migration", () => {
+  const rootStyle = () => document.documentElement.style;
+
+  it("falls back to default settings when the stored JSON is invalid", async () => {
+    localStorage.setItem("yerminal.app-settings.v1", "{not json");
+    render(<App />);
+
+    await waitFor(() => expect(document.documentElement).toHaveAttribute("data-theme", "obsidian"));
+    expect(rootStyle().getPropertyValue("--editor-font-size")).toBe("13px");
+    expect(rootStyle().getPropertyValue("--terminal-font-size")).toBe("13px");
+  });
+
+  it("clamps out-of-range font sizes to 8-40px and rejects unknown values", async () => {
+    localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({
+      theme: "neon",
+      editorFontSize: 99,
+      terminalFontSize: 2,
+      editorFontFamily: "   ",
+      quickOpenScope: "everything",
+      autoSave: "yes",
+    }));
+    render(<App />);
+
+    await waitFor(() => expect(rootStyle().getPropertyValue("--editor-font-size")).toBe("40px"));
+    expect(rootStyle().getPropertyValue("--terminal-font-size")).toBe("8px");
+    expect(document.documentElement).toHaveAttribute("data-theme", "obsidian");
+    expect(rootStyle().getPropertyValue("--editor-font-family")).toBe('"Cascadia Code", Consolas, monospace');
+    expect(JSON.parse(localStorage.getItem("yerminal.app-settings.v1") ?? "{}")).toMatchObject({
+      theme: "obsidian", editorFontSize: 40, terminalFontSize: 8, quickOpenScope: "active", autoSave: false,
+    });
+  });
+
+  it("migrates the legacy single-workspace folder list into a terminal workspace", async () => {
+    const otherPath = "C:\other";
+    localStorage.setItem("yerminal.workspace", JSON.stringify({ folders: [rootPath, otherPath, rootPath, 42], activePath: otherPath }));
+    render(<App />);
+
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("yerminal.terminal-workspaces") ?? "{}").workspaces).toHaveLength(1));
+    const [workspace] = JSON.parse(localStorage.getItem("yerminal.terminal-workspaces") ?? "{}").workspaces;
+    expect(workspace).toMatchObject({ name: "Workspace 1", folderPaths: [rootPath, otherPath], rootPath: otherPath });
+  });
+
+  it("adds legacy folders only to the active workspace when upgrading saved workspaces without folder lists", async () => {
+    const otherPath = "C:\other";
+    localStorage.setItem("yerminal.workspace", JSON.stringify({ folders: [otherPath], activePath: otherPath }));
+    localStorage.setItem("yerminal.terminal-workspaces", JSON.stringify({
+      workspaces: [
+        { id: "workspace-a", name: "A", rootPath },
+        { id: "workspace-b", name: "B", rootPath: "C:\b" },
+      ],
+      activeId: "workspace-a",
+    }));
+    render(<App />);
+
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("yerminal.terminal-workspaces") ?? "{}").workspaces[0].folderPaths).toBeDefined());
+    const stored = JSON.parse(localStorage.getItem("yerminal.terminal-workspaces") ?? "{}");
+    expect(stored.activeId).toBe("workspace-a");
+    expect(stored.workspaces).toEqual([
+      { id: "workspace-a", name: "A", rootPath: otherPath, folderPaths: [otherPath, rootPath] },
+      { id: "workspace-b", name: "B", rootPath: "C:\b", folderPaths: ["C:\b"] },
+    ]);
+  });
+});
