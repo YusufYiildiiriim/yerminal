@@ -227,12 +227,10 @@ fn validated_worktree_path(repo: &Repository, file_path: &str) -> Result<PathBuf
     {
         return Err("Invalid repository-relative file path".to_owned());
     }
-    if components.iter().any(|component| {
-        component
-            .as_os_str()
-            .to_string_lossy()
-            .eq_ignore_ascii_case(".git")
-    }) {
+    if components
+        .iter()
+        .any(|component| is_git_directory_alias(&component.as_os_str().to_string_lossy()))
+    {
         return Err("Git metadata files cannot be changed from Git Changes".to_owned());
     }
 
@@ -260,6 +258,15 @@ fn validated_worktree_path(repo: &Repository, file_path: &str) -> Result<PathBuf
     }
 
     Ok(relative.to_path_buf())
+}
+
+/// True for names Windows resolves to the `.git` directory: any case, with
+/// trailing dots/spaces (`.git.`, `.git `) stripped by Win32, or the 8.3
+/// short name `GIT~1`. Git's own `core.protectNTFS` rejects the same names on
+/// every platform, so they are refused everywhere.
+fn is_git_directory_alias(name: &str) -> bool {
+    let trimmed = name.trim_end_matches(['.', ' ']);
+    trimmed.eq_ignore_ascii_case(".git") || trimmed.eq_ignore_ascii_case("git~1")
 }
 
 pub fn stage_file(path: &str, file_path: &str) -> Result<(), String> {
@@ -1031,6 +1038,41 @@ mod tests {
             head_before
         );
         assert!(dir.path().join(".git/config").exists());
+    }
+
+    #[test]
+    fn write_operations_reject_windows_aliases_of_the_git_directory() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "real.txt", "ok\n");
+        stage_and_commit(&path, "real.txt", "add real");
+        let head_before = fs::read_to_string(dir.path().join(".git/HEAD")).unwrap();
+
+        for alias in [
+            ".git./HEAD",
+            ".git../HEAD",
+            ".git /HEAD",
+            ".GIT. ./HEAD",
+            "GIT~1/HEAD",
+            "git~1/config",
+            "sub/.git./config",
+        ] {
+            let discard = discard_worktree_file(&path, alias).unwrap_err();
+            assert!(discard.contains("Git metadata"), "{alias}: {discard}");
+            let stage = stage_file(&path, alias).unwrap_err();
+            assert!(stage.contains("Git metadata"), "{alias}: {stage}");
+            let unstage = unstage_file(&path, alias).unwrap_err();
+            assert!(unstage.contains("Git metadata"), "{alias}: {unstage}");
+        }
+
+        assert_eq!(
+            fs::read_to_string(dir.path().join(".git/HEAD")).unwrap(),
+            head_before
+        );
+        // Ordinary names that merely contain "git" stay usable.
+        add_file(dir.path(), ".github/workflow.yml", "on: push\n");
+        add_file(dir.path(), "git~2.txt", "tilde\n");
+        stage_file(&path, ".github/workflow.yml").expect("stage .github file");
+        stage_file(&path, "git~2.txt").expect("stage tilde file");
     }
 
     #[test]
