@@ -328,7 +328,10 @@ pub fn unstage_file(path: &str, file_path: &str) -> Result<(), String> {
                 .tree()
                 .map_err(|error| format!("Could not read HEAD tree: {error}"))?;
             match tree.get_path(&relative) {
-                Ok(entry) => Some((entry.id(), entry.filemode())),
+                Ok(entry) if entry.kind() == Some(git2::ObjectType::Blob) => {
+                    Some((entry.id(), entry.filemode()))
+                }
+                Ok(_) => return Err("Only individual files can be unstaged".to_owned()),
                 Err(error) if error.code() == git2::ErrorCode::NotFound => None,
                 Err(error) => return Err(format!("Could not read HEAD entry: {error}")),
             }
@@ -341,9 +344,12 @@ pub fn unstage_file(path: &str, file_path: &str) -> Result<(), String> {
     match head_entry {
         Some((id, mode)) => {
             let path = relative.to_string_lossy().replace('\\', "/").into_bytes();
+            // The index stores the low 32 bits of the size, as git does
+            // (`sd_size = (unsigned int)st_size`); the zeroed stat data makes
+            // the next status re-hash the file either way.
             let file_size = repo
                 .find_blob(id)
-                .map(|blob| blob.size() as u32)
+                .map(|blob| (blob.size() as u64 & u64::from(u32::MAX)) as u32)
                 .unwrap_or(0);
             index
                 .add(&IndexEntry {
@@ -1073,6 +1079,22 @@ mod tests {
         add_file(dir.path(), "git~2.txt", "tilde\n");
         stage_file(&path, ".github/workflow.yml").expect("stage .github file");
         stage_file(&path, "git~2.txt").expect("stage tilde file");
+    }
+
+    #[test]
+    fn unstage_file_rejects_directories_in_head() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "dir/a.txt", "a\n");
+        stage_and_commit(&path, "dir/a.txt", "add dir");
+
+        let error = unstage_file(&path, "dir").unwrap_err();
+        assert!(error.contains("Only individual files"), "{error}");
+
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let index = repo.index().unwrap();
+        assert!(index.get_path(Path::new("dir"), 0).is_none(), "tree added to index");
+        assert!(index.get_path(Path::new("dir/a.txt"), 0).is_some());
+        assert!(status(&path).unwrap().is_empty());
     }
 
     #[test]
