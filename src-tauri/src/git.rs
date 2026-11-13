@@ -106,8 +106,28 @@ pub fn status(path: &str) -> Result<Vec<FileChange>, String> {
         .map_err(|error| format!("Could not read Git status: {error}"))?;
     let mut changes = Vec::with_capacity(statuses.len());
     for entry in statuses.iter() {
-        let Some(path) = entry.path() else { continue };
         let status = entry.status();
+        // `StatusEntry::path` is the old side of a rename; report the new path
+        // so the entry can be diffed, staged and opened at its current location.
+        let renamed_path = if status.contains(Status::INDEX_RENAMED) {
+            entry
+                .head_to_index()
+                .and_then(|delta| delta.new_file().path().map(Path::to_path_buf))
+        } else if status.contains(Status::WT_RENAMED) {
+            entry
+                .index_to_workdir()
+                .and_then(|delta| delta.new_file().path().map(Path::to_path_buf))
+        } else {
+            None
+        };
+        let path = match renamed_path {
+            Some(renamed_path) => renamed_path.to_string_lossy().replace('\\', "/"),
+            None => match entry.path() {
+                Some(path) => path.to_owned(),
+                None => continue,
+            },
+        };
+        let path = path.as_str();
         let staged = status.intersects(
             Status::INDEX_NEW
                 | Status::INDEX_MODIFIED
@@ -821,6 +841,31 @@ mod tests {
         assert_change(&status(&path).unwrap(), "new.txt", "added", true, false);
 
         let _ = dir;
+    }
+
+    #[test]
+    fn status_reports_the_new_path_of_staged_renames() {
+        let (dir, path) = init_repo();
+        let content = "line one\nline two\nline three\nline four\n";
+        add_file(dir.path(), "old.txt", content);
+        stage_and_commit(&path, "old.txt", "add old");
+
+        fs::rename(dir.path().join("old.txt"), dir.path().join("new.txt"))
+            .expect("rename fixture file");
+        let unstaged = status(&path).unwrap();
+        assert_change(&unstaged, "new.txt", "renamed", false, true);
+
+        stage_file(&path, "old.txt").expect("stage removal of old path");
+        stage_file(&path, "new.txt").expect("stage new path");
+
+        let changes = status(&path).unwrap();
+        assert_change(&changes, "new.txt", "renamed", true, false);
+        assert!(
+            changes.iter().all(|change| change.path != "old.txt"),
+            "{changes:?}"
+        );
+        let patch = diff(&path, "new.txt", true).expect("staged rename diff");
+        assert!(patch.contains("new.txt"), "{patch}");
     }
 
     #[test]
