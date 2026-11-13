@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
@@ -73,7 +73,7 @@ function defaultInvokeResult(command: string, args?: InvokeArgs): unknown {
     case "git_repository_info": return { root: args?.path ?? rootPath, branch: "main", state: "clean" };
     case "git_status": return [{ path: "notes.txt", kind: "modified", staged: false, unstaged: true }];
     case "read_workspace_text_file": return "disk baseline";
-    case "git_diff": return "diff --git a/notes.txt b/notes.txt\\n@@ -1 +1 @@\\n-old\\n+new";
+    case "git_diff": return ["diff --git a/notes.txt b/notes.txt", "--- a/notes.txt", "+++ b/notes.txt", "@@ -1 +1 @@", "-old", "+new"].join("\n");
     default: return undefined;
   }
 }
@@ -174,7 +174,13 @@ describe("App user flows", () => {
     await user.click(screen.getByRole("button", { name: "Git Changes" }));
     await waitFor(() => expect(invokeMock.mock.calls.some(([command]) => command === "git_status")).toBe(true));
     await user.click(await screen.findByRole("button", { name: /M.*notes.*U/ }));
-    expect((await screen.findByRole("region", { name: "File diff" })).parentElement).toHaveClass("is-diff");
+    const diffRegion = await screen.findByRole("region", { name: "File diff" });
+    expect(diffRegion.parentElement).toHaveClass("is-diff");
+    expect(await within(diffRegion).findByText("@@ -1 +1 @@")).toBeInTheDocument();
+    const changeRow = within(diffRegion).getByLabelText("previous removed line").closest("[role=row]") as HTMLElement;
+    expect(changeRow).toHaveClass("has-removed", "has-added");
+    expect(within(changeRow).getByLabelText("previous removed line")).toHaveTextContent("old");
+    expect(within(changeRow).getByLabelText("current added line")).toHaveTextContent("new");
     invokeMock.mockImplementation(async (command: string, args?: InvokeArgs) => {
       if (command === "git_diff") return "x".repeat(1024 * 1024 + 1);
       return defaultInvokeResult(command, args);
