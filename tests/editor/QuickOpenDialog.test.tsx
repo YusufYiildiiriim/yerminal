@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -52,6 +52,54 @@ describe("QuickOpenDialog", () => {
       workspaceName: "Current",
       root: "/work/current",
     }));
+  });
+
+  it("ranks exact names, then prefixes, substrings, and path-only matches, breaking ties by relative path", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const entry = (relative: string) => {
+      const name = relative.split("/").pop()!;
+      return { name, path: `/work/${relative}`, isDir: false, size: 1, extension: name.includes(".") ? name.split(".").pop()! : null };
+    };
+    tauri.invoke.mockResolvedValue([
+      entry("a/other.ts"),
+      entry("app/index.ts"),
+      entry("x/myapp.ts"),
+      entry("b/app.ts"),
+      entry("a/app.js"),
+      entry("z/app"),
+    ]);
+
+    render(<QuickOpenDialog workspaces={[{ id: "w", name: "Work", folderPaths: ["/work"] }]} activeWorkspaceId="w" scope="active" onOpen={vi.fn()} onClose={vi.fn()} />);
+    await user.type(screen.getByRole("combobox"), "APP");
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+
+    const paths = (await screen.findAllByRole("option")).map((option) => option.querySelector(".quick-open-file-path")?.textContent);
+    expect(paths).toEqual(["z/app", "a/app.js", "b/app.ts", "x/myapp.ts", "app/index.ts", "a/other.ts"]);
+  });
+
+  it("ignores a search response that arrives after a newer query", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const responses = new Map<string, (entries: unknown[]) => void>();
+    tauri.invoke.mockImplementation((_command: string, options: { query: string }) => new Promise((resolve) => responses.set(options.query, resolve)));
+    const file = (name: string) => ({ name, path: `/work/${name}`, isDir: false, size: 1, extension: "ts" });
+
+    render(<QuickOpenDialog workspaces={[{ id: "w", name: "Work", folderPaths: ["/work"] }]} activeWorkspaceId="w" scope="active" onOpen={vi.fn()} onClose={vi.fn()} />);
+    const input = screen.getByRole("combobox");
+    await user.type(input, "ol");
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    await user.type(input, "d");
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    expect([...responses.keys()]).toEqual(["ol", "old"]);
+
+    await act(async () => { responses.get("old")!([file("old.ts")]); });
+    await act(async () => { responses.get("ol")!([file("stale-ol.ts")]); });
+
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    expect(screen.getByRole("option", { name: /old\.ts/ })).toBeInTheDocument();
+    expect(screen.queryByText("stale-ol.ts")).not.toBeInTheDocument();
+    expect(screen.getByText("1 files")).toBeInTheDocument();
   });
 
   it("explains that Quick Open requires the desktop app", async () => {
