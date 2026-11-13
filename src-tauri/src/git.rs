@@ -1,6 +1,6 @@
 use git2::{
-    BranchType, Delta, DiffFormat, DiffOptions, Oid, Repository, RepositoryState, Status,
-    StatusOptions,
+    BranchType, Delta, DiffFormat, DiffOptions, IndexEntry, IndexTime, Oid, Repository,
+    RepositoryState, Status, StatusOptions,
 };
 use serde::Serialize;
 use std::{
@@ -162,6 +162,7 @@ pub fn diff(path: &str, file_path: &str, staged: bool) -> Result<String, String>
     let mut options = DiffOptions::new();
     options
         .pathspec(file_path)
+        .disable_pathspec_match(true)
         .include_untracked(!staged)
         .show_untracked_content(!staged)
         .context_lines(3);
@@ -276,22 +277,60 @@ pub fn unstage_file(path: &str, file_path: &str) -> Result<(), String> {
         Err(error) => return Err(format!("Could not read HEAD: {error}")),
     };
 
-    if let Some(head) = head {
-        repo.reset_default(Some(&head.as_object()), [relative.as_path()])
-            .map_err(|error| format!("Could not unstage file: {error}"))
-    } else {
-        let mut index = repo
-            .index()
-            .map_err(|error| format!("Could not open Git index: {error}"))?;
-        if index.get_path(&relative, 0).is_some() {
+    // Reset the single index entry by hand: `Repository::reset_default` treats
+    // its paths as glob pathspecs, so `app/[id]/page.tsx` would also unstage
+    // `app/i/page.tsx`.
+    let head_entry = match head {
+        Some(head) => {
+            let tree = head
+                .tree()
+                .map_err(|error| format!("Could not read HEAD tree: {error}"))?;
+            match tree.get_path(&relative) {
+                Ok(entry) => Some((entry.id(), entry.filemode())),
+                Err(error) if error.code() == git2::ErrorCode::NotFound => None,
+                Err(error) => return Err(format!("Could not read HEAD entry: {error}")),
+            }
+        }
+        None => None,
+    };
+    let mut index = repo
+        .index()
+        .map_err(|error| format!("Could not open Git index: {error}"))?;
+    match head_entry {
+        Some((id, mode)) => {
+            let path = relative.to_string_lossy().replace('\\', "/").into_bytes();
+            let file_size = repo
+                .find_blob(id)
+                .map(|blob| blob.size() as u32)
+                .unwrap_or(0);
             index
-                .remove_path(&relative)
+                .add(&IndexEntry {
+                    ctime: IndexTime::new(0, 0),
+                    mtime: IndexTime::new(0, 0),
+                    dev: 0,
+                    ino: 0,
+                    mode: mode as u32,
+                    uid: 0,
+                    gid: 0,
+                    file_size,
+                    id,
+                    flags: path.len().min(0xfff) as u16,
+                    flags_extended: 0,
+                    path,
+                })
                 .map_err(|error| format!("Could not unstage file: {error}"))?;
         }
-        index
-            .write()
-            .map_err(|error| format!("Could not write Git index: {error}"))
+        None => {
+            if index.get_path(&relative, 0).is_some() {
+                index
+                    .remove_path(&relative)
+                    .map_err(|error| format!("Could not unstage file: {error}"))?;
+            }
+        }
     }
+    index
+        .write()
+        .map_err(|error| format!("Could not write Git index: {error}"))
 }
 
 pub fn discard_worktree_file(path: &str, file_path: &str) -> Result<(), String> {
@@ -307,7 +346,10 @@ pub fn discard_worktree_file(path: &str, file_path: &str) -> Result<(), String> 
 
     if index.get_path(&relative, 0).is_some() {
         let mut options = git2::build::CheckoutBuilder::new();
-        options.force().path(&relative);
+        options
+            .force()
+            .disable_pathspec_match(true)
+            .path(&relative);
         repo.checkout_index(None, Some(&mut options))
             .map_err(|error| format!("Could not restore working tree file: {error}"))
     } else {
@@ -565,7 +607,7 @@ fn commit_diff<'repo>(
     let mut options = DiffOptions::new();
     options.context_lines(3);
     if let Some(file_path) = file_path {
-        options.pathspec(file_path);
+        options.pathspec(file_path).disable_pathspec_match(true);
     }
     repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&commit_tree), Some(&mut options))
         .map_err(|error| format!("Could not create commit diff: {error}"))
@@ -1048,6 +1090,95 @@ mod tests {
         assert!(patch.contains("two"), "old line missing:\n{patch}");
         assert!(patch.contains("plus"), "added line missing:\n{patch}");
         let _ = dir;
+    }
+
+    const BRACKET_PATH: &str = "app/[id]/page.tsx";
+    const GLOB_TWIN_PATH: &str = "app/i/page.tsx";
+
+    fn commit_bracket_fixture() -> (tempfile::TempDir, String) {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), BRACKET_PATH, "bracket v1\n");
+        add_file(dir.path(), GLOB_TWIN_PATH, "twin v1\n");
+        stage_file(&path, BRACKET_PATH).expect("stage bracket path");
+        stage_file(&path, GLOB_TWIN_PATH).expect("stage twin path");
+        commit_staged(&path, "add routes").expect("commit routes");
+        (dir, path)
+    }
+
+    #[test]
+    fn diff_treats_bracket_paths_literally() {
+        let (dir, path) = commit_bracket_fixture();
+        add_file(dir.path(), BRACKET_PATH, "bracket v2\n");
+        add_file(dir.path(), GLOB_TWIN_PATH, "twin v2\n");
+
+        let unstaged = diff(&path, BRACKET_PATH, false).expect("unstaged diff");
+        assert!(unstaged.contains("bracket v2"), "{unstaged}");
+        assert!(!unstaged.contains("twin"), "{unstaged}");
+
+        stage_file(&path, BRACKET_PATH).expect("stage bracket path");
+        stage_file(&path, GLOB_TWIN_PATH).expect("stage twin path");
+        let staged = diff(&path, BRACKET_PATH, true).expect("staged diff");
+        assert!(staged.contains("bracket v2"), "{staged}");
+        assert!(!staged.contains("twin"), "{staged}");
+    }
+
+    #[test]
+    fn discard_and_unstage_treat_bracket_paths_literally() {
+        let (dir, path) = commit_bracket_fixture();
+        add_file(dir.path(), BRACKET_PATH, "bracket v2\n");
+        add_file(dir.path(), GLOB_TWIN_PATH, "twin v2\n");
+
+        discard_worktree_file(&path, BRACKET_PATH).expect("discard bracket path");
+        assert_eq!(
+            fs::read_to_string(dir.path().join(BRACKET_PATH)).unwrap(),
+            "bracket v1\n"
+        );
+        assert_eq!(
+            fs::read_to_string(dir.path().join(GLOB_TWIN_PATH)).unwrap(),
+            "twin v2\n"
+        );
+
+        add_file(dir.path(), BRACKET_PATH, "bracket v3\n");
+        stage_file(&path, BRACKET_PATH).expect("stage bracket path");
+        stage_file(&path, GLOB_TWIN_PATH).expect("stage twin path");
+        unstage_file(&path, BRACKET_PATH).expect("unstage bracket path");
+        let changes = status(&path).unwrap();
+        assert_change(&changes, BRACKET_PATH, "modified", false, true);
+        assert_change(&changes, GLOB_TWIN_PATH, "modified", true, false);
+    }
+
+    #[test]
+    fn unstage_file_reverts_staged_deletions_and_additions_with_head() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "kept.txt", "kept\n");
+        stage_and_commit(&path, "kept.txt", "add kept");
+
+        fs::remove_file(dir.path().join("kept.txt")).expect("delete fixture file");
+        stage_file(&path, "kept.txt").expect("stage deletion");
+        add_file(dir.path(), "new.txt", "new\n");
+        stage_file(&path, "new.txt").expect("stage addition");
+
+        unstage_file(&path, "kept.txt").expect("unstage deletion");
+        unstage_file(&path, "new.txt").expect("unstage addition");
+
+        let changes = status(&path).unwrap();
+        assert_change(&changes, "kept.txt", "deleted", false, true);
+        assert_change(&changes, "new.txt", "untracked", false, true);
+        assert!(diff(&path, "kept.txt", true).unwrap().is_empty());
+    }
+
+    #[test]
+    fn commit_file_diff_treats_bracket_paths_literally() {
+        let (dir, path) = commit_bracket_fixture();
+        add_file(dir.path(), BRACKET_PATH, "bracket v2\n");
+        add_file(dir.path(), GLOB_TWIN_PATH, "twin v2\n");
+        stage_file(&path, BRACKET_PATH).expect("stage bracket path");
+        stage_file(&path, GLOB_TWIN_PATH).expect("stage twin path");
+        let commit_id = commit_staged(&path, "edit routes").expect("commit");
+
+        let patch = commit_file_diff(&path, &commit_id, BRACKET_PATH).expect("commit diff");
+        assert!(patch.contains("bracket v2"), "{patch}");
+        assert!(!patch.contains("twin"), "{patch}");
     }
 
     #[test]
