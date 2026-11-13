@@ -124,6 +124,56 @@ describe("DiffView", () => {
     expect(screen.getByText("second").closest("[role=row]")).toHaveClass("removed-only");
   });
 
+  it("keeps removed lines that start with dashes as removed rows inside a hunk", () => {
+    const sqlDiff = [
+      "diff --git a/schema.sql b/schema.sql",
+      "--- a/schema.sql",
+      "+++ b/schema.sql",
+      "@@ -1,3 +1,1 @@",
+      " select 1;",
+      "--- legacy comment",
+      "-- dash item",
+    ].join("\n");
+    render(<DiffView diff={sqlDiff} path="schema.sql" root="repo" staged={false} />);
+
+    const sqlComment = screen.getByText("-- legacy comment");
+    expect(sqlComment).toHaveAccessibleName("previous removed line");
+    expect(sqlComment.closest("[role=row]")).toHaveClass("removed-only");
+    expect(sqlComment.closest(".diff-view-cell")?.querySelector(".diff-view-number")).toHaveTextContent("2");
+    const dashItem = screen.getByText("- dash item");
+    expect(dashItem.closest("[role=row]")).toHaveClass("removed-only");
+    expect(dashItem.closest(".diff-view-cell")?.querySelector(".diff-view-number")).toHaveTextContent("3");
+    expect(screen.getByText("Diff details").closest("details")?.querySelector("pre")).not.toHaveTextContent("legacy comment");
+  });
+
+  it("restarts line numbering for each file in a multi-file diff", () => {
+    const multiFile = [
+      "diff --git a/first.ts b/first.ts",
+      "--- a/first.ts",
+      "+++ b/first.ts",
+      "@@ -10,2 +10,2 @@",
+      " first context",
+      "-first old",
+      "+first new",
+      "diff --git a/second.ts b/second.ts",
+      "--- a/second.ts",
+      "+++ b/second.ts",
+      "@@ -1 +1 @@",
+      "-second old",
+      "+second new",
+    ].join("\n");
+    render(<DiffView diff={multiFile} path="first.ts" root="repo" staged={false} />);
+
+    const numberOf = (text: string) => screen.getByText(text).closest(".diff-view-cell")?.querySelector(".diff-view-number")?.textContent;
+    expect(numberOf("first old")).toBe("11");
+    expect(numberOf("first new")).toBe("11");
+    expect(numberOf("second old")).toBe("1");
+    expect(numberOf("second new")).toBe("1");
+    // The second file's headers are metadata, not removed/added code rows.
+    expect(document.querySelectorAll(".diff-view-cell.removed")).toHaveLength(2);
+    expect(screen.getByText("Diff details").closest("details")?.querySelector("pre")).toHaveTextContent("--- a/second.ts");
+  });
+
   it("shows the empty state for a diff with no changes", () => {
     render(<DiffView diff="" path="empty.ts" root="repo" staged={false} />);
     expect(screen.getByText("No diff available.")).toBeInTheDocument();
