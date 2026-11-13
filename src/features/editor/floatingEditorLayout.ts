@@ -71,6 +71,7 @@ const EDGE_SNAP_DISTANCE = 36;
 const GROUP_GAP = 3;
 const MIN_EDITOR_SIZE = 12;
 const KEYBOARD_RESIZE_STEP = 4;
+const PERSIST_DEBOUNCE_MS = 120;
 
 function storageKey(workspaceId: string) {
   return STORAGE_PREFIX + workspaceId;
@@ -207,14 +208,35 @@ export function useFloatingEditorLayout(workspaceId: string, groupIds: string[])
     ));
   }, [workspaceId, groupIdsKey]);
 
-  useEffect(() => {
-    if (snapshot.workspaceId !== workspaceId) return;
+  const pendingWriteRef = useRef<{ key: string; value: string } | null>(null);
+  const writeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushPendingWrite = useCallback(() => {
+    if (writeTimerRef.current !== null) {
+      clearTimeout(writeTimerRef.current);
+      writeTimerRef.current = null;
+    }
+    const pending = pendingWriteRef.current;
+    pendingWriteRef.current = null;
+    if (!pending) return;
     try {
-      localStorage.setItem(storageKey(workspaceId), JSON.stringify(normalizeSnapshot(snapshot, workspaceId, stableGroupIds)));
+      localStorage.setItem(pending.key, pending.value);
     } catch {
       // Keep the in-memory layout usable if storage is unavailable.
     }
-  }, [snapshot, workspaceId, groupIdsKey]);
+  }, []);
+
+  // Pointer moves update the snapshot many times per second; persist it at most every PERSIST_DEBOUNCE_MS
+  // and flush right away when a drag/resize ends or the hook unmounts.
+  useEffect(() => {
+    if (snapshot.workspaceId !== workspaceId) return;
+    const key = storageKey(workspaceId);
+    if (pendingWriteRef.current && pendingWriteRef.current.key !== key) flushPendingWrite();
+    pendingWriteRef.current = { key, value: JSON.stringify(normalizeSnapshot(snapshot, workspaceId, stableGroupIds)) };
+    if (writeTimerRef.current !== null) clearTimeout(writeTimerRef.current);
+    writeTimerRef.current = setTimeout(flushPendingWrite, PERSIST_DEBOUNCE_MS);
+  }, [snapshot, workspaceId, groupIdsKey, flushPendingWrite]);
+
+  useEffect(() => flushPendingWrite, [flushPendingWrite]);
 
   const updateSnapshot = useCallback((update: (current: FloatingEditorSnapshot) => FloatingEditorSnapshot) => {
     setSnapshot((current) => update(normalizeSnapshot(
@@ -294,6 +316,7 @@ export function useFloatingEditorLayout(workspaceId: string, groupIds: string[])
     setDraggingGroupId(null);
     setDockTarget(null);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    flushPendingWrite();
     if (edge) setMode("tiled");
   };
 
@@ -369,6 +392,7 @@ export function useFloatingEditorLayout(workspaceId: string, groupIds: string[])
     resizeRef.current = null;
     setResizingGroupId(null);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    flushPendingWrite();
   };
 
   const cancelResize = (groupId: string, event: ReactPointerEvent<HTMLElement>) => {
