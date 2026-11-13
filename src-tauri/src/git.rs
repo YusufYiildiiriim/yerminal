@@ -1133,6 +1133,77 @@ mod tests {
     }
 
     #[test]
+    fn commit_staged_rejects_oversized_messages() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "file.txt", "content\n");
+        stage_file(&path, "file.txt").expect("stage file");
+
+        let error = commit_staged(&path, &"m".repeat(64 * 1024 + 1)).unwrap_err();
+        assert!(error.contains("at most 64 KiB"), "{error}");
+        // Surrounding whitespace does not count towards the limit.
+        let padded = format!("  {}  \n", "m".repeat(64 * 1024));
+        commit_staged(&path, &padded).expect("message at the limit");
+    }
+
+    #[test]
+    fn commit_staged_trims_the_message() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "file.txt", "content\n");
+        let oid = stage_and_commit(&path, "file.txt", "\n  subject line\n\nbody text  \n\n");
+
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let commit = repo.find_commit(git2::Oid::from_str(&oid).unwrap()).unwrap();
+        assert_eq!(commit.message(), Some("subject line\n\nbody text"));
+    }
+
+    #[test]
+    fn commit_staged_rejects_commits_during_a_merge() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "file.txt", "one\n");
+        let base = stage_and_commit(&path, "file.txt", "base");
+        add_file(dir.path(), "file.txt", "two\n");
+        stage_file(&path, "file.txt").expect("stage change");
+        fs::write(dir.path().join(".git/MERGE_HEAD"), format!("{base}\n"))
+            .expect("simulate merge in progress");
+
+        assert_eq!(
+            repository_info(&path).unwrap().state,
+            "merge in progress"
+        );
+        let error = commit_staged(&path, "during merge").unwrap_err();
+        assert!(error.contains("Finish the current Git operation"), "{error}");
+        assert_eq!(history(&path, 0, 10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn commit_staged_rejects_when_nothing_is_staged_after_a_commit() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "file.txt", "one\n");
+        stage_and_commit(&path, "file.txt", "base");
+
+        let clean = commit_staged(&path, "nothing").unwrap_err();
+        assert!(clean.contains("no staged changes"), "{clean}");
+
+        add_file(dir.path(), "file.txt", "two\n");
+        let unstaged_only = commit_staged(&path, "worktree only").unwrap_err();
+        assert!(unstaged_only.contains("no staged changes"), "{unstaged_only}");
+        assert_eq!(history(&path, 0, 10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn diff_of_untracked_file_includes_its_content() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "base.txt", "base\n");
+        stage_and_commit(&path, "base.txt", "base");
+        add_file(dir.path(), "fresh.txt", "brand new line\n");
+
+        let patch = diff(&path, "fresh.txt", false).expect("untracked diff");
+        assert!(patch.contains("fresh.txt"), "{patch}");
+        assert!(patch.contains("brand new line"), "{patch}");
+        assert!(diff(&path, "fresh.txt", true).unwrap().is_empty());
+    }
+
+    #[test]
     fn diff_unstaged_shows_added_and_removed_lines() {
         let (dir, path) = init_repo();
         add_file(dir.path(), "code.txt", "one\ntwo\nthree\n");
@@ -1316,6 +1387,26 @@ mod tests {
     }
 
     #[test]
+    fn history_lists_every_branch_pointing_at_a_commit() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "a.txt", "a\n");
+        let oid = stage_and_commit(&path, "a.txt", "first commit");
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let commit = repo.find_commit(git2::Oid::from_str(&oid).unwrap()).unwrap();
+        repo.branch("feature/x", &commit, false).expect("create branch");
+
+        let commits = history(&path, 0, 10).expect("history");
+        let mut branches = commits[0].branches.clone();
+        branches.sort();
+        let mut expected = vec![
+            repository_info(&path).unwrap().branch,
+            "feature/x".to_owned(),
+        ];
+        expected.sort();
+        assert_eq!(branches, expected);
+    }
+
+    #[test]
     fn history_requires_commits() {
         let (_dir, path) = init_repo();
         let error = history(&path, 0, 10).unwrap_err();
@@ -1353,6 +1444,23 @@ mod tests {
         );
 
         let _ = dir;
+    }
+
+    #[test]
+    fn commit_files_reports_root_commit_files_as_added() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "b.txt", "b\n");
+        add_file(dir.path(), "nested/a.txt", "a\n");
+        stage_file(&path, "b.txt").expect("stage b");
+        stage_file(&path, "nested/a.txt").expect("stage nested a");
+        let commit_id = commit_staged(&path, "root").expect("root commit");
+
+        let files = commit_files(&path, &commit_id).expect("commit files");
+        let pairs: Vec<(&str, &str)> = files
+            .iter()
+            .map(|file| (file.path.as_str(), file.kind.as_str()))
+            .collect();
+        assert_eq!(pairs, vec![("b.txt", "added"), ("nested/a.txt", "added")]);
     }
 
     #[test]
