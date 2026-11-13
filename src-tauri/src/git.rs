@@ -262,10 +262,13 @@ fn validated_worktree_path(repo: &Repository, file_path: &str) -> Result<PathBuf
 
 /// True for names Windows resolves to the `.git` directory: any case, with
 /// trailing dots/spaces (`.git.`, `.git `) stripped by Win32, or the 8.3
-/// short name `GIT~1`. Git's own `core.protectNTFS` rejects the same names on
-/// every platform, so they are refused everywhere.
+/// short name `GIT~1`, including NTFS stream forms (`.git::$INDEX_ALLOCATION`,
+/// `.git:x`) where everything from the first `:` names a stream of the same
+/// directory. Git's own `core.protectNTFS` rejects the same names on every
+/// platform, so they are refused everywhere.
 fn is_git_directory_alias(name: &str) -> bool {
-    let trimmed = name.trim_end_matches(['.', ' ']);
+    let base = name.split(':').next().unwrap_or(name);
+    let trimmed = base.trim_end_matches(['.', ' ']);
     trimmed.eq_ignore_ascii_case(".git") || trimmed.eq_ignore_ascii_case("git~1")
 }
 
@@ -1047,6 +1050,22 @@ mod tests {
     }
 
     #[test]
+    fn git_directory_alias_detection_handles_ntfs_streams() {
+        for alias in [
+            ".git",
+            ".git::$INDEX_ALLOCATION",
+            ".GIT:x",
+            ".git. :stream",
+            "git~1:",
+        ] {
+            assert!(is_git_directory_alias(alias), "{alias}");
+        }
+        for name in [".github", "x.git", ".gitx:y", "git~2", ".gi:t"] {
+            assert!(!is_git_directory_alias(name), "{name}");
+        }
+    }
+
+    #[test]
     fn write_operations_reject_windows_aliases_of_the_git_directory() {
         let (dir, path) = init_repo();
         add_file(dir.path(), "real.txt", "ok\n");
@@ -1061,6 +1080,9 @@ mod tests {
             "GIT~1/HEAD",
             "git~1/config",
             "sub/.git./config",
+            ".git::$INDEX_ALLOCATION/HEAD",
+            ".git:x/HEAD",
+            "GIT~1:stream/config",
         ] {
             let discard = discard_worktree_file(&path, alias).unwrap_err();
             assert!(discard.contains("Git metadata"), "{alias}: {discard}");
