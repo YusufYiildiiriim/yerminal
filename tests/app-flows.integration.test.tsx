@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
@@ -188,6 +188,103 @@ describe("App user flows", () => {
     await user.click(screen.getByRole("button", { name: /M.*notes.*U/ }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("This diff exceeds the 1 MiB preview limit.");
+  });
+});
+
+describe("Auto-save", () => {
+  const AUTO_SAVE_DELAY = 1000;
+
+  function setupFakeTimers() {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    return userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  }
+
+  async function advance(ms: number) {
+    await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+  }
+
+  it("restarts the debounce while typing and writes once with the final content", async () => {
+    const user = setupFakeTimers();
+    seedWorkspace({ autoSave: true });
+    render(<App />);
+
+    const editor = await openNotesAndEdit(user, "abc");
+    await advance(AUTO_SAVE_DELAY - 200);
+    expect(writeCalls()).toHaveLength(0);
+    await user.type(editor, "d");
+    await advance(AUTO_SAVE_DELAY - 200);
+    expect(writeCalls()).toHaveLength(0);
+
+    await advance(400);
+    expect(writeCalls()).toHaveLength(1);
+    expect(writeCalls()[0][1]).toMatchObject({ content: "abcd", expectedContent: "disk baseline" });
+    await advance(AUTO_SAVE_DELAY * 2);
+    expect(writeCalls()).toHaveLength(1);
+  });
+
+  it("queues an edit made during an in-flight save and saves it afterwards against the new baseline", async () => {
+    const user = setupFakeTimers();
+    seedWorkspace({ autoSave: true });
+    const writes: Array<() => void> = [];
+    invokeMock.mockImplementation(async (command: string, args?: InvokeArgs) => {
+      if (command === "write_workspace_text_file") return new Promise<void>((resolve) => writes.push(resolve));
+      return defaultInvokeResult(command, args);
+    });
+    render(<App />);
+
+    const editor = await openNotesAndEdit(user, "first");
+    await advance(AUTO_SAVE_DELAY + 100);
+    expect(writeCalls()).toHaveLength(1);
+
+    await user.type(editor, " second");
+    await advance(AUTO_SAVE_DELAY + 100);
+    // The first write is still running, so the second save waits.
+    expect(writeCalls()).toHaveLength(1);
+
+    await act(async () => { writes[0](); });
+    await advance(AUTO_SAVE_DELAY + 100);
+    expect(writeCalls()).toHaveLength(2);
+    expect(writeCalls()[1][1]).toMatchObject({ content: "first second", expectedContent: "first" });
+    await act(async () => { writes[1](); });
+    expect(await screen.findByText("All changes saved")).toBeInTheDocument();
+  });
+
+  it("does not retry a failed save until the content changes", async () => {
+    const user = setupFakeTimers();
+    seedWorkspace({ autoSave: true });
+    invokeMock.mockImplementation(async (command: string, args?: InvokeArgs) => {
+      if (command === "write_workspace_text_file") throw new Error("disk full");
+      return defaultInvokeResult(command, args);
+    });
+    render(<App />);
+
+    const editor = await openNotesAndEdit(user, "x");
+    await advance(AUTO_SAVE_DELAY + 100);
+    expect(writeCalls()).toHaveLength(1);
+    expect(await screen.findByText(/disk full/)).toBeInTheDocument();
+
+    await advance(AUTO_SAVE_DELAY * 5);
+    expect(writeCalls()).toHaveLength(1);
+
+    await user.type(editor, "y");
+    await advance(AUTO_SAVE_DELAY + 100);
+    expect(writeCalls()).toHaveLength(2);
+    expect(writeCalls()[1][1]).toMatchObject({ content: "xy" });
+  });
+
+  it("cancels a pending auto-save when auto-save is turned off", async () => {
+    const user = setupFakeTimers();
+    seedWorkspace({ autoSave: true });
+    render(<App />);
+
+    await openNotesAndEdit(user, "pending");
+    await user.click(screen.getByRole("button", { name: "Help & Settings" }));
+    await user.click(screen.getByRole("button", { name: /Editor/ }));
+    await user.click(screen.getByRole("checkbox", { name: "Auto Save" }));
+    expect(screen.getByRole("checkbox", { name: "Auto Save" })).not.toBeChecked();
+
+    await advance(AUTO_SAVE_DELAY * 3);
+    expect(writeCalls()).toHaveLength(0);
   });
 });
 
