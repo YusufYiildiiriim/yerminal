@@ -649,6 +649,22 @@ fn resolve_shell(shell: ShellKind) -> Result<String, String> {
 }
 
 fn resolve_program(program: &str) -> Result<String, String> {
+    let pathext = std::env::var("PATHEXT").ok();
+    resolve_program_in(
+        program,
+        std::env::var_os("PATH").as_deref(),
+        pathext.as_deref(),
+    )
+}
+
+/// Resolves `program` against an explicit search path (and, on Windows, an
+/// explicit PATHEXT list) so the lookup order is testable without touching
+/// the process environment.
+fn resolve_program_in(
+    program: &str,
+    search_path: Option<&std::ffi::OsStr>,
+    pathext: Option<&str>,
+) -> Result<String, String> {
     let path = PathBuf::from(program);
     if path.is_absolute() || program.contains(std::path::MAIN_SEPARATOR) {
         return path
@@ -656,15 +672,11 @@ fn resolve_program(program: &str) -> Result<String, String> {
             .then(|| path.to_string_lossy().into_owned())
             .ok_or_else(|| format!("Configured executable was not found: {program}"));
     }
-    if let Some(paths) = std::env::var_os("PATH") {
-        for directory in std::env::split_paths(&paths) {
-            let candidate = directory.join(program);
-            if candidate.is_file() {
-                return Ok(candidate.to_string_lossy().into_owned());
-            }
-            #[cfg(target_os = "windows")]
-            for extension in ["exe", "cmd", "bat"] {
-                let candidate = directory.join(format!("{program}.{extension}"));
+    if let Some(paths) = search_path {
+        let names = program_file_names(program, pathext);
+        for directory in std::env::split_paths(paths) {
+            for name in &names {
+                let candidate = directory.join(name);
                 if candidate.is_file() {
                     return Ok(candidate.to_string_lossy().into_owned());
                 }
@@ -674,6 +686,35 @@ fn resolve_program(program: &str) -> Result<String, String> {
     Err(format!(
         "Configured executable was not found on PATH: {program}"
     ))
+}
+
+/// Windows candidates: PATHEXT extensions first (in PATHEXT order), then the
+/// bare name. Only extensions CreateProcess can start are used, so an npm
+/// install's extensionless shell shim no longer shadows `tool.cmd`.
+#[cfg(target_os = "windows")]
+fn program_file_names(program: &str, pathext: Option<&str>) -> Vec<String> {
+    const LAUNCHABLE: [&str; 4] = [".com", ".exe", ".bat", ".cmd"];
+    let pathext = pathext
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(".COM;.EXE;.BAT;.CMD");
+    let mut names: Vec<String> = Vec::new();
+    for extension in pathext.split(';').map(str::trim) {
+        let lower = extension.to_ascii_lowercase();
+        if !LAUNCHABLE.contains(&lower.as_str()) {
+            continue;
+        }
+        let name = format!("{program}{lower}");
+        if !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    names.push(program.to_owned());
+    names
+}
+
+#[cfg(not(target_os = "windows"))]
+fn program_file_names(program: &str, _pathext: Option<&str>) -> Vec<String> {
+    vec![program.to_owned()]
 }
 
 /// Decodes a byte stream that arrives in arbitrary chunks as UTF-8. A
@@ -992,6 +1033,48 @@ mod tests {
             std::path::Path::new(&resolved).is_file(),
             "resolved program must exist: {resolved}"
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resolve_program_prefers_pathext_shims_over_extensionless_files() {
+        let dir = tempfile::tempdir().expect("create temp directory");
+        // npm installs an extensionless POSIX shell shim next to `tool.cmd`;
+        // CreateProcess cannot start the extensionless one.
+        fs::write(dir.path().join("tool"), "#!/bin/sh\n").expect("write shim");
+        fs::write(dir.path().join("tool.cmd"), "@echo off\n").expect("write cmd shim");
+        let search_path = std::env::join_paths([dir.path()]).expect("join search path");
+
+        let resolved = resolve_program_in("tool", Some(&search_path), Some(".COM;.EXE;.BAT;.CMD"))
+            .expect("resolve tool");
+        assert!(
+            resolved.to_ascii_lowercase().ends_with("tool.cmd"),
+            "{resolved}"
+        );
+
+        // PATHEXT order wins; script-host extensions CreateProcess cannot run
+        // are skipped, and the bare name is the last resort.
+        fs::write(dir.path().join("tool.exe"), "").expect("write exe");
+        fs::write(dir.path().join("tool.js"), "").expect("write js");
+        let resolved = resolve_program_in("tool", Some(&search_path), Some(".JS;.EXE;.CMD"))
+            .expect("resolve tool");
+        assert!(
+            resolved.to_ascii_lowercase().ends_with("tool.exe"),
+            "{resolved}"
+        );
+        let resolved = resolve_program_in("tool", Some(&search_path), None).expect("default");
+        assert!(
+            resolved.to_ascii_lowercase().ends_with("tool.exe"),
+            "{resolved}"
+        );
+
+        fs::write(dir.path().join("plain"), "").expect("write plain");
+        let resolved =
+            resolve_program_in("plain", Some(&search_path), Some(".EXE")).expect("bare fallback");
+        assert!(resolved.ends_with("plain"), "{resolved}");
+        let explicit =
+            resolve_program_in("tool.cmd", Some(&search_path), Some(".EXE")).expect("explicit");
+        assert!(explicit.ends_with("tool.cmd"), "{explicit}");
     }
 
     #[test]
