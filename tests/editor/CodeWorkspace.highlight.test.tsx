@@ -89,4 +89,22 @@ describe("CodeWorkspace syntax highlighting", () => {
     await act(async () => { pending[1].resolve(html("const b = 2;")); });
     expect(minimapHtml()).toBe(html("const b = 2;"));
   });
+
+  it("keeps debouncing after a failed highlight instead of retrying on every keystroke", async () => {
+    highlighter.highlightCode.mockRejectedValue(new Error("highlighter unavailable"));
+    const view = render(workspace("const a = 1;"));
+    await advance(0);
+    // A freshly opened tab is highlighted immediately.
+    expect(highlighter.highlightCode).toHaveBeenCalledTimes(1);
+
+    for (const content of ["const a = 12;", "const a = 123;", "const a = 1234;"]) {
+      view.rerender(workspace(content));
+      await advance(50);
+    }
+    expect(highlighter.highlightCode).toHaveBeenCalledTimes(1);
+
+    await advance(200);
+    expect(highlighter.highlightCode).toHaveBeenCalledTimes(2);
+    expect(highlighter.highlightCode).toHaveBeenLastCalledWith("const a = 1234;", "typescript");
+  });
 });

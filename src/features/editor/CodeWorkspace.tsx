@@ -115,8 +115,8 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
   const highlightedHtml = currentHighlight?.html ?? null;
   // The editable overlay is the only visible text (the textarea is transparent), so it must match exactly.
   const editableHighlightedHtml = currentHighlight && currentHighlight.source === activeTab?.content ? currentHighlight.html : null;
-  const highlightRef = useRef(highlight);
-  highlightRef.current = highlight;
+  // The tab/language last scheduled for highlighting, kept even when highlighting fails.
+  const lastHighlightKeyRef = useRef<string | null>(null);
   const editorContentRef = useRef<HTMLDivElement>(null);
   const [editorViewport, setEditorViewport] = useState({ top: 0, size: 1 });
   const isReadOnly = Boolean(activeTab?.sourceCommitId) || activeTab?.view === "diff";
@@ -160,8 +160,10 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
     const languageId = language.id;
     const key = highlightKey;
     setHighlighting(true);
-    // Highlight a freshly opened tab right away; debounce re-highlighting while its text is being edited.
-    const delay = highlightRef.current?.key === key ? HIGHLIGHT_DEBOUNCE_MS : 0;
+    // Only the first highlight of a freshly opened tab is immediate. Re-highlighting while editing is
+    // debounced, also after a failed highlight, so failures never retry on every keystroke.
+    const delay = lastHighlightKeyRef.current === key ? HIGHLIGHT_DEBOUNCE_MS : 0;
+    lastHighlightKeyRef.current = key;
     const timer = window.setTimeout(() => {
       void highlightCode(source, languageId)
         .then((html) => { if (current) setHighlight({ key, source, html }); })
