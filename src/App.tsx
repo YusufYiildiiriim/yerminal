@@ -767,8 +767,12 @@ function App() {
     const workspaceId = activeTerminalWorkspace?.id;
     if (!workspaceId) return;
     const tab = editorWorkspaces[workspaceId]?.tabs.find((item) => item.id === tabId);
-    const isDirty = Boolean(tab && tab.content !== null && normalizeEditorNewlines(tab.content) !== normalizeEditorNewlines(tab.savedContent));
-    if (isDirty && !window.confirm(`Discard unsaved changes to ${tab?.name ?? "this file"}?`)) return;
+    const name = tab?.name ?? "this file";
+    // A tab whose write is still in flight may look clean while the disk is about to change.
+    const prompt = tab?.isSaving
+      ? `${name} is still saving. Close it anyway? The save will finish in the background.`
+      : tab && isEditorTabUnsaved(tab) ? `Discard unsaved changes to ${name}?` : null;
+    if (prompt && !window.confirm(prompt)) return;
     editorOperationIdsRef.current.delete(editorOperationKey(workspaceId, tabId));
     setEditorWorkspaces((current) => {
       const workspace = current[workspaceId];

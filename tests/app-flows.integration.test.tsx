@@ -185,6 +185,49 @@ describe("App user flows", () => {
   });
 });
 
+describe("Closing editor tabs", () => {
+  it("asks before closing a dirty tab and keeps it when cancelled", async () => {
+    const user = userEvent.setup();
+    seedWorkspace();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<App />);
+
+    const editor = await openNotesAndEdit(user, "keep me");
+    await user.click(screen.getByRole("button", { name: "Close notes.txt" }));
+
+    expect(confirm).toHaveBeenCalledWith("Discard unsaved changes to notes.txt?");
+    expect(editor).toBeInTheDocument();
+    expect(editor).toHaveValue("keep me");
+  });
+
+  it("asks before closing a tab whose save is still in flight, even if its text matches the baseline", async () => {
+    const user = userEvent.setup();
+    seedWorkspace();
+    let finishWrite: () => void = () => {};
+    invokeMock.mockImplementation(async (command: string, args?: InvokeArgs) => {
+      if (command === "write_workspace_text_file") return new Promise<void>((resolve) => { finishWrite = resolve; });
+      return defaultInvokeResult(command, args);
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<App />);
+
+    const editor = await openNotesAndEdit(user, "being saved");
+    fireEvent.keyDown(editor, { key: "s", ctrlKey: true });
+    expect(await screen.findByText("Saving changes…")).toBeInTheDocument();
+    // Revert the text while the write is still running: the tab looks clean but the disk is about to change.
+    await user.clear(editor);
+    await user.type(editor, "disk baseline");
+    await user.click(screen.getByRole("button", { name: "Close notes.txt" }));
+
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm.mock.calls[0][0]).toMatch(/still saving/i);
+    expect(screen.getByRole("textbox", { name: "Edit notes.txt" })).toBeInTheDocument();
+
+    finishWrite();
+    expect(await screen.findByText("Unsaved changes", { selector: ".code-editor-statusbar span" })).toBeInTheDocument();
+  });
+});
+
 describe("Window close guard", () => {
   function dispatchBeforeUnload() {
     const event = new Event("beforeunload", { cancelable: true });
