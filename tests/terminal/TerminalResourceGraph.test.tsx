@@ -78,8 +78,7 @@ describe("TerminalResourceGraph metrics", () => {
     ]);
     renderGraph();
     await flush();
-    expect(cardFor("Shell one")).toHaveTextContent("RAM1.50 KB");
-    expect(cardFor("Shell one")).toHaveTextContent("CPUMeasuring…");
+    expect(cardFor("Shell one")).toHaveTextContent("1.50 KB · Measuring…");
     expect(cardFor("Shell two")).toHaveTextContent("Process ended");
   });
 
@@ -90,11 +89,9 @@ describe("TerminalResourceGraph metrics", () => {
     ]);
     renderGraph();
     await flush();
-    expect(cardFor("Shell one")).toHaveTextContent("RAM15.0 MB");
-    expect(cardFor("Shell one")).toHaveTextContent("CPU12.3%");
-    expect(cardFor("Shell two")).toHaveTextContent("RAM512 B");
-    expect(cardFor("Shell two")).toHaveTextContent("CPU0.0%");
-  });
+    expect(cardFor("Shell one")).toHaveTextContent("15.0 MB · 12.3%");
+    expect(cardFor("Shell two")).toHaveTextContent("512 B · 0.0%");
+      });
 
   it("shows the collecting state until the first result arrives", () => {
     tauri.invoke.mockReturnValue(new Promise(() => {}));

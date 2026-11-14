@@ -116,7 +116,6 @@ describe("Explorer Open in Terminal integration", () => {
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("create_terminal", expect.objectContaining({ workingDirectory: targetFolder })));
     expect(invoke).not.toHaveBeenCalledWith("write_terminal", expect.anything());
     expect(screen.getAllByTestId("mock-terminal")).toHaveLength(2);
-    expect(screen.getByRole("tab", { name: /Terminal 2/ })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tablist", { name: "Terminal sessions" }).querySelectorAll('[role="tab"]')).toHaveLength(2);
+    expect(document.querySelector(".terminal-pane-frame[data-active=\"true\"] .terminal-pane-title")).toHaveTextContent("Terminal 2");
   });
 });

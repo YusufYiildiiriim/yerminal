@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
+import { chooseGroupAction, chooseWorkspaceAction } from "./shellMenus";
 
 function openEditorTool() {
   fireEvent.click(within(screen.getByRole("navigation", { name: "Workspace tools" })).getByRole("button", { name: "Editor" }));
@@ -513,20 +514,20 @@ describe("Workspace controls placement", () => {
     await user.click(within(screen.getByRole("navigation", { name: "Workspace tools" })).getByRole("button", { name: "Editor" }));
     const explorer = document.querySelector(".tools-panel") as HTMLElement;
     const picker = within(explorer).getByRole("combobox", { name: "Active terminal workspace" });
-    expect(within(explorer).getByRole("button", { name: "Add folders to this workspace" })).toBeInTheDocument();
+    expect(within(explorer).getByRole("button", { name: "Workspace actions" })).toBeInTheDocument();
     const titlebar = document.querySelector(".titlebar") as HTMLElement;
     expect(within(titlebar).queryByRole("combobox", { name: "Active terminal workspace" })).not.toBeInTheDocument();
-    expect(within(titlebar).queryByRole("button", { name: "Create workspace" })).not.toBeInTheDocument();
+    expect(within(titlebar).queryByRole("button", { name: "New workspace" })).not.toBeInTheDocument();
     expect(within(titlebar).queryByRole("button", { name: "Help & Settings" })).not.toBeInTheDocument();
 
     await user.selectOptions(picker, "workspace-2");
     expect(picker).toHaveValue("workspace-2");
-    await user.click(within(explorer).getByRole("button", { name: "Create workspace" }));
+    await user.click(within(explorer).getByRole("button", { name: "New workspace" }));
     const createdWorkspaceOption = await within(explorer).findByRole("option", { name: "Workspace 3" });
     const createdWorkspaceId = createdWorkspaceOption.getAttribute("value");
-    await user.click(within(explorer).getByRole("button", { name: "Rename workspace" }));
+    await chooseWorkspaceAction(user, within(explorer), "Rename workspace");
     expect(await within(explorer).findByRole("option", { name: "Renamed Workspace" })).toBeInTheDocument();
-    await user.click(within(explorer).getByRole("button", { name: "Delete workspace" }));
+    await chooseWorkspaceAction(user, within(explorer), "Delete workspace");
     await waitFor(() => expect(within(explorer).queryByRole("option", { name: "Renamed Workspace" })).not.toBeInTheDocument());
     await waitFor(() => expect(JSON.parse(localStorage.getItem("yerminal.terminal-workspaces") ?? "{}").workspaces.some((workspace: { id: string }) => workspace.id === createdWorkspaceId)).toBe(false));
 
@@ -539,19 +540,21 @@ describe("Workspace controls placement", () => {
     const dialog = screen.getByRole("dialog");
     expect(dialog).toBeInTheDocument();
     expect(dialog.querySelector("button.settings-close")).toHaveFocus();
-    await user.click(within(dialog).getByRole("button", { name: /Help & shortcuts/ }));
-    expect(within(dialog).getByRole("heading", { name: /Help & shortcuts/ })).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: /Keyboard shortcuts/ }));
+    expect(within(dialog).getByRole("heading", { name: /Keyboard shortcuts/ })).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: /Explorer/ }));
     expect(within(dialog).getByRole("heading", { name: "Explorer" })).toBeInTheDocument();
   });
 });
 describe("Workspace management safeguards in Explorer", () => {
-  it("keeps the final workspace and disables its delete action", () => {
+  it("keeps the final workspace and disables its delete action", async () => {
+    const user = userEvent.setup();
     seedWorkspace();
     render(<App />);
 
     const explorer = document.querySelector(".tools-panel") as HTMLElement;
-    expect(within(explorer).getByRole("button", { name: "Delete workspace" })).toBeDisabled();
+    await user.click(within(explorer).getByRole("button", { name: "Workspace actions" }));
+    expect(within(explorer).getByRole("menuitem", { name: "Delete workspace" })).toBeDisabled();
     expect(within(explorer).getByRole("combobox", { name: "Active terminal workspace" })).toHaveValue("workspace-1");
   });
 });
@@ -564,7 +567,7 @@ describe("Workspace deletion with unsaved editor tabs", () => {
     openEditorTool();
 
     const editor = await openNotesAndEdit(user, "unsaved work");
-    await user.click(screen.getByRole("button", { name: "Delete workspace" }));
+    await chooseWorkspaceAction(user, screen, "Delete workspace");
 
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(confirm.mock.calls[0][0]).toMatch(/unsaved changes.*notes\.txt/i);
@@ -581,7 +584,7 @@ describe("Workspace deletion with unsaved editor tabs", () => {
     openEditorTool();
 
     await openNotesAndEdit(user, "discard me");
-    await user.click(screen.getByRole("button", { name: "Delete workspace" }));
+    await chooseWorkspaceAction(user, screen, "Delete workspace");
     await waitFor(() => expect(JSON.parse(localStorage.getItem("yerminal.terminal-workspaces") ?? "{}").workspaces).toHaveLength(1));
 
     // Well past the 1s auto-save debounce.

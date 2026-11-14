@@ -7,9 +7,11 @@ import { confirm, open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { DiffViewer } from "./features/git/DiffViewer";
 import { TerminalResourceGraph } from "./features/terminal/TerminalResourceGraph";
+import { PaneRenameInput, TerminalPaneMenu } from "./features/terminal/TerminalPaneMenu";
 import { CodeWorkspace, type EditorFileTab, type EditorGroupState } from "./features/editor/CodeWorkspace";
 import { QuickOpenDialog, type QuickOpenFile } from "./features/editor/QuickOpenDialog";
 import type { EditorLayoutMode } from "./features/editor/floatingEditorLayout";
+import { ActionMenu, type ActionMenuItem } from "./features/workspace/ActionMenu";
 import { FloatingTerminalDockGuides, FloatingTerminalModeToggle } from "./features/terminal/FloatingTerminalLayoutControls";
 import { useFloatingTerminalLayout, type TerminalDockEdge, type TerminalLayoutMode } from "./features/terminal/floatingTerminalLayout";
 import { ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -19,29 +21,13 @@ import { FolderContextMenu, type FolderContextMenuAction, type FolderContextMenu
 import { appendTerminalToLayout, closeTerminalGroup as closeTerminalGroupState, createInitialTerminalGroups, createTerminalGroup, moveTerminalBetweenGroups, openFolderInNewTerminal, removeTerminalFromGroups, renameTerminalGroup as renameTerminalGroupState, selectTerminalGroup as selectTerminalGroupState, type TerminalGroup } from "./features/terminal/terminalWorkspaceActions";
 import "./styles/app.css";
 import "./styles/themes.css";
-import "./styles/sidebar-ux.css";
 import "./styles/workbench-ux.css";
 import "./styles/git-ux.css";
+import "./styles/shell-ux.css";
+import "./styles/main-ux.css";
 
 const TerminalPane = lazy(() => import("./features/terminal/TerminalPane"));
 
-type TerminalNameEditorProps = {
-  terminalName: string;
-  value: string;
-  inputRef: React.RefObject<HTMLInputElement | null>;
-  compact?: boolean;
-  onChange: (value: string) => void;
-  onSave: () => void;
-  onCancel: () => void;
-};
-
-function TerminalNameEditor({ terminalName, value, inputRef, compact = false, onChange, onSave, onCancel }: TerminalNameEditorProps) {
-  return <form className={`terminal-name-editor ${compact ? "compact" : ""}`} aria-label={`Rename ${terminalName}`} onSubmit={(event) => { event.preventDefault(); onSave(); }} onClick={(event) => event.stopPropagation()}>
-    <input ref={inputRef} aria-label={`New name for ${terminalName}`} autoComplete="off" maxLength={60} value={value} onChange={(event) => onChange(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onCancel(); } }} />
-    <button className="terminal-name-save" type="submit" aria-label={`Save name for ${terminalName}`} title="Save name">✓</button>
-    <button className="terminal-name-cancel" type="button" aria-label={`Cancel renaming ${terminalName}`} title="Cancel" onClick={onCancel}>×</button>
-  </form>;
-}
 
 type ToolId = "terminal" | "explorer" | "changes" | "graph";
 type ShellKind = "powershell" | "bash" | "zsh";
@@ -354,8 +340,6 @@ function App() {
   const terminalNameInputRef = useRef<HTMLInputElement>(null);
   const terminalDirectoryTargetsRef = useRef(new Map<string, string>());
   const terminalDirectoryWritesRef = useRef(new Map<string, Promise<void>>());
-  const terminalTabsRef = useRef<HTMLDivElement>(null);
-  const terminalTabScrollTargetRef = useRef<{ workspaceId: string; terminalId: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [workspaceFolderRefresh, setWorkspaceFolderRefresh] = useState<{ root: string; path: string; nonce: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -413,43 +397,6 @@ function App() {
     }
   };
 
-  useEffect(() => {
-    const tabs = terminalTabsRef.current;
-    const workspaceId = activeTerminalWorkspace?.id;
-    if (!tabs || activeMainView !== "terminals" || !workspaceId) return;
-
-    const pendingTarget = terminalTabScrollTargetRef.current;
-    if (pendingTarget && pendingTarget.workspaceId !== workspaceId) terminalTabScrollTargetRef.current = null;
-    const terminalId = pendingTarget?.workspaceId === workspaceId
-      ? pendingTarget.terminalId
-      : focusedTerminalView ?? activeTerminalId;
-    if (!terminalId) return;
-    const target = Array.from(tabs.querySelectorAll<HTMLElement>("[data-terminal-id]"))
-      .find((element) => element.dataset.terminalId === terminalId);
-    if (!target) return;
-
-    let frameId = 0;
-    const scrollTargetIntoView = () => {
-      window.cancelAnimationFrame(frameId);
-      frameId = window.requestAnimationFrame(() => {
-        const tabsBounds = tabs.getBoundingClientRect();
-        const targetBounds = target.getBoundingClientRect();
-        if (targetBounds.left < tabsBounds.left) {
-          tabs.scrollBy({ left: targetBounds.left - tabsBounds.left, behavior: "smooth" });
-        } else if (targetBounds.right > tabsBounds.right) {
-          tabs.scrollBy({ left: targetBounds.right - tabsBounds.right, behavior: "smooth" });
-        }
-        if (terminalTabScrollTargetRef.current?.terminalId === terminalId) terminalTabScrollTargetRef.current = null;
-      });
-    };
-    const observer = new ResizeObserver(scrollTargetIntoView);
-    observer.observe(tabs);
-    scrollTargetIntoView();
-    return () => {
-      observer.disconnect();
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [activeMainView, activeTerminalId, activeTerminalWorkspace?.id, activeWorkspaceTerminalIds.join("\u0000"), focusedTerminalView]);
 
   useEffect(() => {
     try {
@@ -1044,7 +991,6 @@ function App() {
     try {
       const shell: ShellKind = navigator.userAgent.includes("Windows") ? "powershell" : "bash";
       const id = crypto.randomUUID();
-      if (activeTerminalWorkspace) terminalTabScrollTargetRef.current = { workspaceId: activeTerminalWorkspace.id, terminalId: id };
       const terminal: TerminalSession = {
         id,
         exited: false,
@@ -1124,9 +1070,9 @@ function App() {
     }
   }, [terminalWorkspaceState.workspaces, updateTerminalWorkspace]);
 
-  const splitActiveTerminal = useCallback(async (direction: "horizontal" | "vertical") => {
+  const splitActiveTerminal = useCallback(async (direction: "horizontal" | "vertical", terminalId?: string) => {
     const workspace = activeTerminalWorkspace;
-    const activeId = workspace?.activeTerminalId;
+    const activeId = terminalId ?? workspace?.activeTerminalId;
     if (!workspace || !activeId) return;
     const created = await createTerminal(false);
     if (!created) return;
@@ -1482,15 +1428,17 @@ function App() {
   return (
     <main className="app-shell" data-theme={settings.theme} style={{ "--editor-font-family": settings.editorFontFamily, "--editor-font-size": settings.editorFontSize + "px", "--terminal-font-family": settings.terminalFontFamily, "--terminal-font-size": settings.terminalFontSize + "px" } as CSSProperties}>
       <header className="titlebar">
-        <span className="brand-name">yerminal</span>
-        <span className="title-divider" />
+        <div className="brand">
+          <span className="brand-logo" aria-hidden="true">y</span>
+          <span className="brand-name">yerminal</span>
+        </div>
         <div className="titlebar-spacer" />
         <span className="titlebar-breadcrumb">{titlebarBreadcrumb}</span>
         <div className="titlebar-spacer" />
       </header>
 
       <PanelGroup direction="horizontal" className="workspace">
-        <Panel ref={toolsPanelRef} defaultSize={16} minSize={14} maxSize={38} collapsible collapsedSize={5000 / Math.max(920, viewportWidth)} className="tools-panel" data-autohide-collapsed={toolsPanelCollapsed ? "true" : "false"} onBlurCapture={(event) => {
+        <Panel ref={toolsPanelRef} defaultSize={25} minSize={20} maxSize={38} collapsible collapsedSize={5000 / Math.max(920, viewportWidth)} className="tools-panel" data-autohide-collapsed={toolsPanelCollapsed ? "true" : "false"} onBlurCapture={(event) => {
           if (!toolPanelAutoHide || event.currentTarget.contains(event.relatedTarget as Node | null)) return;
           toolsPanelRef.current?.collapse();
           setToolsPanelCollapsed(true);
@@ -1499,17 +1447,16 @@ function App() {
             <nav className="tool-sidebar" aria-label="Workspace tools">
               {tools.map((tool) => <Fragment key={tool.id}>
                 {tool.id === "changes" && <div className="tool-sidebar-separator" aria-hidden="true" />}
-                <button className={`tool-sidebar-item ${activeTool === tool.id ? "selected" : ""}`} onClick={(event) => handleToolClick(tool.id, event.detail)} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={`${tool.label} · Double-click to toggle panel`}>
+                <button className={`tool-sidebar-item${tool.id === "terminal" || tool.id === "explorer" ? " main-btn" : ""} ${activeTool === tool.id ? "selected" : ""}`} onClick={(event) => handleToolClick(tool.id, event.detail)} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={`${tool.label} · Double-click to toggle panel`}>
                   <span className="tool-sidebar-icon" aria-hidden="true">{tool.icon}</span>
-                  <span className="tool-sidebar-label">{tool.label}</span>
+                  {(tool.id === "terminal" || tool.id === "explorer") && <span className="tool-sidebar-label">{tool.label}</span>}
                 </button>
               </Fragment>)}
               <button className="tool-sidebar-settings" type="button" aria-label="Help & Settings" title="Help & Settings" aria-haspopup="dialog" onClick={() => setSettingsOpen(true)}>
-                <span className="tool-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" focusable="false"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></span><span className="tool-sidebar-label">Help &amp; Settings</span>
+                <span className="tool-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" focusable="false"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></span>
               </button>
               <button className="tool-sidebar-autohide" type="button" aria-label={toolPanelAutoHide ? "Disable automatic hiding of workspace panel" : "Automatically hide workspace panel"} aria-pressed={toolPanelAutoHide} title={toolPanelAutoHide ? "Keep workspace panel visible" : "Automatically hide workspace panel"} onClick={() => setToolPanelAutoHide((enabled) => !enabled)}>
-                <span aria-hidden="true">{toolPanelAutoHide ? "⌖" : "◧"}</span>
-                <span className="tool-sidebar-autohide-label">{toolPanelAutoHide ? "Pinned" : "Auto-hide"}</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></svg>
               </button>
             </nav>
             <div className="workspace-sidebar-content">
@@ -1521,21 +1468,6 @@ function App() {
         </Panel>
         <PanelResizeHandle className="resize-handle" aria-label="Resize developer tools" />
         <Panel minSize={35} className="terminal-panel">
-          <div className={"terminal-toolbar" + (activeMainView === "code" ? " editor-mode" : "") + (activeMainView === "terminals" && terminalLayoutMode === "floating" ? " floating-mode" : "")}>
-            {activeMainView === "terminals" && terminalLayoutMode === "tiled" && <div className="terminal-session-toolbar">
-              {focusedTerminalView && <button className="terminal-show-all" type="button" aria-label="Show all terminals" title="Show all terminals" onClick={() => selectTerminalView(null)}>Show all</button>}
-              <div className="terminal-tabs" ref={terminalTabsRef} role="tablist" aria-label="Terminal sessions">
-                {activeGroupTerminals.map((terminal) => <div key={terminal.id} data-terminal-id={terminal.id} className={`terminal-tab-item ${terminal.id === focusedTerminalView ? "selected" : ""} ${editingTerminalId === terminal.id ? "editing" : ""}`} role="presentation">
-                  {editingTerminalId === terminal.id ? <TerminalNameEditor terminalName={terminal.name} value={terminalNameDraft} inputRef={terminalNameInputRef} compact onChange={setTerminalNameDraft} onSave={saveTerminalName} onCancel={cancelTerminalRename} /> : <>
-                    <button className={`terminal-tab ${terminal.id === focusedTerminalView ? "selected" : ""}`} onClick={() => selectTerminalView(terminal.id)} onDoubleClick={() => beginRenameTerminal(terminal)} onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); void closeTerminal(terminal.id); } }} type="button" role="tab" aria-selected={terminal.id === focusedTerminalView} aria-label={`${terminal.name}. Double-click to rename.`} title={terminal.name}><span className="terminal-tab-name">{terminal.name}</span>{terminal.id === activeTerminalId && <span className="terminal-active-label" aria-hidden="true">Active</span>}</button>
-                    <button className="terminal-tab-rename" type="button" aria-label={`Rename ${terminal.name}`} title="Rename terminal" onClick={() => beginRenameTerminal(terminal)}>✎</button>
-                    {activeTerminalWorkspace && activeTerminalWorkspace.groups.length > 1 && <select className="terminal-tab-move" aria-label={`Move ${terminal.name} to terminal group`} value="" onChange={(event) => { const groupId = event.currentTarget.value; if (groupId) moveTerminalToGroup(terminal.id, groupId); }}><option value="" disabled>Move to…</option>{activeTerminalWorkspace.groups.filter((group) => group.id !== activeTerminalWorkspace.activeGroupId).map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select>}
-                    {activeGroupTerminals.length > 1 && <button className="tab-close" type="button" aria-label={`Close ${terminal.name}`} title={`Close ${terminal.name}`} onClick={() => void closeTerminal(terminal.id)}>×</button>}
-                  </>}
-                </div>)}
-              </div>
-            </div>}
-          </div>
           <WorkspaceViewLayout activeView={activeMainView} code={<CodeWorkspace
             key={activeTerminalWorkspace?.id ?? ""}
             workspaceId={activeTerminalWorkspace?.id ?? ""}
@@ -1552,10 +1484,10 @@ function App() {
             onModeState={registerEditorLayoutControl}
           />} terminal={<div className={`terminal-workspace-view${terminalUsageOpen ? " has-terminal-usage" : ""}`}>
           <section className="terminal-surface" aria-label="Terminal workspace">
-            <TerminalWorkspaceLayout layout={layout} focusedTerminalId={focusedTerminalView && activeGroupTerminalIds.includes(focusedTerminalView) ? focusedTerminalView : null} terminals={activeWorkspaceTerminals} visibleTerminalIds={activeGroupTerminalIds} workspaceId={`${activeTerminalWorkspace?.id ?? ""}:${activeTerminalGroup?.id ?? ""}`} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} onLinkHint={showToast} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} />
+            <TerminalWorkspaceLayout layout={layout} focusedTerminalId={focusedTerminalView && activeGroupTerminalIds.includes(focusedTerminalView) ? focusedTerminalView : null} terminals={activeWorkspaceTerminals} visibleTerminalIds={activeGroupTerminalIds} workspaceId={`${activeTerminalWorkspace?.id ?? ""}:${activeTerminalGroup?.id ?? ""}`} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} onLinkHint={showToast} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} groups={activeTerminalWorkspace?.groups ?? []} activeGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} nameInputRef={terminalNameInputRef} onBeginRename={beginRenameTerminal} onChangeRenameDraft={setTerminalNameDraft} onSaveRename={saveTerminalName} onCancelRename={cancelTerminalRename} onMoveToGroup={moveTerminalToGroup} onSplit={(terminalId) => void splitActiveTerminal("horizontal", terminalId)} onShowAll={() => selectTerminalView(null)} />
             {activeGroupTerminalIds.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Terminal group is empty</div><p>Add a terminal to get started.</p><button className="primary-button" onClick={() => void addTerminalToWorkspace()} type="button">New Terminal</button></div>}
 
-            <div className="terminal-status" aria-live="polite" aria-atomic="true"><span className="status-indicator" /><strong>{activeTerminal?.name ?? "No terminal"}</strong>{activeTerminal && <span className="terminal-status-active">Active</span>}<span className="status-separator">·</span><span>{activeTerminal?.shellLabel ?? "Ready"}</span></div>
+            <div className="pane-live-status" aria-live="polite" aria-atomic="true">{activeTerminal ? activeTerminal.name + ", " + activeTerminal.shellLabel : "No terminal"}</div>
           </section>
           {terminalUsageOpen && <div id="terminal-resource-panel" className="terminal-resource-panel"><TerminalResourceGraph enabled={true} workspaceName={activeTerminalWorkspace?.name ?? "Workspace"} terminals={activeWorkspaceTerminals} activeTerminalId={activeTerminalId} onFocusTerminal={(id) => {
             if (activeMainView !== "terminals") setActiveMainView("terminals");
@@ -1615,7 +1547,7 @@ function WorkspacePanel({ mode, terminalLayoutMode, onChangeTerminalLayoutMode, 
   const [terminalGroupNameDraft, setTerminalGroupNameDraft] = useState("");
   const [restoreTerminalGroupFocusId, setRestoreTerminalGroupFocusId] = useState<string | null>(null);
   const terminalGroupNameInputRef = useRef<HTMLInputElement>(null);
-  const terminalGroupRenameButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const terminalGroupFocusRefs = useRef(new Map<string, HTMLButtonElement>());
   const loadedPathsRef = useRef(new Set<string>());
   const pendingPathsRef = useRef(new Set<string>());
   const treeGenerationRef = useRef(0);
@@ -1631,7 +1563,7 @@ function WorkspacePanel({ mode, terminalLayoutMode, onChangeTerminalLayoutMode, 
 
   useEffect(() => {
     if (editingTerminalGroupId || !restoreTerminalGroupFocusId) return;
-    terminalGroupRenameButtonRefs.current.get(restoreTerminalGroupFocusId)?.focus();
+    terminalGroupFocusRefs.current.get(restoreTerminalGroupFocusId)?.focus();
     setRestoreTerminalGroupFocusId(null);
   }, [editingTerminalGroupId, restoreTerminalGroupFocusId]);
 
@@ -1843,23 +1775,37 @@ function WorkspacePanel({ mode, terminalLayoutMode, onChangeTerminalLayoutMode, 
   });
 
   return <div className="tool-view workspace-view">
-    <div className="workspace-switcher workspace-management">
-      <select className="workspace-name-select" aria-label="Active terminal workspace" value={activeWorkspaceId} onChange={(event) => onActivateWorkspace(event.currentTarget.value)}>
-        {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
-      </select>
-      <div className="workspace-management-actions">
-        <button className="workspace-action" type="button" aria-label="Create workspace" title="Create workspace" onClick={onCreateWorkspace}>＋</button>
-        <button className="workspace-action" type="button" aria-label="Rename workspace" title="Rename workspace" onClick={onRenameWorkspace} disabled={!activeWorkspaceId}>✎</button>
-        <button className="workspace-action delete" type="button" aria-label="Delete workspace" title={workspaces.length <= 1 ? "Keep at least one workspace" : "Delete workspace"} onClick={onDeleteWorkspace} disabled={workspaces.length <= 1}>×</button>
-        <button className="icon-button refresh-button workspace-action add-folder" aria-label="Add folders to this workspace" title="Add folders" onClick={onAdd} type="button">＋</button>
+    <div className="workspace-row">
+      <div className="ws-select">
+        <select className="workspace-name-select" aria-label="Active terminal workspace" value={activeWorkspaceId} onChange={(event) => onActivateWorkspace(event.currentTarget.value)}>
+          {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+        </select>
+        <svg className="ws-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6" /></svg>
       </div>
+      <button className="ws-box" type="button" aria-label="New workspace" title="New workspace" onClick={onCreateWorkspace}>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
+      </button>
+      <ActionMenu
+        label="Workspace actions"
+        title="Workspace actions"
+        className="ws-box"
+        items={[
+          { label: "Rename workspace", onSelect: onRenameWorkspace, disabled: !activeWorkspaceId },
+          { label: "Add folders", onSelect: onAdd },
+          { label: "Delete workspace", onSelect: onDeleteWorkspace, disabled: workspaces.length <= 1, title: workspaces.length <= 1 ? "Keep at least one workspace" : undefined },
+        ]}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></svg>
+      </ActionMenu>
     </div>
     {mode === "files" && <section className="workspace-explorer" aria-label="Explorer">
       <header className="workspace-section-header">
         <h2>Explorer</h2>
-        <button className="workspace-go-to-file" type="button" aria-label="Go to file" title="Go to file (Ctrl+P)" onClick={onGoToFile}>
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" focusable="false" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
-        </button>
+        <div className="sec-acts">
+          <button className="ib workspace-go-to-file" type="button" aria-label="Go to file" title="Go to file (Ctrl+P)" onClick={onGoToFile}>
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+          </button>
+        </div>
       </header>
         <div className="workspace-explorer-tree" role="tree" aria-label="Workspace files">
           {folders.length === 0 ? <div className="workspace-empty"><div className="empty-icon">▣</div><h2>No folders in this workspace</h2><p>Add folders here to browse their files. Each workspace keeps its own folders.</p><button className="primary-button" onClick={onAdd} type="button">Add Folder</button></div> : folders.map((folder) => {
@@ -1869,7 +1815,7 @@ function WorkspacePanel({ mode, terminalLayoutMode, onChangeTerminalLayoutMode, 
             const entries = entriesByPath[folder] ?? [];
             return <section className={`workspace-root ${selected ? "selected" : ""}`} key={folder}>
               <div className="workspace-root-row" role="treeitem" aria-level={1} aria-expanded={expanded} onContextMenu={(event) => openFolderContextMenu(folder, folder, true, event)}>
-                <button className="workspace-tree-toggle" aria-label={`${expanded ? "Collapse" : "Expand"} ${name}`} aria-expanded={expanded} onClick={() => toggleDirectory(folder, folder, null)} type="button">{expanded ? "⌄" : "›"}</button>
+                <button className="workspace-tree-toggle" aria-label={`${expanded ? "Collapse" : "Expand"} ${name}`} aria-expanded={expanded} onClick={() => toggleDirectory(folder, folder, null)} type="button"><ChevronGlyph open={expanded} /></button>
                 <button className="workspace-folder-select" onClick={() => { onActivate(folder); if (selected) toggleDirectory(folder, folder, null); }} type="button" aria-pressed={selected} title={folder}>
                   <span className="workspace-folder-icon" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M1.75 4.5a1 1 0 0 1 1-1h3.1l1.4 1.5h5.9a1 1 0 0 1 1 1v6.4H1.75z" /></svg></span>
                   <span className="workspace-folder-label"><strong>{name}</strong><small>{folder}</small></span>
@@ -1887,22 +1833,17 @@ function WorkspacePanel({ mode, terminalLayoutMode, onChangeTerminalLayoutMode, 
         </div>
     </section>}
     {mode === "terminal" && <section className="workspace-terminal-groups" aria-label="Terminal groups">
-          <header className="workspace-terminal-groups-header">
+          <header className="workspace-section-header workspace-terminal-groups-header">
             <h2>Terminal groups</h2>
-            <div className="workspace-terminal-groups-actions">
-              <button
-                className={`workspace-terminal-resource-button ${terminalUsageOpen ? "active" : ""}`}
-                type="button"
-                aria-expanded={terminalUsageOpen}
-                aria-controls="terminal-resource-panel"
-                onClick={onToggleTerminalUsage}
-                title="Toggle CPU and RAM monitor"
-              >
-                CPU / RAM
+            <div className="sec-acts">
+              <button className={`ib workspace-terminal-resource-button${terminalUsageOpen ? " active" : ""}`} type="button" aria-label="Resource usage" aria-pressed={terminalUsageOpen} aria-controls="terminal-resource-panel" onClick={onToggleTerminalUsage} title="Toggle CPU and RAM monitor">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 12h4l3-7 4 14 3-7h4" /></svg>
               </button>
-              <button className="workspace-terminal-group-create" type="button" aria-label="New terminal group" title="New terminal group" onClick={onCreateTerminalGroup}>＋</button>
-              <button className="workspace-terminal-groups-toggle" type="button" aria-label={(terminalGroupsCollapsed ? "Expand" : "Collapse") + " terminal groups"} aria-expanded={!terminalGroupsCollapsed} aria-controls="workspace-terminal-groups-list" onClick={() => setTerminalGroupsCollapsed((collapsed) => !collapsed)}>
-                <span aria-hidden="true">{terminalGroupsCollapsed ? "›" : "⌄"}</span>
+              <button className="ib workspace-terminal-group-create" type="button" aria-label="New terminal group" title="New terminal group" onClick={onCreateTerminalGroup}>
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
+              </button>
+              <button className="ib workspace-terminal-groups-toggle" type="button" aria-label={(terminalGroupsCollapsed ? "Expand" : "Collapse") + " terminal groups"} aria-expanded={!terminalGroupsCollapsed} aria-controls="workspace-terminal-groups-list" onClick={() => setTerminalGroupsCollapsed((collapsed) => !collapsed)}>
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d={terminalGroupsCollapsed ? "M9 6l6 6-6 6" : "M6 9l6 6 6-6"} /></svg>
               </button>
             </div>
           </header>
@@ -1911,6 +1852,10 @@ function WorkspacePanel({ mode, terminalLayoutMode, onChangeTerminalLayoutMode, 
               {terminalGroups.map((group) => {
                 const groupTerminals = group.terminalIds.map((id) => terminals.find((terminal) => terminal.id === id)).filter((terminal): terminal is TerminalSession => Boolean(terminal));
                 const selected = group.id === activeTerminalGroupId;
+                const groupMenuItems: ActionMenuItem[] = [
+                  { label: "Rename group", onSelect: () => beginRenameTerminalGroup(group) },
+                ];
+                if (terminalGroups.length > 1) groupMenuItems.push({ label: "Close group", onSelect: () => onCloseTerminalGroup(group.id) });
                 return <div className={"workspace-terminal-group" + (selected ? " selected" : "")} key={group.id}>
                   <div className="workspace-terminal-group-header">
                     {editingTerminalGroupId === group.id ? <form className="workspace-terminal-group-editor" aria-label={`Rename terminal group ${group.name}`} onSubmit={(event) => { event.preventDefault(); saveTerminalGroupName(group); }} onClick={(event) => event.stopPropagation()}>
@@ -1918,18 +1863,24 @@ function WorkspacePanel({ mode, terminalLayoutMode, onChangeTerminalLayoutMode, 
                       <button className="workspace-terminal-group-save" type="submit" aria-label={`Save name for terminal group ${group.name}`} title="Save name">✓</button>
                       <button className="workspace-terminal-group-cancel" type="button" aria-label={`Cancel renaming terminal group ${group.name}`} title="Cancel" onClick={() => cancelTerminalGroupRename(group.id)}>×</button>
                     </form> : <>
-                      <button className="workspace-terminal-group-select" type="button" aria-label={"Select terminal group " + group.name} aria-pressed={selected} onClick={() => onSelectTerminalGroup(group.id)}>
+                      <button ref={(button) => { if (button) terminalGroupFocusRefs.current.set(group.id, button); else terminalGroupFocusRefs.current.delete(group.id); }} className="workspace-terminal-group-select" type="button" aria-label={"Select terminal group " + group.name} aria-pressed={selected} onClick={() => onSelectTerminalGroup(group.id)} onDoubleClick={() => beginRenameTerminalGroup(group)}>
+                        <svg className="workspace-terminal-group-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6" /></svg>
                         <span className="workspace-terminal-group-name">{group.name}</span>
                         <span className="workspace-terminal-group-count">{groupTerminals.length}</span>
                       </button>
-                      <button ref={(button) => { if (button) terminalGroupRenameButtonRefs.current.set(group.id, button); else terminalGroupRenameButtonRefs.current.delete(group.id); }} className="workspace-terminal-group-rename" type="button" aria-label={`Rename terminal group ${group.name}`} title="Rename terminal group" onClick={() => beginRenameTerminalGroup(group)}>✎</button>
+                      <div className="workspace-terminal-group-acts">
+                        <button className="ib" type="button" aria-label={`New terminal in ${group.name}`} title={`New terminal in ${group.name}`} onClick={() => { if (selected) onAddTerminal(); else onSelectTerminalGroup(group.id); }}>
+                          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
+                        </button>
+                        <ActionMenu label={`Group actions for ${group.name}`} title="Group actions" className="ib" items={groupMenuItems}>
+                          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></svg>
+                        </ActionMenu>
+                      </div>
                     </>}
-                    {terminalGroups.length > 1 && <button className="workspace-terminal-group-close" type="button" aria-label={"Close " + group.name + " and move its terminals"} title={"Close " + group.name + " and move its terminals"} onClick={() => onCloseTerminalGroup(group.id)}>×</button>}
                   </div>
                   {groupTerminals.map((terminal) => <button className={"workspace-terminal-select" + (terminal.id === activeTerminalId ? " selected" : "")} type="button" key={terminal.id} aria-label={"Select terminal " + terminal.name} aria-pressed={terminal.id === activeTerminalId} title={terminal.name} onClick={() => onSelectTerminal(group.id, terminal.id)}>
                     <span className="workspace-terminal-indicator" aria-hidden="true" />
                     <span className="workspace-terminal-name">{terminal.name}</span>
-                    {terminal.id === activeTerminalId && <span className="workspace-terminal-active">Active</span>}
                   </button>)}
                   {groupTerminals.length === 0 && <div className="workspace-terminal-empty">No terminals</div>}
                 </div>;
@@ -1940,18 +1891,18 @@ function WorkspacePanel({ mode, terminalLayoutMode, onChangeTerminalLayoutMode, 
     </section>}
     {mode === "files" && <div className="panel-footnote workspace-explorer-footnote"><span className="read-only-mark">⌂</span> Right-click folders for actions</div>}
     <div className="workspace-layout-block" role="group" aria-label={mode === "terminal" ? `Layout · ${activeTerminalGroupName}` : "Layout · Editor"}>
-      <div className="workspace-layout-label" aria-hidden="true">{mode === "terminal" ? `Layout · ${activeTerminalGroupName}` : "Layout · Editor"}</div>
+      <div className="workspace-layout-label" aria-hidden="true">Layout · <b>{mode === "terminal" ? activeTerminalGroupName : "Editor"}</b></div>
       {mode === "terminal" ? <>
         <FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={onChangeTerminalLayoutMode} />
         <button className="workspace-terminal-add-button" type="button" aria-label="Add terminal to group" title="Add terminal to group" onClick={onAddTerminal}>
-          <span aria-hidden="true">＋</span> Add terminal
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>Add terminal
         </button>
       </> : <>
         <div className="layout-mode-toggle editor-layout-mode-toggle floating-editor-mode-toggle" role="group" aria-label="Editor group layout mode">
           <button className={editorLayoutMode === "tiled" ? "selected" : ""} type="button" aria-pressed={editorLayoutMode === "tiled"} onClick={() => onChangeEditorLayoutMode("tiled")} title="Use the default split editor layout">Split</button>
           <button className={editorLayoutMode === "free" ? "selected" : ""} type="button" aria-pressed={editorLayoutMode === "free"} onClick={() => onChangeEditorLayoutMode("free")} title="Move editor groups freely around the canvas">Free</button>
         </div>
-        <button className="editor-create-group" type="button" onClick={onCreateEditorGroup}><span aria-hidden="true">＋</span>New group</button>
+        <button className="editor-create-group" type="button" onClick={onCreateEditorGroup}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>New group</button>
       </>}
     </div>
     <FolderContextMenu
@@ -1979,11 +1930,10 @@ function WorkspaceTreeNode({ entry, depth, expanded, children, loading, error, o
   renderChildren: (entries: WorkspaceEntry[], depth: number) => ReactElement[];
 }) {
   const extension = entry.extension ?? entry.name.split(".").pop() ?? "file";
-  const fileBadge = entry.isDir ? "" : extension.slice(0, 2).toUpperCase();
   return <div className="workspace-tree-node" role="treeitem" aria-level={depth + 1} aria-expanded={entry.isDir ? expanded : undefined}>
-    <div className={`workspace-tree-row ${entry.isDir ? "directory" : "file"}`} style={{ paddingLeft: (depth + 1) * 16, "--tree-guide-width": `${depth * 16}px`, "--tree-branch-start": `${depth * 16 - 1}px` } as CSSProperties} onContextMenu={entry.isDir ? onContextMenu : undefined}>
-      {entry.isDir ? <button className="workspace-tree-toggle" aria-label={`${expanded ? "Collapse" : "Expand"} ${entry.name}`} aria-expanded={expanded} onClick={onToggle} type="button">{expanded ? "⌄" : "›"}</button> : <span className="workspace-tree-toggle-spacer" />}
-      {entry.isDir ? <button className="workspace-tree-entry" onClick={onToggle} title={entry.path} type="button"><span className="workspace-tree-file-icon folder" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M1.75 4.5a1 1 0 0 1 1-1h3.1l1.4 1.5h5.9a1 1 0 0 1 1 1v6.4H1.75z" /></svg></span><span className="workspace-tree-name">{entry.name}</span></button> : <button className="workspace-tree-entry" onClick={(event) => onOpen(event.currentTarget)} title={entry.path} type="button"><span className={`workspace-tree-file-icon ext-${extension.replace(/[^a-z0-9]/gi, "").toLowerCase()}`} aria-hidden="true">{fileBadge || "F"}</span><span className="workspace-tree-name">{entry.name}</span><span className="workspace-tree-size">{entry.size === null ? "" : formatFileSize(entry.size)}</span></button>}
+    <div className={`workspace-tree-row ${entry.isDir ? "directory" : "file"}`} style={{ paddingLeft: 6 + depth * 16, "--tree-guide-width": `${depth * 16}px`, "--tree-branch-start": `${depth * 16 - 1}px` } as CSSProperties} onContextMenu={entry.isDir ? onContextMenu : undefined}>
+      {entry.isDir ? <button className="workspace-tree-toggle" aria-label={`${expanded ? "Collapse" : "Expand"} ${entry.name}`} aria-expanded={expanded} onClick={onToggle} type="button"><ChevronGlyph open={expanded} /></button> : <span className="workspace-tree-toggle-spacer" />}
+      {entry.isDir ? <button className="workspace-tree-entry" onClick={onToggle} title={entry.path} type="button"><span className="workspace-tree-file-icon folder" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M1.75 4.5a1 1 0 0 1 1-1h3.1l1.4 1.5h5.9a1 1 0 0 1 1 1v6.4H1.75z" /></svg></span><span className="workspace-tree-name">{entry.name}</span></button> : <button className="workspace-tree-entry" onClick={(event) => onOpen(event.currentTarget)} title={entry.path} type="button"><span className={`workspace-tree-file-icon ext-${extension.replace(/[^a-z0-9]/gi, "").toLowerCase()}`} aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /></svg></span><span className="workspace-tree-name">{entry.name}</span><span className="workspace-tree-size">{entry.size === null ? "" : formatFileSize(entry.size)}</span></button>}
     </div>
     {entry.isDir && expanded && <div className="workspace-tree-children" role="group">
       {loading && <div className="workspace-tree-message" style={{ paddingLeft: 25 + depth * 12 }}>Loading folder…</div>}
@@ -1992,6 +1942,10 @@ function WorkspaceTreeNode({ entry, depth, expanded, children, loading, error, o
       {renderChildren(children, depth + 1)}
     </div>}
   </div>;
+}
+
+function ChevronGlyph({ open }: { open: boolean }) {
+  return <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d={open ? "M6 9l6 6 6-6" : "M9 6l6 6-6 6"} /></svg>;
 }
 
 function formatFileSize(size: number): string {
@@ -2100,7 +2054,7 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onOpenDiff, onError }: {
   return <section className={`git-repository-section${expanded ? " is-expanded" : ""}`}>
     <header className="git-repository-heading">
       <button className="git-repository-toggle" aria-expanded={expanded} onClick={toggleExpanded} type="button" title={repoInfo.root}>
-        <span className="git-repository-chevron" aria-hidden="true">{expanded ? "⌄" : "›"}</span>
+        <span className="git-repository-chevron" aria-hidden="true"><ChevronGlyph open={expanded} /></span>
         <span className="git-repository-name"><strong>{repoName}</strong></span>
         <span className="git-repository-branch" title="Current branch">{repoInfo.branch || "Detached HEAD"}</span>
         <span className="git-repository-counts">{stagedChanges.length} staged · {unstagedChanges.length} changes</span>
@@ -2368,9 +2322,21 @@ type TerminalWorkspaceLayoutProps = {
   onClose: (sessionId: string) => void;
   onMove: (sourceId: string, targetId: string) => void;
   onResize: (splitId: string, ratio: number) => void;
+  groups: TerminalGroup[];
+  activeGroupId: string;
+  editingTerminalId: string | null;
+  terminalNameDraft: string;
+  nameInputRef: React.RefObject<HTMLInputElement | null>;
+  onBeginRename: (terminal: TerminalSession) => void;
+  onChangeRenameDraft: (value: string) => void;
+  onSaveRename: () => void;
+  onCancelRename: () => void;
+  onMoveToGroup: (sessionId: string, groupId: string) => void;
+  onSplit: (terminalId: string) => void;
+  onShowAll: () => void;
 };
 
-function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visibleTerminalIds, workspaceId, onDockToTiledLayout, onModeState, activeTerminalId, onLinkHint, onFocus, onExit, onClose, onMove, onResize }: TerminalWorkspaceLayoutProps) {
+function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visibleTerminalIds, workspaceId, onDockToTiledLayout, onModeState, activeTerminalId, onLinkHint, onFocus, onExit, onClose, onMove, onResize, groups, activeGroupId, editingTerminalId, terminalNameDraft, nameInputRef, onBeginRename, onChangeRenameDraft, onSaveRename, onCancelRename, onMoveToGroup, onSplit, onShowAll }: TerminalWorkspaceLayoutProps) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const scrollportRef = useRef<HTMLDivElement>(null);
   const paneRefs = useRef(new Map<string, HTMLDivElement>());
@@ -2450,18 +2416,19 @@ function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visible
       const rect = geometry.panes.get(terminal.id);
       const isFloating = !focusedTerminalId && floatingLayout.mode === "floating" && visibleTerminalIds.includes(terminal.id);
       const isSingleTerminal = focusedTerminalId === terminal.id || (!layout && floatingLayout.mode === "tiled" && visibleTerminalIds.length === 1 && visibleTerminalIds[0] === terminal.id);
-      const hasPaneHeader = Boolean(rect && !focusedTerminalId && (isFloating || (visibleTerminalIds.length > 1 && layout)));
+      const hasPaneHeader = Boolean(rect && (isFloating || floatingLayout.mode === "tiled"));
       const style: CSSProperties = rect
         ? { left: `${rect.x}%`, top: `${rect.y}%`, width: `${rect.width}%`, height: `${rect.height}%` }
         : { display: "none" };
       return <div
         key={terminal.id}
-        className={`terminal-pane-frame ${rect && layout ? "layout-pane" : ""} ${isSingleTerminal ? "single-terminal-pane" : ""} ${isFloating ? "floating-terminal-window" : ""}`}
+        className={`terminal-pane-frame ${rect && layout ? "layout-pane" : ""} ${isSingleTerminal ? "single-terminal-pane" : ""} ${isFloating ? "floating-terminal-window" : ""} ${!isFloating && floatingLayout.mode === "tiled" ? "tiled-pane" : ""}`}
         style={style}
         ref={(element) => {
           if (element) paneRefs.current.set(terminal.id, element);
           else paneRefs.current.delete(terminal.id);
         }}
+        data-terminal-id={terminal.id}
         data-active={terminal.id === activeTerminalId ? "true" : undefined}
         data-drag-over={dropTargetPaneId === terminal.id ? "true" : undefined}
         data-drag-source={draggingPaneId === terminal.id ? "true" : undefined}
@@ -2491,6 +2458,7 @@ function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visible
           onPointerUp={(event) => floatingLayout.endResize(terminal.id, event)}
           onPointerCancel={(event) => floatingLayout.cancelResize(terminal.id, event)}
         />)}
+        <div className="pane-box">
         {hasPaneHeader && <header
           className={`terminal-pane-header ${isSingleTerminal ? "single-terminal-pane-header" : ""}`}
           onPointerDown={isFloating ? (event) => {
@@ -2551,13 +2519,20 @@ function TerminalWorkspaceLayout({ layout, focusedTerminalId, terminals, visible
               setDropTargetPaneId(null);
             }}
           >⠿</button>}
-          <span className="terminal-pane-title" title={terminal.name}>{terminal.name}</span>
-          {visibleTerminalIds.length > 1 && <button className="pane-close" type="button" aria-label={`Close ${terminal.name}`} onClick={() => onClose(terminal.id)}>×</button>}
+          <span className={`pane-dot${terminal.id === activeTerminalId ? " on" : ""}`} aria-hidden="true" />
+          {editingTerminalId === terminal.id ? <PaneRenameInput terminalName={terminal.name} value={terminalNameDraft} inputRef={nameInputRef} onChange={onChangeRenameDraft} onSave={onSaveRename} onCancel={onCancelRename} />
+            : <span className="terminal-pane-title" title={terminal.name} onDoubleClick={() => onBeginRename(terminal)}>{terminal.name}</span>}
+          {terminal.workingDirectory && <span className="pane-cwd" title={terminal.workingDirectory}>{terminal.workingDirectory.split(/[\\/]/).filter(Boolean).pop()}</span>}
+          <span className="pane-spacer" />
+          {focusedTerminalId === terminal.id && <button className="pane-icon-button pane-show-all" type="button" aria-label="Show all terminals" title="Show all terminals" onClick={onShowAll}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></svg></button>}
+          <TerminalPaneMenu terminalName={terminal.name} moveTargets={groups.filter((group) => group.id !== activeGroupId).map((group) => ({ id: group.id, name: group.name }))} onRename={() => onBeginRename(terminal)} onMove={(groupId) => onMoveToGroup(terminal.id, groupId)} onSplit={() => onSplit(terminal.id)} onClose={() => onClose(terminal.id)} />
+          <button className="pane-icon-button pane-close" type="button" aria-label={"Close " + terminal.name} title="Close terminal" onClick={() => onClose(terminal.id)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
         </header>}
         <div className="terminal-pane-body">
           <Suspense key={terminal.id} fallback={<div className="terminal-placeholder">Loading terminal…</div>}>
             <TerminalPane sessionId={terminal.id} shell={terminal.shell} profileId={terminal.profileId} workingDirectory={terminal.workingDirectory} active={terminal.id === activeTerminalId} visible={Boolean(rect)} onLinkHint={onLinkHint} onFocus={onFocus} onExit={onExit} />
           </Suspense>
+        </div>
         </div>
       </div>;
     })}

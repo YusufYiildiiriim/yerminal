@@ -102,7 +102,7 @@ describe("closing terminal sessions", () => {
     await renderWithOneTerminal();
     const [targetId, remainingId] = await addSecondTerminal();
     mocks.confirm.mockResolvedValue(true);
-    const closeButton = document.querySelector<HTMLButtonElement>(`.terminal-tab-item[data-terminal-id="${targetId}"] .tab-close`);
+    const closeButton = document.querySelector<HTMLButtonElement>(`.terminal-pane-frame[data-terminal-id="${targetId}"] .pane-close`);
     expect(closeButton).not.toBeNull();
 
     fireEvent.click(closeButton!);
@@ -132,8 +132,8 @@ describe("closing terminal sessions", () => {
 
     fireEvent.keyDown(screen.getByRole("main"), { key: "w", ctrlKey: true, shiftKey: true });
     await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(1));
-    const tab = screen.getByRole("tab", { name: /Double-click to rename/i });
-    tab.dispatchEvent(new MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }));
+    const paneClose = document.querySelector<HTMLButtonElement>(".terminal-pane-frame[data-terminal-id=\"" + targetId + "\"] .pane-close");
+    fireEvent.click(paneClose!);
 
     expect(mocks.confirm).toHaveBeenCalledTimes(1);
     expect(closeInvocations()).toHaveLength(0);

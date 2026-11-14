@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const styles = readFileSync(resolve(process.cwd(), "src/styles/sidebar-ux.css"), "utf8");
+const styles = readFileSync(resolve(process.cwd(), "src/styles/shell-ux.css"), "utf8");
 
 describe("collapsed Explorer terminal groups", () => {
   it("shrinks the group panel to its header and gives the reclaimed space to the file tree", () => {

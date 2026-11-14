@@ -1,0 +1,132 @@
+/* Main area: terminal panes, usage strip and editor frame. Ported from the
+   approved terminal-tabs mockup. Every rule is scoped under .app-shell[data-theme]
+   so it wins over the older layers in app.css, themes.css and workbench-ux.css. */
+
+/* Terminal pane grid: 8px outer padding (4px surface inset + 4px pane inset), 8px gap. */
+.app-shell[data-theme] .terminal-layout-surface:not(.floating-terminal-canvas):not(.tiled-scroll-canvas) { inset: 4px; }
+.app-shell[data-theme] .terminal-pane-frame.tiled-pane {
+  padding: 4px; box-sizing: border-box; border: 0; background: transparent; box-shadow: none; z-index: auto;
+}
+.app-shell[data-theme] .terminal-pane-frame.tiled-pane[data-active="true"] { border: 0; box-shadow: none; }
+.app-shell[data-theme] .pane-box { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; }
+.app-shell[data-theme] .terminal-pane-frame.tiled-pane .pane-box {
+  border: 1px solid var(--theme-border); border-radius: 8px; background: var(--theme-terminal); overflow: hidden;
+}
+.app-shell[data-theme] .terminal-pane-frame.tiled-pane[data-active="true"] .pane-box {
+  border-color: color-mix(in srgb, var(--theme-text) 22%, var(--theme-border));
+}
+
+/* Pane header: 36px, raised, dot + name + cwd chip, actions on the right. */
+.app-shell[data-theme] .terminal-pane-frame.tiled-pane .terminal-pane-header,
+.app-shell[data-theme] .terminal-pane-frame.tiled-pane[data-active="true"] .terminal-pane-header {
+  position: relative; z-index: 2; overflow: visible;
+  height: 36px; flex: 0 0 36px; min-width: 0; gap: 8px; padding: 0 6px 0 12px;
+  background: var(--theme-raised); border: 0; border-bottom: 1px solid var(--theme-border);
+}
+.app-shell[data-theme] .pane-dot {
+  width: 8px; height: 8px; flex: none; border-radius: 50%; box-sizing: border-box;
+  border: 1px solid var(--theme-muted); background: transparent;
+}
+.app-shell[data-theme] .pane-dot.on { background: var(--theme-accent); border-color: var(--theme-accent); }
+.app-shell[data-theme] .terminal-pane-frame.tiled-pane .terminal-pane-title {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: text;
+  font-size: 13px; font-weight: 500; color: color-mix(in srgb, var(--theme-text) 70%, var(--theme-muted));
+}
+.app-shell[data-theme] .terminal-pane-frame.tiled-pane[data-active="true"] .terminal-pane-title {
+  color: var(--theme-text); font-weight: 600;
+}
+.app-shell[data-theme] .pane-cwd {
+  flex: 0 1 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 1px 6px; border: 1px solid var(--theme-border); border-radius: 4px; background: var(--theme-chrome);
+  color: var(--theme-muted); font-family: "Cascadia Code", Consolas, monospace; font-size: 11px;
+}
+.app-shell[data-theme] .pane-spacer { flex: 1 1 auto; min-width: 0; }
+.app-shell[data-theme] .pane-rename {
+  flex: 0 1 160px; min-width: 96px; height: 22px; box-sizing: border-box; padding: 0 6px; outline: none;
+  border: 1px solid color-mix(in srgb, var(--theme-text) 30%, var(--theme-border)); border-radius: 4px;
+  background: var(--theme-background); color: var(--theme-text); font: inherit; font-size: 13px;
+}
+.app-shell[data-theme] .pane-icon-button {
+  width: 24px; height: 24px; flex: none; padding: 0; display: grid; place-items: center;
+  border: 0; border-radius: 6px; background: transparent; color: var(--theme-muted); cursor: pointer;
+}
+.app-shell[data-theme] .pane-icon-button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.app-shell[data-theme] .pane-icon-button.pane-close svg { width: 16px; height: 16px; }
+.app-shell[data-theme] .pane-icon-button:hover,
+.app-shell[data-theme] .pane-icon-button[aria-expanded="true"] { color: var(--theme-text); background: color-mix(in srgb, var(--theme-text) 10%, transparent); }
+.app-shell[data-theme] .pane-icon-button:focus-visible,
+.app-shell[data-theme] .pane-rename:focus-visible { outline: 1px solid var(--theme-muted); outline-offset: -1px; }
+.app-shell[data-theme] .terminal-pane-frame.tiled-pane .terminal-pane-body { flex: 1 1 auto; min-height: 0; }
+.app-shell[data-theme] .pane-live-status {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* Pane "..." menu. */
+.app-shell[data-theme] .pane-menu-wrap { position: relative; flex: none; display: flex; }
+.app-shell[data-theme] .pane-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; width: 196px; box-sizing: border-box; padding: 4px;
+  display: flex; flex-direction: column; border: 1px solid var(--theme-border); border-radius: 8px;
+  background: var(--theme-surface); box-shadow: 0 4px 12px rgb(0 0 0 / 25%);
+}
+.app-shell[data-theme] .pane-menu-item {
+  width: 100%; height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 8px; box-sizing: border-box;
+  border: 0; border-radius: 6px; background: transparent; color: var(--theme-text); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.app-shell[data-theme] .pane-menu-item:hover,
+.app-shell[data-theme] .pane-menu-item:focus-visible { background: var(--hover); outline: none; }
+.app-shell[data-theme] .pane-menu-item.pane-menu-sub { padding-left: 26px; }
+.app-shell[data-theme] .pane-menu-chevron { margin-left: auto; width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; color: var(--theme-muted); }
+.app-shell[data-theme] .pane-menu-sep { height: 1px; margin: 4px 0; background: var(--theme-border); }
+
+/* Usage strip: flat 44px row below the panes. */
+.app-shell[data-theme] .terminal-resource-panel {
+  flex: none; height: 44px; margin: 0; padding: 0; overflow: hidden;
+  border-top: 1px solid var(--theme-border); background: var(--theme-surface);
+}
+.app-shell[data-theme] .terminal-resource-panel .terminal-resource-strip { height: 100%; border: 0; background: transparent; }
+.app-shell[data-theme] .terminal-resource-panel .terminal-resource-list { display: flex; height: 100%; overflow-x: auto; overflow-y: hidden; }
+.app-shell[data-theme] .terminal-resource-panel .terminal-resource-empty,
+.app-shell[data-theme] .terminal-resource-panel .terminal-resource-error {
+  display: flex; align-items: center; height: 100%; padding: 0 14px; font-size: 12px; color: var(--theme-muted);
+}
+.app-shell[data-theme] .terminal-resource-panel .terminal-resource-card {
+  flex: 1 1 0; min-width: 160px; height: 100%; display: grid; grid-template-columns: auto minmax(40px, 1fr) auto;
+  align-items: center; gap: 12px; padding: 0 14px; box-sizing: border-box;
+  border: 0; border-right: 1px solid var(--theme-border); border-radius: 0; background: transparent;
+  color: var(--theme-text); text-align: left; cursor: pointer;
+}
+.app-shell[data-theme] .terminal-resource-panel .terminal-resource-card:last-child { border-right: 0; }
+.app-shell[data-theme] .terminal-resource-panel .terminal-resource-card:hover { background: var(--shell-hover, transparent); }
+.app-shell[data-theme] .terminal-resource-panel .terminal-resource-card:focus-visible { outline: 1px solid var(--theme-muted); outline-offset: -1px; }
+.app-shell[data-theme] .terminal-resource-panel .terminal-resource-terminal-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--theme-text);
+}
+.app-shell[data-theme] .terminal-resource-panel .terminal-resource-meter { display: block; height: 3px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--theme-text) 12%, transparent); }
+.app-shell[data-theme] .terminal-resource-panel .terminal-resource-meter > span { display: block; height: 100%; background: color-mix(in srgb, var(--theme-text) 45%, transparent); }
+.app-shell[data-theme] .terminal-resource-panel .terminal-resource-value {
+  font-family: "Cascadia Code", Consolas, monospace; font-size: 11px; color: var(--theme-muted); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+
+/* Editor frame: 8px margin, 1px border, 8px radius, editor background. */
+.app-shell[data-theme] .code-workspace {
+  margin: 8px; border: 1px solid var(--theme-border); border-radius: 8px; background: var(--theme-editor); overflow: hidden;
+}
+.app-shell[data-theme] .editor-file-tabs {
+  height: 36px; flex: 0 0 36px; background: var(--theme-chrome); border-bottom: 1px solid var(--theme-border);
+}
+.app-shell[data-theme] .editor-file-tab {
+  min-width: 0; max-width: 240px; padding-right: 10px; border-right: 1px solid var(--theme-border);
+  color: var(--theme-muted); font-size: 13px;
+}
+.app-shell[data-theme] .editor-file-tab.selected {
+  background: var(--theme-editor); color: var(--theme-text); box-shadow: inset 0 2px 0 var(--theme-accent);
+}
+.app-shell[data-theme] .editor-file-tab-select { gap: 8px; padding: 0 0 0 12px; font-size: 13px; }
+.app-shell[data-theme] .editor-file-tab-close {
+  width: 16px; height: 16px; flex: 0 0 16px; align-self: center; margin-left: 8px; padding: 0;
+  display: grid; place-items: center; border: 0; border-radius: 4px; background: transparent; color: var(--theme-muted); font-size: 13px; line-height: 1;
+}
+.app-shell[data-theme] .editor-file-tab-close:hover { background: var(--hover); color: var(--theme-text); }
+
+/* Usage strip sits flush under the panes. */
+.app-shell[data-theme] .terminal-workspace-view.has-terminal-usage { gap: 0; padding-bottom: 0; }

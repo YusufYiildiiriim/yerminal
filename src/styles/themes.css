@@ -11,6 +11,9 @@
   --theme-border: #23232a;
   --theme-accent: #f59e0b;
   --theme-success: #34d399;
+  --hover: color-mix(in srgb, var(--theme-text) 7%, transparent);
+  --row-text: color-mix(in srgb, var(--theme-text) 88%, var(--theme-muted));
+  --bright: color-mix(in srgb, var(--theme-text) 60%, #ffffff);
   --bg: var(--theme-background);
   --panel: var(--theme-surface);
   --panel-raised: var(--theme-raised);
@@ -72,8 +75,7 @@
   background: var(--theme-terminal);
   border-color: var(--theme-border);
 }
-.app-shell[data-theme] :is(.workspace-view-tab.selected, .editor-file-tab.selected, .tool-sidebar-item.selected, .tool-sidebar-item.active) { color: var(--theme-text); }
-.app-shell[data-theme] .workspace-view-tab.selected > span,
+.app-shell[data-theme] :is(.editor-file-tab.selected, .tool-sidebar-item.selected, .tool-sidebar-item.active) { color: var(--theme-text); }
 .app-shell[data-theme] :is(.editor-groups-title > span:first-child, .read-only-mark) { color: var(--theme-accent); }
 .app-shell[data-theme] .editor-file-tab.selected { box-shadow: inset 0 2px var(--theme-accent); }
 .app-shell[data-theme] .editor-group-pane.active .editor-group-indicator { background: var(--theme-accent); }
@@ -133,7 +135,7 @@
   background: var(--theme-raised);
   color: var(--theme-text);
 }
-.app-shell[data-theme] :is(.workspace-view-tab, .editor-file-tab) {
+.app-shell[data-theme] :is(.editor-file-tab) {
   transition: color .15s ease, background-color .15s ease;
 }
 .app-shell[data-theme] :is(.floating-terminal-mode-toggle, .floating-editor-mode-toggle) {

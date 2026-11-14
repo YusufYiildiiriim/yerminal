@@ -28,6 +28,7 @@ vi.mock("../../src/features/terminal/TerminalPane", async () => {
 
 import App from "../../src/App";
 import { invoke } from "@tauri-apps/api/core";
+import { chooseGroupAction, chooseWorkspaceAction } from "../shellMenus";
 
 afterEach(() => {
   cleanup();
@@ -56,21 +57,23 @@ describe("terminal groups", () => {
     await waitFor(() => expect(screen.getAllByTestId("mock-terminal")).toHaveLength(2));
     await user.click(screen.getByRole("button", { name: "New terminal group" }));
     const explorerGroups = screen.getByRole("region", { name: "Terminal groups" });
-    expect(within(explorerGroups).getByRole("button", { name: "Close Terminal 2 and move its terminals" })).toBeInTheDocument();
+    expect(within(explorerGroups).getByRole("button", { name: "Group actions for Terminal 2" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Add terminal to group" }));
     await waitFor(() => expect(screen.getAllByTestId("mock-terminal")).toHaveLength(3));
 
-    expect(screen.getByRole("tablist", { name: "Terminal sessions" }).querySelectorAll('[role="tab"]')).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /^More actions for/ })).toHaveLength(1);
     await user.click(within(explorerGroups).getByRole("button", { name: "Select terminal group Terminal 1" }));
-    expect(screen.getByRole("tablist", { name: "Terminal sessions" }).querySelectorAll('[role="tab"]')).toHaveLength(2);
-    expect(screen.getByRole("button", { name: "Rename Terminal 2" })).toBeInTheDocument();
-    const moveGroup = screen.getByRole("combobox", { name: "Move Terminal 2 to terminal group" });
-    const destinationGroupId = (moveGroup.querySelectorAll("option")[1] as HTMLOptionElement).value;
-    await user.selectOptions(moveGroup, destinationGroupId);
+    expect(screen.getAllByRole("button", { name: /^More actions for/ })).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: "More actions for Terminal 2" }));
+    const paneMenu = screen.getByRole("menu", { name: "Terminal 2 actions" });
+    await user.click(within(paneMenu).getByRole("menuitem", { name: "Move to group" }));
+    const moveTarget = within(paneMenu).getAllByRole("menuitem").find((item) => item.hasAttribute("data-group-to"));
+    expect(moveTarget).toBeDefined();
+    await user.click(moveTarget!);
 
-    await waitFor(() => expect(screen.getByRole("tablist", { name: "Terminal sessions" }).querySelectorAll('[role="tab"]')).toHaveLength(2));
-    await user.click(within(explorerGroups).getByRole("button", { name: "Close Terminal 1 and move its terminals" }));
-    expect(screen.getAllByRole("tab", { name: /Terminal/ }).length).toBeGreaterThanOrEqual(1);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: /^More actions for/ })).toHaveLength(2));
+    await chooseGroupAction(user, within(explorerGroups), "Terminal 1", "Close group");
+    expect(screen.getAllByRole("button", { name: /^More actions for/ }).length).toBeGreaterThanOrEqual(1);
     expect(invoke.mock.calls.filter(([command]) => command === "close_terminal")).toHaveLength(0);
     expect(invoke.mock.calls.filter(([command]) => command === "create_terminal")).toHaveLength(3);
   });
@@ -83,14 +86,14 @@ describe("terminal groups", () => {
     await user.click(screen.getByRole("button", { name: "New terminal group" }));
     expect(within(screen.getByRole("region", { name: "Terminal groups" })).getAllByRole("button", { name: /Select terminal group/ })).toHaveLength(2);
     const initialGroups = within(screen.getByRole("region", { name: "Terminal groups" }));
-    await user.click(initialGroups.getByRole("button", { name: "Rename terminal group Terminal 2" }));
+    await chooseGroupAction(user, initialGroups, "Terminal 2", "Rename group");
     const renameInput = screen.getByRole("textbox", { name: "New name for terminal group Terminal 2" });
     await user.clear(renameInput);
     await user.type(renameInput, "Build tools");
     await user.click(screen.getByRole("button", { name: "Save name for terminal group Terminal 2" }));
     expect(initialGroups.getByRole("button", { name: "Select terminal group Build tools" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Create workspace" }));
+    await user.click(screen.getByRole("button", { name: "New workspace" }));
     const explorerGroups = await screen.findByRole("region", { name: "Terminal groups" });
     expect(within(explorerGroups).getAllByRole("button", { name: /Select terminal group/ })).toHaveLength(1);
     await user.selectOptions(screen.getByRole("combobox", { name: "Active terminal workspace" }), "workspace-1");
@@ -105,7 +108,7 @@ describe("terminal groups", () => {
     const before = [...document.querySelectorAll<HTMLElement>("[data-testid='mock-terminal']")].map((node) => node.dataset.sessionId);
     const groups = within(screen.getByRole("region", { name: "Terminal groups" }));
 
-    await user.click(groups.getByRole("button", { name: "Rename terminal group Terminal 1" }));
+    await chooseGroupAction(user, groups, "Terminal 1", "Rename group");
     const input = screen.getByRole("textbox", { name: "New name for terminal group Terminal 1" });
     expect(input).toHaveFocus();
     await user.clear(input);
@@ -113,7 +116,7 @@ describe("terminal groups", () => {
     await user.keyboard("{Enter}");
 
     expect(groups.getByRole("button", { name: "Select terminal group Build tools" })).toBeInTheDocument();
-    expect(groups.getByRole("button", { name: "Rename terminal group Build tools" })).toHaveFocus();
+    expect(groups.getByRole("button", { name: "Select terminal group Build tools" })).toHaveFocus();
     expect([...document.querySelectorAll<HTMLElement>("[data-testid='mock-terminal']")].map((node) => node.dataset.sessionId)).toEqual(before);
     expect(invoke.mock.calls.filter(([command]) => command === "close_terminal")).toHaveLength(0);
     await waitFor(() => {
@@ -137,28 +140,28 @@ describe("terminal groups", () => {
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("create_terminal", expect.anything()));
     const groups = within(screen.getByRole("region", { name: "Terminal groups" }));
 
-    await user.click(groups.getByRole("button", { name: "Rename terminal group Terminal 1" }));
+    await chooseGroupAction(user, groups, "Terminal 1", "Rename group");
     const input = screen.getByRole("textbox", { name: "New name for terminal group Terminal 1" });
     await user.clear(input);
     await user.type(input, "Changed");
     await user.keyboard("{Escape}");
     expect(groups.getByRole("button", { name: "Select terminal group Terminal 1" })).toBeInTheDocument();
-    expect(groups.getByRole("button", { name: "Rename terminal group Terminal 1" })).toHaveFocus();
+    expect(groups.getByRole("button", { name: "Select terminal group Terminal 1" })).toHaveFocus();
 
-    await user.click(groups.getByRole("button", { name: "Rename terminal group Terminal 1" }));
+    await chooseGroupAction(user, groups, "Terminal 1", "Rename group");
     const cancelInput = screen.getByRole("textbox", { name: "New name for terminal group Terminal 1" });
     await user.clear(cancelInput);
     await user.type(cancelInput, "Canceled");
     await user.click(screen.getByRole("button", { name: "Cancel renaming terminal group Terminal 1" }));
     expect(groups.getByRole("button", { name: "Select terminal group Terminal 1" })).toBeInTheDocument();
-    expect(groups.getByRole("button", { name: "Rename terminal group Terminal 1" })).toHaveFocus();
+    expect(groups.getByRole("button", { name: "Select terminal group Terminal 1" })).toHaveFocus();
 
-    await user.click(groups.getByRole("button", { name: "Rename terminal group Terminal 1" }));
+    await chooseGroupAction(user, groups, "Terminal 1", "Rename group");
     const emptyInput = screen.getByRole("textbox", { name: "New name for terminal group Terminal 1" });
     await user.clear(emptyInput);
     await user.click(screen.getByRole("button", { name: "Save name for terminal group Terminal 1" }));
     expect(groups.getByRole("button", { name: "Select terminal group Terminal 1" })).toBeInTheDocument();
-    expect(groups.getByRole("button", { name: "Rename terminal group Terminal 1" })).toHaveFocus();
+    expect(groups.getByRole("button", { name: "Select terminal group Terminal 1" })).toHaveFocus();
   });
 
   it("restores persisted group names and active group without reviving old PTY IDs or layouts", async () => {
@@ -236,7 +239,7 @@ describe("terminal groups", () => {
     await user.click(within(explorerGroups).getByRole("button", { name: "Select terminal group Terminal 1" }));
     expect(within(explorerGroups).getByRole("button", { name: "Select terminal group Terminal 1" })).toHaveAttribute("aria-pressed", "true");
     await user.click(within(explorerGroups).getByRole("button", { name: "Select terminal Terminal 2" }));
-    expect(within(screen.getByRole("tablist", { name: "Terminal sessions" })).getByRole("tab", { name: /Terminal 2/ })).toHaveAttribute("aria-selected", "true");
+    expect(document.querySelector(".terminal-pane-frame[data-active=\"true\"] .terminal-pane-title")).toHaveTextContent("Terminal 2");
 
     const collapse = within(explorerGroups).getByRole("button", { name: "Collapse terminal groups" });
     await user.click(collapse);
@@ -270,6 +273,6 @@ describe("terminal groups", () => {
     await user.click(within(rail).getByRole("button", { name: "Terminal" }));
     await user.click(within(screen.getByRole("region", { name: "Terminal groups" })).getByRole("button", { name: "Select terminal Terminal 2" }));
     expect(screen.getByRole("button", { name: "Terminal" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(screen.getByRole("tablist", { name: "Terminal sessions" })).getByRole("tab", { name: /Terminal 2/ })).toHaveAttribute("aria-selected", "true");
+    expect(document.querySelector(".terminal-pane-frame[data-active=\"true\"] .terminal-pane-title")).toHaveTextContent("Terminal 2");
   });
 });

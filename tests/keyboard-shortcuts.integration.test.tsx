@@ -113,9 +113,8 @@ describe("global keyboard shortcuts", () => {
     expect(screen.getByRole("button", { name: "Git Changes" })).toHaveAttribute("aria-pressed", "false");
 
     fireEvent.keyDown(quickOpen, { key: "Escape" });
-    const renameButton = document.querySelector<HTMLButtonElement>(".terminal-tab-rename");
-    expect(renameButton).not.toBeNull();
-    fireEvent.click(renameButton!);
+    fireEvent.click(screen.getByRole("button", { name: /^More actions for/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
     const renameInput = await screen.findByRole("textbox", { name: /new name for/i });
     renameInput.focus();
     const ctrlP = new KeyboardEvent("keydown", { key: "p", ctrlKey: true, bubbles: true, cancelable: true });

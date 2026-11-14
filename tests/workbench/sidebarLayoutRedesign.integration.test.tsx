@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../../src/App";
 import { invoke } from "@tauri-apps/api/core";
+import { chooseGroupAction, chooseWorkspaceAction } from "../shellMenus";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -68,7 +69,7 @@ describe("Sidebar and header layout redesign", () => {
 
     // The + and CPU/RAM buttons should no longer be in the titlebar
     expect(within(titlebar).queryByRole("button", { name: "Add terminal to group" })).not.toBeInTheDocument();
-    expect(within(titlebar).queryByRole("button", { name: "CPU / RAM" })).not.toBeInTheDocument();
+    expect(within(titlebar).queryByRole("button", { name: "Resource usage" })).not.toBeInTheDocument();
   });
 
   it("renders a gear icon, not a '?' text glyph, on the Help & Settings rail button", () => {
@@ -87,8 +88,8 @@ describe("Sidebar and header layout redesign", () => {
     const panel = document.querySelector(".tools-panel") as HTMLElement;
     expect(within(panel).queryByRole("region", { name: "Explorer" })).not.toBeInTheDocument();
     const terminalGroups = within(panel).getByRole("region", { name: "Terminal groups" });
-    expect(within(terminalGroups).getByRole("button", { name: "CPU / RAM" })).toBeInTheDocument();
-    expect(within(panel).getByText("Layout · Terminal 1")).toBeInTheDocument();
+    expect(within(terminalGroups).getByRole("button", { name: "Resource usage" })).toBeInTheDocument();
+    expect(within(panel).getByRole("group", { name: "Layout · Terminal 1" })).toBeInTheDocument();
     const layout = within(panel).getByRole("group", { name: "Terminal layout mode" });
     expect(within(layout).getByRole("button", { name: "Split" })).toBeInTheDocument();
     expect(within(layout).getByRole("button", { name: "Free" })).toBeInTheDocument();
@@ -107,7 +108,7 @@ describe("Sidebar and header layout redesign", () => {
     expect(within(explorer).getByRole("button", { name: "Go to file" })).toHaveAttribute("title", "Go to file (Ctrl+P)");
     expect(within(panel).queryByRole("region", { name: "Terminal groups" })).not.toBeInTheDocument();
     expect(within(panel).queryByRole("button", { name: "Add terminal to group" })).not.toBeInTheDocument();
-    expect(within(panel).getByText("Layout · Editor")).toBeInTheDocument();
+    expect(within(panel).getByRole("group", { name: "Layout · Editor" })).toBeInTheDocument();
     expect(within(panel).getByRole("group", { name: "Editor group layout mode" })).toBeInTheDocument();
     expect(within(panel).getByRole("button", { name: "New group" })).toBeInTheDocument();
   });
@@ -164,7 +165,7 @@ describe("Sidebar and header layout redesign", () => {
     render(<App />);
 
     const terminalGroups = screen.getByRole("region", { name: "Terminal groups" });
-    const cpuRamButton = within(terminalGroups).getByRole("button", { name: "CPU / RAM" });
+    const cpuRamButton = within(terminalGroups).getByRole("button", { name: "Resource usage" });
     expect(document.getElementById("terminal-resource-panel")).not.toBeInTheDocument();
 
     await user.click(cpuRamButton);
@@ -176,11 +177,30 @@ describe("Sidebar and header layout redesign", () => {
     const panel = document.querySelector(".tools-panel") as HTMLElement;
     expect(within(panel).queryByRole("heading", { name: "Explorer" })).not.toBeInTheDocument();
 
-    const switcher = panel.querySelector(".workspace-management") as HTMLElement;
+    const switcher = panel.querySelector(".workspace-row") as HTMLElement;
     expect(switcher).toBeInTheDocument();
     expect(within(switcher).getByRole("combobox", { name: "Active terminal workspace" })).toBeInTheDocument();
-    expect(within(switcher).getByRole("button", { name: "Create workspace" })).toBeInTheDocument();
-    expect(within(switcher).getByRole("button", { name: "Rename workspace" })).toBeInTheDocument();
-    expect(within(switcher).getByRole("button", { name: "Delete workspace" })).toBeInTheDocument();
+    expect(within(switcher).getByRole("button", { name: "New workspace" })).toBeInTheDocument();
+    expect(within(switcher).getByRole("button", { name: "Workspace actions" })).toBeInTheDocument();
+    expect(within(switcher).queryByRole("button", { name: "Rename workspace" })).not.toBeInTheDocument();
+    expect(within(switcher).queryByRole("button", { name: "Delete workspace" })).not.toBeInTheDocument();
+  });
+
+  it("opens the workspace actions menu with three items, closes it on Escape and returns focus to the trigger", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const panel = document.querySelector(".tools-panel") as HTMLElement;
+    const trigger = within(panel).getByRole("button", { name: "Workspace actions" });
+    expect(within(panel).queryByRole("menu")).not.toBeInTheDocument();
+
+    await user.click(trigger);
+    const menu = within(panel).getByRole("menu", { name: "Workspace actions" });
+    const items = within(menu).getAllByRole("menuitem").map((item) => item.textContent);
+    expect(items).toEqual(["Rename workspace", "Add folders", "Delete workspace"]);
+    expect(within(menu).getByRole("menuitem", { name: "Delete workspace" })).toBeDisabled();
+
+    await user.keyboard("{Escape}");
+    expect(within(panel).queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 });

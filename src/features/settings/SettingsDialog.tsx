@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./settings.css";
 
 export type ThemeId = "obsidian" | "nordic" | "foundry";
@@ -10,48 +10,86 @@ export function clampFontSize(value: number): number {
   return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, value));
 }
 type Shortcut = { keys: string; label: string };
-type Section = "appearance" | "editor" | "explorer" | "terminal" | "shortcuts";
+type SectionId = "appearance" | "editor" | "explorer" | "terminal" | "shortcuts";
 type Props = { settings: AppSettings; shortcuts: readonly Shortcut[]; onSettingsChange: (value: AppSettings) => void; onClose: () => void };
-const sections: { id: Section; label: string; icon: string }[] = [
-  { id: "appearance", label: "Appearance", icon: "◈" }, { id: "editor", label: "Editor", icon: "⌘" },
-  { id: "explorer", label: "Explorer", icon: "▤" },
-  { id: "terminal", label: "Terminal", icon: "▣" },
-  { id: "shortcuts", label: "Help & shortcuts", icon: "?" }
+type SettingRow = { id: string; section: SectionId; label: string; description?: string; control: ReactNode };
+
+const sections: { id: SectionId; label: string }[] = [
+  { id: "appearance", label: "Appearance" },
+  { id: "editor", label: "Editor" },
+  { id: "explorer", label: "Explorer" },
+  { id: "terminal", label: "Terminal" },
+  { id: "shortcuts", label: "Keyboard shortcuts" },
 ];
-const themes: { id: ThemeId; label: string; description: string }[] = [
-  { id: "obsidian", label: "Obsidian Atelier", description: "Graphite and amber" },
-  { id: "nordic", label: "Nordic Glass", description: "Cool graphite and teal" },
-  { id: "foundry", label: "Foundry", description: "Warm graphite and copper" }
+const themes: { id: ThemeId; label: string; short: string }[] = [
+  { id: "obsidian", label: "Obsidian Atelier", short: "Obsidian" },
+  { id: "nordic", label: "Nordic Glass", short: "Nordic" },
+  { id: "foundry", label: "Foundry", short: "Foundry" },
 ];
-function FontFields({ family, size, onFamily, onSize }: { family: string; size: number; onFamily: (value: string) => void; onSize: (value: number) => void }) {
-  return <div className="settings-fields">
-    <label className="settings-field"><span><strong>Font family</strong><small>A CSS font stack, in order of preference.</small></span><input type="text" value={family} maxLength={250} onChange={(event) => onFamily(event.currentTarget.value)} /></label>
-    <label className="settings-field"><span><strong>Font size</strong><small>Choose a comfortable reading size.</small></span><span className="settings-size"><input type="number" min={MIN_FONT_SIZE} max={MAX_FONT_SIZE} value={size} onChange={(event) => { const value = event.currentTarget.valueAsNumber; if (Number.isFinite(value)) onSize(clampFontSize(value)); }} /> px</span></label>
-  </div>;
-}
+
 export function SettingsDialog({ settings, shortcuts, onSettingsChange, onClose }: Props) {
-  const [section, setSection] = useState<Section>("appearance");
+  const [section, setSection] = useState<SectionId>("appearance");
+  const [query, setQuery] = useState("");
   const closeRef = useRef<HTMLButtonElement>(null);
+  const mainRef = useRef<HTMLDivElement>(null);
+  const sectionRefs = useRef(new Map<SectionId, HTMLElement>());
   useEffect(() => {
     closeRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [onClose]);
+
+  const rows: SettingRow[] = [
+    { id: "theme", section: "appearance", label: "Theme", description: "Colors for the whole window.", control: <div className="settings-seg" role="group" aria-label="Theme">{themes.map((theme) => <button key={theme.id} type="button" aria-label={theme.label} aria-pressed={settings.theme === theme.id} onClick={() => onSettingsChange({ ...settings, theme: theme.id })}>{theme.short}</button>)}</div> },
+    { id: "editor-font-family", section: "editor", label: "Font family", description: "Used by the code editor.", control: <input className="settings-text" type="text" aria-label="Editor font family" value={settings.editorFontFamily} maxLength={250} onChange={(event) => onSettingsChange({ ...settings, editorFontFamily: event.currentTarget.value })} /> },
+    { id: "editor-font-size", section: "editor", label: "Font size", description: "Editor text size in pixels.", control: <span className="settings-number"><input type="number" aria-label="Editor font size" min={MIN_FONT_SIZE} max={MAX_FONT_SIZE} value={settings.editorFontSize} onChange={(event) => { const value = event.currentTarget.valueAsNumber; if (Number.isFinite(value)) onSettingsChange({ ...settings, editorFontSize: clampFontSize(value) }); }} />px</span> },
+    { id: "auto-save", section: "editor", label: "Auto Save", description: "Save edited workspace files 1 second after typing stops. Ctrl+S still saves immediately.", control: <input className="settings-toggle" type="checkbox" aria-label="Auto Save" checked={settings.autoSave} onChange={(event) => onSettingsChange({ ...settings, autoSave: event.currentTarget.checked })} /> },
+    { id: "quick-open-scope", section: "editor", label: "Quick Open scope", description: "Choose which workspace folders Ctrl+P searches.", control: <select className="settings-select" aria-label="Quick Open scope" value={settings.quickOpenScope} onChange={(event) => onSettingsChange({ ...settings, quickOpenScope: event.currentTarget.value === "all" ? "all" : "active" })}><option value="active">Active workspace</option><option value="all">All workspaces</option></select> },
+    { id: "collapse-folders", section: "explorer", label: "Collapse other folders when expanding", description: "Keep the selected folder and its parent path open.", control: <input className="settings-toggle" type="checkbox" aria-label="Collapse other folders when expanding" checked={settings.collapseOtherFolders} onChange={(event) => onSettingsChange({ ...settings, collapseOtherFolders: event.currentTarget.checked })} /> },
+    { id: "terminal-font-family", section: "terminal", label: "Font family", description: "Used by every terminal.", control: <input className="settings-text" type="text" aria-label="Terminal font family" value={settings.terminalFontFamily} maxLength={250} onChange={(event) => onSettingsChange({ ...settings, terminalFontFamily: event.currentTarget.value })} /> },
+    { id: "terminal-font-size", section: "terminal", label: "Font size", description: "Terminal text size in pixels.", control: <span className="settings-number"><input type="number" aria-label="Terminal font size" min={MIN_FONT_SIZE} max={MAX_FONT_SIZE} value={settings.terminalFontSize} onChange={(event) => { const value = event.currentTarget.valueAsNumber; if (Number.isFinite(value)) onSettingsChange({ ...settings, terminalFontSize: clampFontSize(value) }); }} />px</span> },
+    ...shortcuts.map((shortcut) => ({ id: "shortcut-" + shortcut.keys + "-" + shortcut.label, section: "shortcuts" as const, label: shortcut.label, control: <kbd className="settings-kbd">{shortcut.keys}</kbd> })),
+  ];
+
+  const needle = query.trim().toLowerCase();
+  const visibleRows = (id: SectionId) => rows.filter((row) => row.section === id && (!needle || row.label.toLowerCase().includes(needle)));
+  const anyVisible = sections.some((item) => visibleRows(item.id).length > 0);
+
+  const selectSection = (id: SectionId) => {
+    setSection(id);
+    const main = mainRef.current;
+    const target = sectionRefs.current.get(id);
+    if (main && target) main.scrollTop = Math.max(0, target.offsetTop - 8);
+  };
+
   return <div className="settings-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-heading">
-      <aside className="settings-sidebar"><div className="settings-brand"><span>y</span> yerminal <small>SETTINGS</small></div><div className="settings-caption">PREFERENCES</div>
-        <nav aria-label="Settings sections">{sections.map((item) => <button type="button" key={item.id} className={section === item.id ? "selected" : ""} aria-current={section === item.id ? "page" : undefined} onClick={() => setSection(item.id)}><span>{item.icon}</span>{item.label}</button>)}</nav><div className="settings-note">Made for your workspace.</div>
-      </aside>
-      <div className="settings-content"><header className="settings-header"><div><span className="settings-caption">YOUR SPACE, YOUR WAY</span><h2 id="settings-heading">{sections.find((item) => item.id === section)?.label}</h2></div><button ref={closeRef} type="button" className="settings-close" aria-label="Close settings" onClick={onClose}>×</button></header>
-        <div className="settings-body">
-          {section === "appearance" && <><p>Choose a visual direction for your workspace. Your selection applies across the application.</p><div className="settings-caption">COLOR THEME</div><div className="settings-themes">{themes.map((theme) => <button key={theme.id} type="button" className={"settings-theme settings-theme-" + theme.id + (settings.theme === theme.id ? " selected" : "")} aria-pressed={settings.theme === theme.id} onClick={() => onSettingsChange({ ...settings, theme: theme.id })}><span className="settings-preview"><i /><i /><i /></span><strong>{theme.label} {settings.theme === theme.id ? "✓" : ""}</strong><small>{theme.description}</small></button>)}</div></>}
-          {section === "editor" && <><p>Fine tune the type used when reading and editing code, and choose where Quick Open searches.</p><div className="settings-caption">TYPOGRAPHY</div><FontFields family={settings.editorFontFamily} size={settings.editorFontSize} onFamily={(editorFontFamily) => onSettingsChange({ ...settings, editorFontFamily })} onSize={(editorFontSize) => onSettingsChange({ ...settings, editorFontSize })} /><div className="settings-caption settings-quick-open-caption">SAVE</div><div className="settings-fields"><label className="settings-field"><span><strong>Auto Save</strong><small id="auto-save-description">Save edited workspace files 1 second after typing stops. Ctrl+S still saves immediately.</small></span><input className="settings-checkbox" type="checkbox" aria-label="Auto Save" aria-describedby="auto-save-description" checked={settings.autoSave} onChange={(event) => onSettingsChange({ ...settings, autoSave: event.currentTarget.checked })} /></label></div><div className="settings-caption settings-quick-open-caption">QUICK OPEN</div><div className="settings-fields"><label className="settings-field"><span><strong>Search scope</strong><small>Choose which workspace folders Ctrl+P searches.</small></span><select value={settings.quickOpenScope} onChange={(event) => onSettingsChange({ ...settings, quickOpenScope: event.currentTarget.value === "all" ? "all" : "active" })}><option value="active">Active workspace</option><option value="all">All workspaces</option></select></label></div></>}
-          {section === "explorer" && <><p>Choose how expanded folders behave in the workspace tree.</p><div className="settings-caption">FOLDER EXPANSION</div><div className="settings-fields"><label className="settings-field"><span><strong>Collapse other folders when expanding</strong><small>Keep the selected folder and its parent path open.</small></span><input className="settings-checkbox" type="checkbox" checked={settings.collapseOtherFolders} onChange={(event) => onSettingsChange({ ...settings, collapseOtherFolders: event.currentTarget.checked })} /></label></div></>}
-          {section === "terminal" && <><p>Make terminal sessions comfortable for long stretches of work.</p><div className="settings-caption">TYPOGRAPHY</div><FontFields family={settings.terminalFontFamily} size={settings.terminalFontSize} onFamily={(terminalFontFamily) => onSettingsChange({ ...settings, terminalFontFamily })} onSize={(terminalFontSize) => onSettingsChange({ ...settings, terminalFontSize })} /></>}
-
-          {section === "shortcuts" && <><p>Find the actions you use most often.</p><div className="settings-caption">KEYBOARD SHORTCUTS</div><div className="settings-shortcuts">{shortcuts.map((shortcut) => <div key={shortcut.keys}><span>{shortcut.label}</span><kbd>{shortcut.keys}</kbd></div>)}</div></>}
-        </div><footer className="settings-footer"><span>Changes are saved automatically</span><button type="button" onClick={onClose}>Done</button></footer>
+      <header className="settings-head">
+        <h2 id="settings-heading">Settings</h2>
+        <input type="search" className="settings-search" placeholder="Search settings" aria-label="Search settings" value={query} onChange={(event) => setQuery(event.currentTarget.value)} />
+        <button ref={closeRef} type="button" className="settings-close" aria-label="Close settings" title="Close (Esc)" onClick={onClose}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      </header>
+      <div className="settings-body">
+        <nav className="settings-nav" aria-label="Settings sections">
+          {sections.map((item) => <button type="button" key={item.id} aria-current={section === item.id ? "true" : undefined} onClick={() => selectSection(item.id)}>{item.label}</button>)}
+        </nav>
+        <div className="settings-main" ref={mainRef}>
+          {sections.map((item) => {
+            const list = visibleRows(item.id);
+            if (list.length === 0) return null;
+            return <section key={item.id} className="settings-section" aria-labelledby={"settings-section-" + item.id} ref={(element) => { if (element) sectionRefs.current.set(item.id, element); else sectionRefs.current.delete(item.id); }}>
+              <h3 id={"settings-section-" + item.id}>{item.label}</h3>
+              {list.map((row) => <div className="settings-row" key={row.id}>
+                <div className="settings-row-text"><b>{row.label}</b>{row.description && <span>{row.description}</span>}</div>
+                <div className="settings-row-control">{row.control}</div>
+              </div>)}
+            </section>;
+          })}
+          {!anyVisible && <p className="settings-empty">No settings match "{query.trim()}".</p>}
+        </div>
       </div>
     </section>
   </div>;

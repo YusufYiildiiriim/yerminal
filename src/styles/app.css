@@ -22,7 +22,6 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .titlebar { height: 48px; flex: 0 0 48px; display: flex; align-items: center; gap: 10px; min-width: 0; padding: 0 12px; border-bottom: 1px solid var(--border); background: #131418; user-select: none; }
 .brand-mark { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; color: #17151f; background: #a99aff; font-weight: 800; font-size: 17px; }
 .brand-name { font-size: 13px; font-weight: 650; letter-spacing: .1px; }
-.title-divider { height: 20px; width: 1px; background: #303138; margin: 0 5px; }
 
 .icon-button:hover { background: #23242a; border-color: #34363e; }
 
@@ -58,7 +57,7 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .graph-preview { position: relative; width: 38px; height: 42px; margin-bottom: 15px; border-left: 1px solid #48425c; }.graph-preview::before, .graph-preview::after { content: ""; position: absolute; left: 2px; width: 18px; height: 20px; border-left: 1px solid #48425c; border-bottom: 1px solid #48425c; border-radius: 0 0 0 8px; }.graph-preview::before { top: 3px; }.graph-preview::after { top: 20px; transform: scaleY(-1); }.graph-preview span { position: absolute; z-index: 1; width: 7px; height: 7px; border-radius: 50%; background: #9c8bfa; left: -4px; }.graph-preview span:nth-child(1) { top: 1px; }.graph-preview span:nth-child(2) { top: 18px; left: 14px; background: #79c89a; }.graph-preview span:nth-child(3) { top: 35px; }
 .resize-handle { width: 1px; background: #292a30; cursor: col-resize; transition: background .15s; }.resize-handle:hover, .resize-handle[data-resize-handle-active] { background: var(--accent); width: 2px; }
 .terminal-panel { display: flex; flex-direction: column; min-width: 0; background: #101114; }
-.workspace-view-tab:focus-visible, .editor-file-tab-select:focus-visible, .editor-file-tab-close:focus-visible { outline: 2px solid #c2b5ff; outline-offset: -2px; }
+.editor-file-tab-select:focus-visible, .editor-file-tab-close:focus-visible { outline: 2px solid #c2b5ff; outline-offset: -2px; }
 .terminal-workspace-view { min-width: 0; min-height: 0; flex: 1; display: flex; flex-direction: column; }
 .terminal-workspace-view[hidden] { display: none; }
 .code-workspace { min-width: 0; min-height: 0; flex: 1; display: flex; flex-direction: column; background: #101114; }
