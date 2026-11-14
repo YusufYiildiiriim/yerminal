@@ -93,9 +93,9 @@ function pairDiffRows(rows: DiffRow[]): DisplayRow[] {
   return display;
 }
 
-type DiffViewProps = { diff: string; path: string; root: string; staged: boolean; loading?: boolean; emptyMessage?: string };
+type DiffViewProps = { diff: string; path: string; root: string; staged: boolean; loading?: boolean; emptyMessage?: string; sideLabel?: string };
 
-export function DiffView({ diff, path, root, staged, loading = false, emptyMessage = "No diff available." }: DiffViewProps) {
+export function DiffView({ diff, path, root, staged, loading = false, emptyMessage = "No diff available.", sideLabel }: DiffViewProps) {
   const rows = useMemo(() => parseDiffRows(diff), [diff]);
   const headerRows = rows.filter((row) => row.kind === "meta" && /^(diff --git |index |--- |\+\+\+ )/.test(row.content));
   const displayRows = pairDiffRows(rows.filter((row) => !headerRows.includes(row)));
@@ -107,7 +107,7 @@ export function DiffView({ diff, path, root, staged, loading = false, emptyMessa
   return <div className="diff-view" role="region" aria-label="File diff" tabIndex={0}>
     <div className="diff-view-strip">
       <span className="diff-view-file" title={path}>{fileName}</span>
-      <span className={"diff-view-side" + (staged ? " staged" : "")}>{staged ? "Index" : "Working Tree"}</span>
+      <span className={"diff-view-side" + (staged ? " staged" : "") + (sideLabel ? " commit" : "")}>{sideLabel ?? (staged ? "Index" : "Working Tree")}</span>
       <span className="diff-view-repo" title={root}>{repoName}</span>
     </div>
     {headerRows.length > 0 && <details className="diff-view-details"><summary>Diff details</summary><pre>{headerRows.map((row) => row.content).join("\n")}</pre></details>}

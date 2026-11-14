@@ -480,13 +480,17 @@ function App() {
 
     if (request.view === "diff") {
       try {
-        const diff = await invoke<string>("git_diff", { path: request.root, filePath: request.path, staged: request.diffStaged });
+        const diff = request.sourceCommitId
+          ? await invoke<string>("git_commit_file_diff", { path: request.root, commitId: request.sourceCommitId, filePath: request.path })
+          : await invoke<string>("git_diff", { path: request.root, filePath: request.path, staged: request.diffStaged });
         if (!isCurrentOperation()) return;
         if (diff.length > WORKSPACE_FILE_PREVIEW_LIMIT) {
           updateTab((tab) => ({ ...tab, status: "error", error: "This diff exceeds the 1 MiB preview limit." }));
           return;
         }
-        updateTab((tab) => ({ ...tab, status: "ready", content: diff, savedContent: diff, sourceLabel: request.diffStaged ? "Index snapshot" : "Working tree snapshot", sourceCommitId: null, snapshot: null, saveError: null }));
+        updateTab((tab) => request.sourceCommitId
+          ? ({ ...tab, status: "ready", content: diff, savedContent: diff, sourceLabel: request.sourceLabel ?? "Commit changes", sourceCommitId: request.sourceCommitId, snapshot: request.snapshot ?? null, saveError: null })
+          : ({ ...tab, status: "ready", content: diff, savedContent: diff, sourceLabel: request.diffStaged ? "Index snapshot" : "Working tree snapshot", sourceCommitId: null, snapshot: null, saveError: null }));
       } catch (reason) {
         updateTab((tab) => ({ ...tab, status: "error", error: String(reason) }));
       }
@@ -516,7 +520,7 @@ function App() {
   }, [activeTerminalWorkspace?.id, editorWorkspaces]);
 
   const openCommitFileInEditor = useCallback((commit: CommitInfo, file: CommitFileChange) => {
-    void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } });
+    void openEditorFile({ id: `commitdiff:${commit.id}:${file.path}`, view: "diff", root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } });
     setActiveMainView("code");
   }, [openEditorFile, repoPath]);
 

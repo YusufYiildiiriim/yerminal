@@ -150,7 +150,7 @@ describe("Git Graph lives in the side panel: branches, commits, and commit detai
     expect(within(list).queryByRole("region", { name: "Details for Add graph view" })).not.toBeInTheDocument();
   });
 
-  it("clicking a changed file opens it from that commit in the editor", async () => {
+  it("clicking a changed file opens what that commit changed in the editor, with added and removed lines marked", async () => {
     const user = userEvent.setup();
     render(<App />);
     await openGitGraph(user);
@@ -160,8 +160,15 @@ describe("Git Graph lives in the side panel: branches, commits, and commit detai
     const details = await within(list).findByRole("region", { name: "Details for Add graph view" });
     await user.click(await within(details).findByRole("button", { name: "src/App.tsx" }));
 
-    await waitFor(() => expect(invoke).toHaveBeenCalledWith("git_commit_file_content", { path: rootPath, commitId: "a".repeat(40), filePath: "src/App.tsx" }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("git_commit_file_diff", { path: rootPath, commitId: "a".repeat(40), filePath: "src/App.tsx" }));
     await waitFor(() => expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent("Editor · App.tsx"));
+    const diff = await screen.findByRole("region", { name: "File diff" });
+    expect(within(diff).getByText("new line")).toBeInTheDocument();
+    expect(within(diff).getByText("old line")).toBeInTheDocument();
+    expect(diff.querySelector(".has-added")).toBeInTheDocument();
+    expect(diff.querySelector(".has-removed")).toBeInTheDocument();
+    expect(within(diff).getByText("aaaaaaaa")).toHaveClass("diff-view-side");
+    expect(within(diff).queryByText("Working Tree")).not.toBeInTheDocument();
   });
 
   it("right-clicking a commit opens its details too", async () => {

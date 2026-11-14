@@ -56,3 +56,11 @@
 .gb-file .n { flex: none; max-width: 60%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .gb-file .d { min-width: 0; overflow: hidden; color: var(--theme-muted); font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
 .gb-retry { margin-left: 6px; padding: 2px 8px; border: 1px solid var(--theme-border); border-radius: 6px; background: var(--theme-raised); color: var(--theme-text); font: inherit; font-size: 11px; cursor: pointer; }
+
+/* Commit diffs opened from Git Graph label the side with the commit hash. */
+.app-shell[data-theme] .diff-view-side.commit {
+  border-color: color-mix(in srgb, var(--theme-accent) 30%, var(--theme-border));
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+  color: color-mix(in srgb, var(--theme-accent) 70%, var(--theme-text));
+  font-family: var(--editor-font-family, "Cascadia Code", Consolas, monospace);
+}
