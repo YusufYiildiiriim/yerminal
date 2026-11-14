@@ -6,16 +6,6 @@
   border-color: var(--theme-border);
   background: var(--theme-surface);
 }
-.app-shell[data-theme] .workspace-view-tabs { min-width: 0; padding: 0 6px; }
-.app-shell[data-theme] .workspace-view-tab {
-  min-width: 92px;
-  padding: 0 12px;
-  color: var(--theme-muted);
-  font-size: 13px;
-}
-.app-shell[data-theme] .workspace-view-tab.selected { color: var(--theme-text); font-weight: 650; }
-.app-shell[data-theme] .workspace-view-tab.selected::after { right: 0; left: 0; height: 3px; background: var(--theme-accent); }
-.app-shell[data-theme] .workspace-view-tab small { font-size: 11px; color: var(--theme-text); background: var(--theme-raised); }
 .app-shell[data-theme] .terminal-tabs { min-width: 0; overflow-x: auto; }
 .app-shell[data-theme] .terminal-tab { font-size: 13px; }
 .app-shell[data-theme] .terminal-tab-item.selected { background: var(--theme-raised); box-shadow: inset 0 2px var(--theme-accent); }
@@ -69,7 +59,6 @@
 }
 @media (max-width: 900px) {
   .app-shell[data-theme] .terminal-toolbar { grid-template-columns: minmax(36px, 1fr) auto minmax(36px, 1fr); }
-  .app-shell[data-theme] .workspace-view-tab { min-width: 76px; padding-inline: 8px; }
   .app-shell[data-theme] .editor-groups-toolbar { padding-inline: 8px; }
   .app-shell[data-theme] .code-editor-meta { flex-wrap: wrap; }
   .app-shell[data-theme] .statusbar { gap: 10px; overflow-x: auto; white-space: nowrap; }
@@ -77,7 +66,6 @@
 
 /* Primary navigation and terminal sessions occupy separate rows. */
 .app-shell[data-theme] .terminal-toolbar { display: flex; flex-direction: column; align-items: stretch; height: auto; flex-basis: auto; }
-.app-shell[data-theme] .workspace-view-tabs { flex: 0 0 48px; justify-content: flex-start; border-bottom: 1px solid var(--theme-border); }
 .app-shell[data-theme] .terminal-session-toolbar { position: static; width: 100%; min-height: 44px; display: flex; padding: 0 10px; }
 .app-shell[data-theme] .terminal-tabs { flex: 1; }
 .app-shell[data-theme] .terminal-tab { min-height: 40px; }
@@ -88,8 +76,6 @@
 /* Match the approved terminal-first layout. */
 .app-shell[data-theme] .titlebar { height: 48px; flex: 0 0 48px; gap: 14px; padding: 0 16px; }
 .app-shell[data-theme] .brand-name { font-size: 14px; font-weight: 600; }
-.app-shell[data-theme] .titlebar-layout-controls { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
-.app-shell[data-theme] .titlebar-layout-controls .editor-create-group { min-height: 30px; padding: 4px 10px; font-size: 12px; }
 .app-shell[data-theme] .terminal-tab-move:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 1px; }
 .app-shell[data-theme] .titlebar-new-terminal {
   width: 28px;
@@ -129,10 +115,6 @@
   color: var(--theme-accent);
 }
 .app-shell[data-theme] .terminal-toolbar { border-bottom: 0; background: var(--theme-background); }
-.app-shell[data-theme] .workspace-view-tabs { flex: 0 0 49px; padding: 0 12px; background: var(--theme-surface); }
-.app-shell[data-theme] .workspace-view-tab { min-width: 0; padding: 0 13px; font-weight: 400; }
-.app-shell[data-theme] .workspace-view-tab.selected { font-weight: 500; }
-.app-shell[data-theme] .workspace-view-tab.selected::after { height: 2px; }
 .app-shell[data-theme] .terminal-session-toolbar { min-height: 49px; flex: 0 0 49px; padding: 0 12px; border-bottom: 1px solid var(--theme-border); background: var(--theme-surface); }
 .app-shell[data-theme] .terminal-tabs { height: 100%; overflow-x: auto; }
 .app-shell[data-theme] .terminal-show-all {
@@ -174,28 +156,6 @@
 
 /* Keep the view switcher in the title bar like the Stitch workbench. */
 .app-shell[data-theme] .titlebar { position: relative; height: 44px; flex-basis: 44px; background: var(--theme-background); }
-.app-shell[data-theme] .workspace-view-tabs {
-  position: absolute;
-  z-index: 5;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  height: 32px;
-  flex: none;
-  padding: 2px;
-  gap: 2px;
-  border: 1px solid var(--theme-border);
-  border-radius: 8px;
-  background: var(--theme-raised);
-}
-.app-shell[data-theme] .workspace-view-tab { min-width: 82px; padding: 0 13px; border-radius: 6px; color: var(--theme-muted); font-size: 12px; }
-.app-shell[data-theme] .workspace-view-tab.selected {
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 24%, var(--theme-border));
-  background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-surface));
-  color: var(--theme-accent);
-  box-shadow: 0 1px 2px #0006;
-}
-.app-shell[data-theme] .workspace-view-tab.selected::after { display: none; }
 .app-shell[data-theme] .terminal-toolbar.editor-mode { display: none; }
 .app-shell[data-theme] .terminal-toolbar.floating-mode:not(.editor-mode) { display: none; }
 .app-shell[data-theme] .terminal-toolbar:not(.editor-mode) {
@@ -298,3 +258,22 @@
   .app-shell[data-theme] .code-editor-source-label { max-width: 92px; }
   .app-shell[data-theme] .code-editor-statusbar { gap: 6px; }
 }
+
+/* Activity rail order, side panel layout block and titlebar breadcrumb. */
+.app-shell[data-theme] .tool-sidebar-separator { flex: 0 0 1px; height: 1px; margin: 4px 10px; background: var(--theme-border); }
+.app-shell[data-theme] .titlebar-breadcrumb { min-width: 0; overflow: hidden; color: var(--theme-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell[data-theme] .workspace-section-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px 6px; }
+.app-shell[data-theme] .workspace-section-header h2 { margin: 0; color: var(--theme-text); font-size: 11px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; }
+.app-shell[data-theme] .workspace-go-to-file { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--theme-muted); cursor: pointer; }
+.app-shell[data-theme] .workspace-go-to-file:hover { border-color: var(--theme-border); background: var(--theme-raised); color: var(--theme-text); }
+.app-shell[data-theme] .workspace-go-to-file:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 1px; }
+.app-shell[data-theme] .workspace-explorer,
+.app-shell[data-theme] .workspace-terminal-groups { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }
+.app-shell[data-theme] .workspace-explorer .workspace-explorer-tree { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.app-shell[data-theme] .workspace-terminal-groups .workspace-terminal-groups-list { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.app-shell[data-theme] .workspace-layout-block { display: flex; flex: 0 0 auto; flex-direction: column; gap: 6px; padding: 10px; border-top: 1px solid var(--theme-border); }
+.app-shell[data-theme] .workspace-layout-label { color: var(--theme-muted); font-size: 11px; }
+.app-shell[data-theme] .workspace-layout-block .layout-mode-toggle { display: flex; width: 100%; }
+.app-shell[data-theme] .workspace-layout-block .layout-mode-toggle button { flex: 1 1 0; height: 30px; min-height: 30px; }
+.app-shell[data-theme] .workspace-layout-block .editor-create-group,
+.app-shell[data-theme] .workspace-layout-block .workspace-terminal-add-button { display: flex; justify-content: center; width: 100%; height: 30px; min-height: 30px; }

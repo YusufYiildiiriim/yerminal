@@ -73,7 +73,6 @@
   border-color: var(--theme-border);
 }
 .app-shell[data-theme] :is(.workspace-view-tab.selected, .editor-file-tab.selected, .tool-sidebar-item.selected, .tool-sidebar-item.active) { color: var(--theme-text); }
-.app-shell[data-theme] .workspace-view-tab.selected::after { background: var(--theme-accent); }
 .app-shell[data-theme] .workspace-view-tab.selected > span,
 .app-shell[data-theme] :is(.editor-groups-title > span:first-child, .read-only-mark) { color: var(--theme-accent); }
 .app-shell[data-theme] .editor-file-tab.selected { box-shadow: inset 0 2px var(--theme-accent); }
@@ -137,13 +136,6 @@
 .app-shell[data-theme] :is(.workspace-view-tab, .editor-file-tab) {
   transition: color .15s ease, background-color .15s ease;
 }
-.app-shell[data-theme] .workspace-view-tab.selected {
-  color: var(--theme-text);
-}
-.app-shell[data-theme] .workspace-view-tab.selected small {
-  color: var(--theme-accent);
-  background: color-mix(in srgb, var(--theme-accent) 16%, var(--theme-raised));
-}
 .app-shell[data-theme] :is(.floating-terminal-mode-toggle, .floating-editor-mode-toggle) {
   border-color: var(--theme-border);
   border-radius: 8px;
@@ -192,33 +184,6 @@
   background: var(--theme-background);
   border-color: var(--theme-border);
 }
-.app-shell[data-theme] .workspace-view-tabs {
-  position: absolute;
-  z-index: 3;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  height: 32px;
-  padding: 2px;
-  gap: 2px;
-  border: 1px solid var(--theme-border);
-  border-radius: 8px;
-  background: var(--theme-raised);
-}
-.app-shell[data-theme] .workspace-view-tab {
-  min-width: 82px;
-  padding: 0 13px;
-  border-radius: 6px;
-  color: var(--theme-muted);
-  font-size: 12px;
-}
-.app-shell[data-theme] .workspace-view-tab.selected {
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 24%, var(--theme-border));
-  background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-surface));
-  color: var(--theme-accent);
-  box-shadow: 0 1px 2px #0006;
-}
-.app-shell[data-theme] .workspace-view-tab.selected::after { display: none; }
 .app-shell[data-theme] .titlebar-resource-button {
   min-height: 28px;
   padding: 0 9px;
@@ -332,7 +297,6 @@
   pointer-events: none;
 }
 @media (max-width: 1000px) {
-  .app-shell[data-theme] .workspace-view-tabs { left: 52%; }
   .app-shell[data-theme] .titlebar-resource-button { display: none; }
   .app-shell[data-theme] .code-editor-minimap { width: 66px; }
   .app-shell[data-theme] .code-editor-content { right: 66px; }

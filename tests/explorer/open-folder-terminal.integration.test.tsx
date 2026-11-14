@@ -82,6 +82,7 @@ describe("Explorer Open in Terminal integration", () => {
     vi.stubGlobal("PointerEvent", MouseEvent);
     const user = userEvent.setup();
     render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Editor" }));
     await screen.findByTestId("mock-terminal");
     const folderButton = await screen.findByRole("button", { name: "src" });
     fireEvent.contextMenu(folderButton.closest(".workspace-tree-row")!);
@@ -101,6 +102,7 @@ describe("Explorer Open in Terminal integration", () => {
   it("creates and focuses a new target-folder session while keeping the prior session", async () => {
     const user = userEvent.setup();
     render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Editor" }));
 
     await screen.findByTestId("mock-terminal");
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("create_terminal", expect.objectContaining({ workingDirectory: root })));

@@ -45,7 +45,7 @@ describe("Sidebar and header layout redesign", () => {
     });
   });
 
-  it("places tool pages in the left workspace rail, not the titlebar, and switches panels on click", async () => {
+  it("orders the rail as Terminal, Editor, separator, Git Changes, Git Graph and switches panels on click", async () => {
     const user = userEvent.setup();
     render(<App />);
     const titlebar = document.querySelector(".titlebar") as HTMLElement;
@@ -56,9 +56,9 @@ describe("Sidebar and header layout redesign", () => {
     expect(within(titlebar).queryByRole("button", { name: "Git Graph" })).not.toBeInTheDocument();
 
     const rail = screen.getByRole("navigation", { name: "Workspace tools" });
-    expect(within(rail).getByRole("button", { name: "Explorer" })).toBeInTheDocument();
-    expect(within(rail).getByRole("button", { name: "Git Changes" })).toBeInTheDocument();
-    expect(within(rail).getByRole("button", { name: "Git Graph" })).toBeInTheDocument();
+    const railLabels = within(rail).getAllByRole("button").map((button) => button.getAttribute("aria-label"));
+    expect(railLabels.slice(0, 4)).toEqual(["Terminal", "Editor", "Git Changes", "Git Graph"]);
+    expect(rail.querySelector(".tool-sidebar-separator")).toBeInTheDocument();
 
     await user.click(within(rail).getByRole("button", { name: "Git Changes" }));
     expect(within(rail).getByRole("button", { name: "Git Changes" })).toHaveAttribute("aria-pressed", "true");
@@ -82,44 +82,105 @@ describe("Sidebar and header layout redesign", () => {
     expect(buttons.indexOf(settings)).toBeGreaterThan(buttons.findIndex((button) => button.getAttribute("aria-label") === "Git Graph"));
   });
 
-  it("places a vertical resize handle between Explorer tree and terminal groups", () => {
+  it("shows only terminal groups in the Terminal side panel, with the layout toggle and Add terminal at the bottom", () => {
     render(<App />);
-    const explorer = screen.getByRole("region", { name: "Explorer" });
-    const resizeHandle = within(explorer).getByRole("separator", { name: "Resize terminal groups" });
-    expect(resizeHandle).toBeInTheDocument();
+    const panel = document.querySelector(".tools-panel") as HTMLElement;
+    expect(within(panel).queryByRole("region", { name: "Explorer" })).not.toBeInTheDocument();
+    const terminalGroups = within(panel).getByRole("region", { name: "Terminal groups" });
+    expect(within(terminalGroups).getByRole("button", { name: "CPU / RAM" })).toBeInTheDocument();
+    expect(within(panel).getByText("Layout · Terminal 1")).toBeInTheDocument();
+    const layout = within(panel).getByRole("group", { name: "Terminal layout mode" });
+    expect(within(layout).getByRole("button", { name: "Split" })).toBeInTheDocument();
+    expect(within(layout).getByRole("button", { name: "Free" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Add terminal to group" })).toBeInTheDocument();
   });
 
-  it("integrates Add terminal and CPU / RAM buttons into the Explorer terminal groups section", async () => {
+  it("shows the Explorer file tree with Go to file and the editor layout block when Editor is selected", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const rail = screen.getByRole("navigation", { name: "Workspace tools" });
+    await user.click(within(rail).getByRole("button", { name: "Editor" }));
+
+    const panel = document.querySelector(".tools-panel") as HTMLElement;
+    const explorer = within(panel).getByRole("region", { name: "Explorer" });
+    expect(within(explorer).getByRole("heading", { name: "Explorer" })).toBeInTheDocument();
+    expect(within(explorer).getByRole("button", { name: "Go to file" })).toHaveAttribute("title", "Go to file (Ctrl+P)");
+    expect(within(panel).queryByRole("region", { name: "Terminal groups" })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Add terminal to group" })).not.toBeInTheDocument();
+    expect(within(panel).getByText("Layout · Editor")).toBeInTheDocument();
+    expect(within(panel).getByRole("group", { name: "Editor group layout mode" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "New group" })).toBeInTheDocument();
+  });
+
+  it("opens Quick Open from the Explorer Go to file button", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const rail = screen.getByRole("navigation", { name: "Workspace tools" });
+    await user.click(within(rail).getByRole("button", { name: "Editor" }));
+    await user.click(screen.getByRole("button", { name: "Go to file" }));
+    expect(screen.getByRole("dialog", { name: /quick open/i })).toBeInTheDocument();
+  });
+
+  it("switches the main view with the rail: Editor shows the editor breadcrumb, Terminal shows the terminal group", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const rail = screen.getByRole("navigation", { name: "Workspace tools" });
+    await user.click(within(rail).getByRole("button", { name: "Editor" }));
+    expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent(/^Editor$/);
+    await user.click(within(rail).getByRole("button", { name: "Terminal" }));
+    expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent("Terminal · Terminal 1");
+  });
+
+  it("Git shortcuts select the rail tool and switch the main view to the editor", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const rail = screen.getByRole("navigation", { name: "Workspace tools" });
+    expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent("Terminal · Terminal 1");
+    await user.keyboard("{Control>}{Shift>}g{/Shift}{/Control}");
+    expect(within(rail).getByRole("button", { name: "Git Changes" })).toHaveAttribute("aria-pressed", "true");
+    expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent(/^Editor/);
+    await user.click(within(rail).getByRole("button", { name: "Terminal" }));
+    await user.keyboard("{Control>}{Shift>}b{/Shift}{/Control}");
+    expect(within(rail).getByRole("button", { name: "Git Graph" })).toHaveAttribute("aria-pressed", "true");
+    expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent(/^Editor/);
+  });
+
+  it("labels the side panel layout block as a group", () => {
+    render(<App />);
+    expect(screen.getByRole("group", { name: "Layout · Terminal 1" })).toBeInTheDocument();
+  });
+
+  it("shows a breadcrumb in the titlebar instead of Workspace views tabs", () => {
+    render(<App />);
+    const titlebar = document.querySelector(".titlebar") as HTMLElement;
+    expect(within(titlebar).queryByRole("tablist", { name: "Workspace views" })).not.toBeInTheDocument();
+    const breadcrumb = within(titlebar).getByText("Terminal · Terminal 1");
+    expect(breadcrumb).toHaveClass("titlebar-breadcrumb");
+    expect(breadcrumb).not.toHaveAttribute("aria-live");
+  });
+
+  it("integrates the CPU / RAM button into the terminal groups section and toggles the resource panel", async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    const explorer = screen.getByRole("region", { name: "Explorer" });
-    const terminalGroups = within(explorer).getByRole("region", { name: "Explorer terminal groups" });
-
-    // Add terminal button is located in the terminal groups section
-    const addTerminalButton = within(terminalGroups).getByRole("button", { name: "Add terminal to group" });
-    expect(addTerminalButton).toBeInTheDocument();
-
-    // CPU / RAM button is integrated in terminal groups and toggles the resource panel
+    const terminalGroups = screen.getByRole("region", { name: "Terminal groups" });
     const cpuRamButton = within(terminalGroups).getByRole("button", { name: "CPU / RAM" });
-    expect(cpuRamButton).toBeInTheDocument();
     expect(document.getElementById("terminal-resource-panel")).not.toBeInTheDocument();
 
     await user.click(cpuRamButton);
     expect(document.getElementById("terminal-resource-panel")).toBeInTheDocument();
   });
 
-  it("renders a compact single-row workspace switcher inside Explorer without large heading", () => {
+  it("renders a compact single-row workspace switcher at the top of the side panel without large heading", () => {
     render(<App />);
-    const explorer = screen.getByRole("region", { name: "Explorer" });
-    expect(within(explorer).queryByRole("heading", { name: "Explorer" })).not.toBeInTheDocument();
+    const panel = document.querySelector(".tools-panel") as HTMLElement;
+    expect(within(panel).queryByRole("heading", { name: "Explorer" })).not.toBeInTheDocument();
 
-    const switcher = explorer.querySelector(".workspace-management") as HTMLElement;
+    const switcher = panel.querySelector(".workspace-management") as HTMLElement;
     expect(switcher).toBeInTheDocument();
     expect(within(switcher).getByRole("combobox", { name: "Active terminal workspace" })).toBeInTheDocument();
     expect(within(switcher).getByRole("button", { name: "Create workspace" })).toBeInTheDocument();
     expect(within(switcher).getByRole("button", { name: "Rename workspace" })).toBeInTheDocument();
     expect(within(switcher).getByRole("button", { name: "Delete workspace" })).toBeInTheDocument();
-    expect(within(switcher).getByRole("button", { name: "Add folders to this workspace" })).toBeInTheDocument();
   });
 });

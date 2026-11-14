@@ -228,7 +228,7 @@ async function run() {
   console.log("PASS 2: terminal command ran and its output appeared");
 
   // 3. Expand the nested folder in the real workspace tree.
-  await click(await findElement("css selector", 'button[aria-label="Explorer"]'));
+  await click(await findElement("css selector", 'button[aria-label="Editor"]'));
 
   const nestedEntry = await waitFor("nested folder row", () => findByScript(`return [...document.querySelectorAll(".workspace-tree-entry")].find((element) => element.textContent.trim() === "nested") ?? null;`).catch((error) => { if (/No element matched/.test(error.message)) return null; throw error; }));
   const expandNested = await waitFor("nested folder expand button", () => findOptional("css selector", 'button.workspace-tree-toggle[aria-label="Expand nested"]'));

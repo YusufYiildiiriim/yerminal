@@ -3,6 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
 
+function openEditorTool() {
+  fireEvent.click(within(screen.getByRole("navigation", { name: "Workspace tools" })).getByRole("button", { name: "Editor" }));
+}
+
 const tauriMocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   isTauri: vi.fn(() => true),
@@ -123,6 +127,7 @@ describe("App user flows", () => {
   it("adds a folder, re-reads nested directories on collapse/expand, and removes the folder", async () => {
     const user = userEvent.setup();
     render(<App />);
+    openEditorTool();
 
     await user.click(screen.getByRole("button", { name: "Add Folder" }));
     expect(await screen.findByRole("button", { name: "Expand src" })).toBeInTheDocument();
@@ -146,6 +151,7 @@ describe("App user flows", () => {
       return defaultInvokeResult(command, args);
     });
     render(<App />);
+    openEditorTool();
 
     await user.click(await screen.findByRole("button", { name: /notes/ }));
     const editor = await screen.findByRole("textbox", { name: "Edit notes.txt" });
@@ -167,6 +173,7 @@ describe("App user flows", () => {
     const user = userEvent.setup();
     seedWorkspace({ autoSave: true });
     render(<App />);
+    openEditorTool();
 
     await user.click(await screen.findByRole("button", { name: /notes/ }));
     const editor = await screen.findByRole("textbox", { name: "Edit notes.txt" });
@@ -229,6 +236,7 @@ describe("Auto-save", () => {
     const user = setupFakeTimers();
     seedWorkspace({ autoSave: true });
     render(<App />);
+    openEditorTool();
 
     const editor = await openNotesAndEdit(user, "abc");
     await advance(AUTO_SAVE_DELAY - 200);
@@ -253,6 +261,7 @@ describe("Auto-save", () => {
       return defaultInvokeResult(command, args);
     });
     render(<App />);
+    openEditorTool();
 
     const editor = await openNotesAndEdit(user, "first");
     await advance(AUTO_SAVE_DELAY + 100);
@@ -279,6 +288,7 @@ describe("Auto-save", () => {
       return defaultInvokeResult(command, args);
     });
     render(<App />);
+    openEditorTool();
 
     const editor = await openNotesAndEdit(user, "x");
     await advance(AUTO_SAVE_DELAY + 100);
@@ -298,10 +308,11 @@ describe("Auto-save", () => {
     const user = setupFakeTimers();
     seedWorkspace({ autoSave: true });
     render(<App />);
+    openEditorTool();
 
     await openNotesAndEdit(user, "pending");
     await user.click(screen.getByRole("button", { name: "Help & Settings" }));
-    await user.click(screen.getByRole("button", { name: /Editor/ }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Editor/ }));
     await user.click(screen.getByRole("checkbox", { name: "Auto Save" }));
     expect(screen.getByRole("checkbox", { name: "Auto Save" })).not.toBeChecked();
 
@@ -316,6 +327,7 @@ describe("Closing editor tabs", () => {
     seedWorkspace();
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<App />);
+    openEditorTool();
 
     const editor = await openNotesAndEdit(user, "keep me");
     await user.click(screen.getByRole("button", { name: "Close notes.txt" }));
@@ -335,6 +347,7 @@ describe("Closing editor tabs", () => {
     });
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<App />);
+    openEditorTool();
 
     const editor = await openNotesAndEdit(user, "being saved");
     fireEvent.keyDown(editor, { key: "s", ctrlKey: true });
@@ -424,6 +437,7 @@ describe("Native window close guard", () => {
     seedWorkspace();
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<App />);
+    openEditorTool();
     await openNotesAndEdit(user, "unsaved");
 
     const event = await requestClose();
@@ -438,6 +452,7 @@ describe("Native window close guard", () => {
     seedWorkspace();
     vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<App />);
+    openEditorTool();
     await openNotesAndEdit(user, "unsaved");
 
     const event = await requestClose();
@@ -471,6 +486,7 @@ describe("Window close guard", () => {
     const user = userEvent.setup();
     seedWorkspace();
     render(<App />);
+    openEditorTool();
 
     await user.click(await screen.findByRole("button", { name: /notes/ }));
     const editor = await screen.findByRole("textbox", { name: "Edit notes.txt" });
@@ -494,7 +510,8 @@ describe("Workspace controls placement", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<App />);
 
-    const explorer = screen.getByRole("region", { name: "Explorer" });
+    await user.click(within(screen.getByRole("navigation", { name: "Workspace tools" })).getByRole("button", { name: "Editor" }));
+    const explorer = document.querySelector(".tools-panel") as HTMLElement;
     const picker = within(explorer).getByRole("combobox", { name: "Active terminal workspace" });
     expect(within(explorer).getByRole("button", { name: "Add folders to this workspace" })).toBeInTheDocument();
     const titlebar = document.querySelector(".titlebar") as HTMLElement;
@@ -533,7 +550,7 @@ describe("Workspace management safeguards in Explorer", () => {
     seedWorkspace();
     render(<App />);
 
-    const explorer = screen.getByRole("region", { name: "Explorer" });
+    const explorer = document.querySelector(".tools-panel") as HTMLElement;
     expect(within(explorer).getByRole("button", { name: "Delete workspace" })).toBeDisabled();
     expect(within(explorer).getByRole("combobox", { name: "Active terminal workspace" })).toHaveValue("workspace-1");
   });
@@ -544,6 +561,7 @@ describe("Workspace deletion with unsaved editor tabs", () => {
     seedTwoWorkspaces();
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<App />);
+    openEditorTool();
 
     const editor = await openNotesAndEdit(user, "unsaved work");
     await user.click(screen.getByRole("button", { name: "Delete workspace" }));
@@ -560,6 +578,7 @@ describe("Workspace deletion with unsaved editor tabs", () => {
     seedTwoWorkspaces({ autoSave: true });
     vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<App />);
+    openEditorTool();
 
     await openNotesAndEdit(user, "discard me");
     await user.click(screen.getByRole("button", { name: "Delete workspace" }));
