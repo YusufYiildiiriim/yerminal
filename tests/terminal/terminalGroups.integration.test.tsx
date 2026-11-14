@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -85,5 +85,30 @@ describe("terminal groups", () => {
     await user.selectOptions(screen.getByRole("combobox", { name: "Active terminal workspace" }), "workspace-1");
     expect(screen.getByRole("tablist", { name: "Terminal groups" }).querySelectorAll('[role="tab"]')).toHaveLength(2);
     expect(screen.getByRole("tab", { name: /Terminal 2/ })).toHaveAttribute("aria-selected", "true");
+  });
+  it("shows workspace groups and their terminals in the Explorer and selects them", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("create_terminal", expect.anything()));
+    await screen.findByTestId("mock-terminal");
+
+    await user.click(screen.getByRole("button", { name: "Add terminal to group" }));
+    await waitFor(() => expect(screen.getAllByTestId("mock-terminal")).toHaveLength(2));
+    await user.click(screen.getByRole("button", { name: "New terminal group" }));
+    await user.click(screen.getByRole("button", { name: "Add terminal to group" }));
+    await waitFor(() => expect(screen.getAllByTestId("mock-terminal")).toHaveLength(3));
+
+    const explorerGroups = screen.getByRole("region", { name: "Explorer terminal groups" });
+    expect(within(explorerGroups).getByRole("button", { name: "Select terminal group Terminal 1" })).toBeInTheDocument();
+    expect(within(explorerGroups).getByRole("button", { name: "Select terminal group Terminal 2" })).toBeInTheDocument();
+    await user.click(within(explorerGroups).getByRole("button", { name: "Select terminal group Terminal 1" }));
+    expect(within(screen.getByRole("tablist", { name: "Terminal groups" })).getByRole("tab", { name: /Terminal 1/ })).toHaveAttribute("aria-selected", "true");
+    await user.click(within(explorerGroups).getByRole("button", { name: "Select terminal Terminal 2" }));
+    expect(within(screen.getByRole("tablist", { name: "Terminal sessions" })).getByRole("tab", { name: /Terminal 2/ })).toHaveAttribute("aria-selected", "true");
+
+    const collapse = within(explorerGroups).getByRole("button", { name: "Collapse terminal groups" });
+    await user.click(collapse);
+    expect(collapse).toHaveAttribute("aria-expanded", "false");
+    expect(within(explorerGroups).queryByRole("button", { name: "Select terminal Terminal 2" })).not.toBeInTheDocument();
   });
 });
