@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open } from "@tauri-apps/plugin-dialog";
+import { confirm, open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { DiffViewer } from "./features/git/DiffViewer";
 import { TerminalResourceGraph } from "./features/terminal/TerminalResourceGraph";
@@ -697,6 +697,7 @@ function App() {
   editorWorkspacesRef.current = editorWorkspaces;
   const terminalsRef = useRef(terminals);
   terminalsRef.current = terminals;
+  const pendingTerminalCloseIdsRef = useRef(new Set<string>());
 
   // Native close requests do not pass through beforeunload, so guard them in Tauri too.
   useEffect(() => {
@@ -1021,21 +1022,45 @@ function App() {
   }, [activeTerminalWorkspace?.id, activeWorkspaceTerminalIds.length, createTerminal]);
 
   const closeTerminal = useCallback(async (id: string) => {
-    if (isTauri()) {
-      try { await invoke("close_terminal", { sessionId: id }); }
-      catch (reason) { showToast(String(reason)); }
+    if (pendingTerminalCloseIdsRef.current.has(id)) return;
+    const terminal = terminalsRef.current.find((item) => item.id === id);
+    if (!terminal) return;
+    pendingTerminalCloseIdsRef.current.add(id);
+    const inTauri = isTauri();
+    try {
+      if (inTauri && !terminal.exited) {
+        let confirmed: boolean;
+        try {
+          confirmed = await confirm(
+            `Close the live terminal session "${terminal.name}"? Running processes in this terminal may be interrupted.`,
+            { title: "Close terminal session", kind: "warning" },
+          );
+        } catch (reason) {
+          showToast(`Could not confirm terminal close: ${String(reason)}`);
+          return;
+        }
+        if (!confirmed) return;
+      }
+      if (!terminalsRef.current.some((item) => item.id === id)) return;
+      if (inTauri) {
+        try { await invoke("close_terminal", { sessionId: id }); }
+        catch (reason) { showToast(String(reason)); return; }
+      }
+      terminalsRef.current = terminalsRef.current.filter((item) => item.id !== id);
+      setTerminals((current) => current.filter((item) => item.id !== id));
+      setEditingTerminalId((current) => current === id ? null : current);
+      setTerminalWorkspaceState((current) => ({
+        ...current,
+        workspaces: current.workspaces.map((workspace) => {
+          if (!workspace.terminalIds.includes(id)) return workspace;
+          const next = removeTerminalFromGroups({ groups: workspace.groups, activeGroupId: workspace.activeGroupId }, id);
+          return syncTerminalGroups(workspace, next.groups, next.activeGroupId);
+        }),
+      }));
+      setTerminalViews((current) => Object.fromEntries(Object.entries(current).map(([workspaceId, selectedId]) => [workspaceId, selectedId === id ? null : selectedId])));
+    } finally {
+      pendingTerminalCloseIdsRef.current.delete(id);
     }
-    setTerminals((current) => current.filter((terminal) => terminal.id !== id));
-    setEditingTerminalId((current) => current === id ? null : current);
-    setTerminalWorkspaceState((current) => ({
-      ...current,
-      workspaces: current.workspaces.map((workspace) => {
-        if (!workspace.terminalIds.includes(id)) return workspace;
-        const next = removeTerminalFromGroups({ groups: workspace.groups, activeGroupId: workspace.activeGroupId }, id);
-        return syncTerminalGroups(workspace, next.groups, next.activeGroupId);
-      }),
-    }));
-    setTerminalViews((current) => Object.fromEntries(Object.entries(current).map(([workspaceId, selectedId]) => [workspaceId, selectedId === id ? null : selectedId])));
   }, [showToast]);
 
   const focusTerminal = useCallback((id: string) => {
