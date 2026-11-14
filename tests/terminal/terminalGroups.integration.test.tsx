@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -274,5 +274,63 @@ describe("terminal groups", () => {
     await user.click(within(screen.getByRole("region", { name: "Terminal groups" })).getByRole("button", { name: "Select terminal Terminal 2" }));
     expect(screen.getByRole("button", { name: "Terminal" })).toHaveAttribute("aria-pressed", "true");
     expect(document.querySelector(".terminal-pane-frame[data-active=\"true\"] .terminal-pane-title")).toHaveTextContent("Terminal 2");
+  });
+});
+
+describe("terminal right-click menus", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem("yerminal.terminal-workspaces", JSON.stringify({
+      workspaces: [{ id: "workspace-1", name: "Workspace 1", rootPath: "", folderPaths: [] }],
+      activeId: "workspace-1",
+    }));
+    vi.mocked(invoke).mockReset();
+    vi.mocked(invoke).mockImplementation(async (command: string) => command === "terminal_output_snapshot" ? { events: [] } : undefined);
+  });
+
+  async function twoGroups(user: ReturnType<typeof userEvent.setup>) {
+    render(<App />);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("create_terminal", expect.anything()));
+    await user.click(screen.getByRole("button", { name: "New terminal group" }));
+    await user.click(screen.getByRole("button", { name: "Add terminal to group" }));
+    await waitFor(() => expect(screen.getAllByTestId("mock-terminal")).toHaveLength(2));
+  }
+
+  it("suppresses the webview's native context menu everywhere", async () => {
+    render(<App />);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("create_terminal", expect.anything()));
+    expect(fireEvent.contextMenu(document.body)).toBe(false);
+  });
+
+  it("offers Rename, Move to group, Split right and Close on a terminal pane right-click", async () => {
+    const user = userEvent.setup();
+    await twoGroups(user);
+    const pane = document.querySelector<HTMLElement>(".terminal-pane-frame[data-active='true']")!;
+    expect(fireEvent.contextMenu(pane)).toBe(false);
+    const menu = await screen.findByRole("menu", { name: /actions$/ });
+    const labels = within(menu).getAllByRole("menuitem").map((item) => item.textContent);
+    expect(labels[0]).toBe("Rename");
+    expect(labels.some((label) => label?.startsWith("Move to "))).toBe(true);
+    expect(labels).toContain("Split right");
+    expect(labels[labels.length - 1]).toBe("Close");
+
+    const move = within(menu).getAllByRole("menuitem").find((item) => item.textContent?.startsWith("Move to "))!;
+    await user.click(move);
+    await waitFor(() => expect(screen.queryByRole("menu", { name: /actions$/ })).not.toBeInTheDocument());
+  });
+
+  it("offers Rename, Move and Close when right-clicking a terminal in the left sidebar", async () => {
+    const user = userEvent.setup();
+    await twoGroups(user);
+    const groups = within(screen.getByRole("region", { name: "Terminal groups" }));
+    const entry = groups.getAllByRole("button", { name: /^Select terminal (?!group)/ })[0];
+    expect(fireEvent.contextMenu(entry)).toBe(false);
+    const menu = await screen.findByRole("menu", { name: /actions$/ });
+    const labels = within(menu).getAllByRole("menuitem").map((item) => item.textContent);
+    expect(labels[0]).toBe("Rename");
+    expect(labels.some((label) => label?.startsWith("Move to "))).toBe(true);
+    expect(labels[labels.length - 1]).toBe("Close");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("menu", { name: /actions$/ })).not.toBeInTheDocument());
   });
 });
