@@ -3,7 +3,7 @@ pub mod terminal;
 pub mod workspace_fs;
 pub mod workspace_watch;
 
-use git::{CommitFileChange, CommitFileContent, CommitInfo, FileChange, RepositoryInfo};
+use git::{BranchInfo, CommitFileChange, CommitFileContent, CommitInfo, FileChange, RepositoryInfo};
 use std::sync::Mutex;
 use tauri::{Manager, State};
 use terminal::{
@@ -150,6 +150,11 @@ fn git_history(path: String, skip: usize, limit: usize) -> Result<Vec<CommitInfo
 }
 
 #[tauri::command]
+fn git_branches(path: String) -> Result<Vec<BranchInfo>, String> {
+    git::branches(&path)
+}
+
+#[tauri::command]
 fn git_commit_files(path: String, commit_id: String) -> Result<Vec<CommitFileChange>, String> {
     git::commit_files(&path, &commit_id)
 }
@@ -241,6 +246,7 @@ pub fn run() {
             git_commit_staged,
             git_diff,
             git_history,
+            git_branches,
             git_commit_files,
             git_commit_file_diff,
             git_commit_file_content,

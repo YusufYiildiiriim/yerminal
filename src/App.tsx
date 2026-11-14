@@ -5,7 +5,8 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { DiffViewer } from "./features/git/DiffViewer";
+import { GitGraphView, type BranchFocusRequest } from "./features/git/GitGraphView";
+import { GitGraphBranches } from "./features/git/GitGraphBranches";
 import { TerminalResourceGraph } from "./features/terminal/TerminalResourceGraph";
 import { PaneRenameInput, TerminalPaneMenu } from "./features/terminal/TerminalPaneMenu";
 import { CodeWorkspace, type EditorFileTab, type EditorGroupState } from "./features/editor/CodeWorkspace";
@@ -35,14 +36,11 @@ type TerminalSession = { id: string; name: string; shell: ShellKind; shellLabel:
 type LayoutNode = { type: "terminal"; sessionId: string } | { type: "split"; id: string; direction: "horizontal" | "vertical"; ratio: number; children: [LayoutNode, LayoutNode] };
 type RepositoryInfo = { root: string; branch: string; state: string };
 type FileChange = { path: string; kind: string; staged: boolean; unstaged: boolean };
-type CommitInfo = { id: string; shortId: string; message: string; author: string; timestamp: number; parents: string[]; branches: string[] };
-type CommitFileChange = { path: string; kind: string };
 type WorkspaceEntry = { name: string; path: string; isDir: boolean; size: number | null; extension: string | null };
 const WORKSPACE_FILE_PREVIEW_LIMIT = 1024 * 1024;
 type EditorWorkspaceState = { tabs: EditorFileTab[]; groups: EditorGroupState[]; activeGroupId: string };
 type EditorSnapshot = { shortId: string; message: string; changeKind: string; author: string; timestamp: number };
 type EditorFileRequest = { id: string; root: string; path: string; name: string; size?: number; sourceCommitId?: string; sourceLabel?: string; snapshot?: EditorSnapshot; view?: "text" | "diff"; diffStaged?: boolean };
-const COMMIT_PAGE_SIZE = 50;
 type PersistedWorkspace = { folders: string[]; activePath: string };
 type TerminalWorkspace = { id: string; name: string; rootPath: string; folderPaths: string[]; terminalIds: string[]; activeTerminalId: string | null; layout: LayoutNode | null; groups: TerminalGroup[]; activeGroupId: string };
 type TerminalWorkspaceState = { workspaces: TerminalWorkspace[]; activeId: string };
@@ -302,7 +300,9 @@ function App() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
-  const [activeMainView, setActiveMainView] = useState<"code" | "terminals">("terminals");
+  const [activeMainView, setActiveMainView] = useState<"code" | "terminals" | "graph">("terminals");
+  const [graphFocus, setGraphFocus] = useState<BranchFocusRequest | null>(null);
+  const focusGraphBranch = useCallback((name: string) => { setGraphFocus({ name }); setActiveMainView("graph"); }, []);
   const [terminalLayoutMode, setTerminalLayoutMode] = useState<TerminalLayoutMode>("tiled");
   const [editorLayoutMode, setEditorLayoutMode] = useState<EditorLayoutMode>("tiled");
   const [terminalViews, setTerminalViews] = useState<Record<string, string | null>>({});
@@ -371,13 +371,14 @@ function App() {
   const activeWorkspaceTerminals = terminals.filter((terminal) => activeWorkspaceTerminalIds.includes(terminal.id));
   const activeGroupTerminals = activeWorkspaceTerminals.filter((terminal) => activeGroupTerminalIds.includes(terminal.id));
   const repoPath = activeTerminalWorkspace?.rootPath ?? "";
+  useEffect(() => { setGraphFocus(null); }, [repoPath]);
   const activeTerminalId = activeTerminalWorkspace?.activeTerminalId ?? null;
   const layout = activeTerminalWorkspace?.layout ?? null;
   const activeEditorWorkspace = editorWorkspaces[activeTerminalWorkspace?.id ?? ""] ?? createEmptyEditorWorkspaceState();
 
   const handleToolClick = (toolId: ToolId, clickCount: number) => {
     setActiveTool(toolId);
-    setActiveMainView(toolId === "terminal" ? "terminals" : "code");
+    setActiveMainView(toolId === "terminal" ? "terminals" : toolId === "graph" ? "graph" : "code");
     const firstClick = toolClickRef.current;
     if (clickCount >= 2 && firstClick?.toolId === toolId) {
       if (firstClick.initiallyCollapsed) {
@@ -1399,7 +1400,7 @@ function App() {
       else if (event.shiftKey && key === "h") { consumeShortcut(); void splitActiveTerminal("horizontal"); }
       else if (event.shiftKey && key === "v") { consumeShortcut(); void splitActiveTerminal("vertical"); }
       else if (event.shiftKey && key === "g") { consumeShortcut(); setActiveTool("changes"); setActiveMainView("code"); }
-      else if (event.shiftKey && key === "b") { consumeShortcut(); setActiveTool("graph"); setActiveMainView("code"); }
+      else if (event.shiftKey && key === "b") { consumeShortcut(); setActiveTool("graph"); setActiveMainView("graph"); }
       else if (key === "tab" && activeGroupTerminals.length > 1) {
         consumeShortcut();
         const index = activeGroupTerminals.findIndex((terminal) => terminal.id === activeTerminalId);
@@ -1421,7 +1422,9 @@ function App() {
 
   const activeEditorGroup = activeEditorWorkspace.groups.find((group) => group.id === activeEditorWorkspace.activeGroupId);
   const activeEditorTab = activeEditorWorkspace.tabs.find((tab) => tab.id === activeEditorGroup?.activeTabId);
-  const titlebarBreadcrumb = activeMainView === "terminals"
+  const titlebarBreadcrumb = activeMainView === "graph"
+    ? (repoInfo?.branch ? `Git Graph · ${repoInfo.branch}` : "Git Graph")
+    : activeMainView === "terminals"
     ? `Terminal · ${activeTerminalGroup?.name ?? "Terminal"}`
     : activeEditorTab ? `Editor · ${activeEditorTab.name}` : "Editor";
 
@@ -1461,7 +1464,7 @@ function App() {
             </nav>
             <div className="workspace-sidebar-content">
             <section className="tool-content" aria-label={tools.find((tool) => tool.id === activeTool)?.label}>
-              {activeTool === "terminal" || activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} mode={activeTool === "terminal" ? "terminal" : "files"} terminalLayoutMode={terminalLayoutMode} onChangeTerminalLayoutMode={changeTerminalLayoutMode} activeTerminalGroupName={activeTerminalGroup?.name ?? "Terminal"} editorLayoutMode={editorLayoutMode} onChangeEditorLayoutMode={changeEditorLayoutMode} onCreateEditorGroup={createEditorGroup} onGoToFile={() => { if (!settingsOpen) setQuickOpenOpen(true); }} workspaces={terminalWorkspaceState.workspaces} activeWorkspaceId={activeTerminalWorkspace?.id ?? ""} onActivateWorkspace={activateWorkspace} onCreateWorkspace={createWorkspace} onRenameWorkspace={renameWorkspace} onDeleteWorkspace={() => void deleteWorkspace()} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} onFolderContextAction={handleFolderContextAction} refreshRequest={workspaceFolderRefresh} terminalGroups={activeTerminalWorkspace?.groups ?? []} activeTerminalGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} activeTerminalId={activeTerminalId ?? ""} terminals={activeWorkspaceTerminals} onCreateTerminalGroup={addTerminalGroup} onCloseTerminalGroup={closeTerminalGroup} onRenameTerminalGroup={renameTerminalGroup} onSelectTerminalGroup={(groupId) => { chooseTerminalGroup(groupId); setActiveMainView("terminals"); }} onSelectTerminal={(groupId, terminalId) => { setActiveMainView("terminals"); if (groupId !== activeTerminalWorkspace?.activeGroupId) chooseTerminalGroup(groupId); selectTerminalView(terminalId); }} onAddTerminal={() => { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToWorkspace(); }} terminalUsageOpen={terminalUsageOpen} onToggleTerminalUsage={() => { setActiveMainView("terminals"); setTerminalUsageOpen((open) => !open); }} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenDiff={(change, staged) => void openEditorFile({ id: `gitdiff:${repoPath}:${staged ? "index" : "worktree"}:${change.path}`, root: repoPath, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onError={showToast} /> : <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } })} />}
+              {activeTool === "terminal" || activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} mode={activeTool === "terminal" ? "terminal" : "files"} terminalLayoutMode={terminalLayoutMode} onChangeTerminalLayoutMode={changeTerminalLayoutMode} activeTerminalGroupName={activeTerminalGroup?.name ?? "Terminal"} editorLayoutMode={editorLayoutMode} onChangeEditorLayoutMode={changeEditorLayoutMode} onCreateEditorGroup={createEditorGroup} onGoToFile={() => { if (!settingsOpen) setQuickOpenOpen(true); }} workspaces={terminalWorkspaceState.workspaces} activeWorkspaceId={activeTerminalWorkspace?.id ?? ""} onActivateWorkspace={activateWorkspace} onCreateWorkspace={createWorkspace} onRenameWorkspace={renameWorkspace} onDeleteWorkspace={() => void deleteWorkspace()} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} onFolderContextAction={handleFolderContextAction} refreshRequest={workspaceFolderRefresh} terminalGroups={activeTerminalWorkspace?.groups ?? []} activeTerminalGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} activeTerminalId={activeTerminalId ?? ""} terminals={activeWorkspaceTerminals} onCreateTerminalGroup={addTerminalGroup} onCloseTerminalGroup={closeTerminalGroup} onRenameTerminalGroup={renameTerminalGroup} onSelectTerminalGroup={(groupId) => { chooseTerminalGroup(groupId); setActiveMainView("terminals"); }} onSelectTerminal={(groupId, terminalId) => { setActiveMainView("terminals"); if (groupId !== activeTerminalWorkspace?.activeGroupId) chooseTerminalGroup(groupId); selectTerminalView(terminalId); }} onAddTerminal={() => { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToWorkspace(); }} terminalUsageOpen={terminalUsageOpen} onToggleTerminalUsage={() => { setActiveMainView("terminals"); setTerminalUsageOpen((open) => !open); }} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenDiff={(change, staged) => void openEditorFile({ id: `gitdiff:${repoPath}:${staged ? "index" : "worktree"}:${change.path}`, root: repoPath, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onError={showToast} /> : <GitGraphBranches repoPath={repoInfo ? repoPath : ""} onError={showToast} onSelectBranch={focusGraphBranch} />}
             </section>
             </div>
           </div>
@@ -1482,7 +1485,7 @@ function App() {
             onMoveTab={moveEditorTab}
             onCloseGroup={closeEditorGroup}
             onModeState={registerEditorLayoutControl}
-          />} terminal={<div className={`terminal-workspace-view${terminalUsageOpen ? " has-terminal-usage" : ""}`}>
+          />} graph={activeMainView === "graph" ? <GitGraphView key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} branch={repoInfo?.branch ?? ""} focusRequest={graphFocus} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } })} /> : null} terminal={<div className={`terminal-workspace-view${terminalUsageOpen ? " has-terminal-usage" : ""}`}>
           <section className="terminal-surface" aria-label="Terminal workspace">
             <TerminalWorkspaceLayout layout={layout} focusedTerminalId={focusedTerminalView && activeGroupTerminalIds.includes(focusedTerminalView) ? focusedTerminalView : null} terminals={activeWorkspaceTerminals} visibleTerminalIds={activeGroupTerminalIds} workspaceId={`${activeTerminalWorkspace?.id ?? ""}:${activeTerminalGroup?.id ?? ""}`} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} onLinkHint={showToast} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} groups={activeTerminalWorkspace?.groups ?? []} activeGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} nameInputRef={terminalNameInputRef} onBeginRename={beginRenameTerminal} onChangeRenameDraft={setTerminalNameDraft} onSaveRename={saveTerminalName} onCancelRename={cancelTerminalRename} onMoveToGroup={moveTerminalToGroup} onSplit={(terminalId) => void splitActiveTerminal("horizontal", terminalId)} onShowAll={() => selectTerminalView(null)} />
             {activeGroupTerminalIds.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Terminal group is empty</div><p>Add a terminal to get started.</p><button className="primary-button" onClick={() => void addTerminalToWorkspace()} type="button">New Terminal</button></div>}
@@ -2092,218 +2095,6 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onOpenDiff, onError }: {
   </section>;
 }
 
-function GitGraph({ repoPath, onError, onOpenInEditor }: { repoPath: string; onError: (message: string) => void; onOpenInEditor: (commit: CommitInfo, file: CommitFileChange) => void }) {
-  const [commits, setCommits] = useState<CommitInfo[]>([]);
-  const commitsRef = useRef<CommitInfo[]>([]);
-  const hasMoreRef = useRef(true);
-  const [hasMore, setHasMore] = useState(true);
-  const loadingRef = useRef(false);
-  const requestIdRef = useRef(0);
-  const detailRequestRef = useRef(0);
-  const fileDiffRequestRef = useRef(0);
-  const repoPathRef = useRef(repoPath);
-  const onErrorRef = useRef(onError);
-  repoPathRef.current = repoPath;
-  onErrorRef.current = onError;
-  const [selectedCommit, setSelectedCommit] = useState<CommitInfo | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [commitFiles, setCommitFiles] = useState<CommitFileChange[]>([]);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [fileDiff, setFileDiff] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [fileDiffLoading, setFileDiffLoading] = useState(false);
-  const [detailError, setDetailError] = useState<string | null>(null);
-  const [fileDiffError, setFileDiffError] = useState<string | null>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const lastCommitButtonRef = useRef<HTMLButtonElement>(null);
-
-  const load = useCallback(async (append: boolean) => {
-    const requestedPath = repoPathRef.current;
-    if (!requestedPath || !isTauri() || loadingRef.current || (append && !hasMoreRef.current)) return;
-    const requestId = ++requestIdRef.current;
-    const existing = append ? commitsRef.current : [];
-    loadingRef.current = true;
-    setLoading(true);
-    try {
-      const page = await invoke<CommitInfo[]>("git_history", { path: requestedPath, skip: existing.length, limit: COMMIT_PAGE_SIZE + 1 });
-      if (requestId !== requestIdRef.current || repoPathRef.current !== requestedPath) return;
-      const hasNextPage = page.length > COMMIT_PAGE_SIZE;
-      const nextCommits = append
-        ? [...existing, ...page.slice(0, COMMIT_PAGE_SIZE).filter((commit) => !existing.some((loaded) => loaded.id === commit.id))]
-        : page.slice(0, COMMIT_PAGE_SIZE);
-      commitsRef.current = nextCommits;
-      hasMoreRef.current = hasNextPage;
-      setCommits(nextCommits);
-      setHasMore(hasNextPage);
-    } catch (reason) {
-      if (requestId === requestIdRef.current && repoPathRef.current === requestedPath) onErrorRef.current(String(reason));
-    } finally {
-      if (requestId === requestIdRef.current) {
-        loadingRef.current = false;
-        setLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    requestIdRef.current += 1;
-    loadingRef.current = false;
-    commitsRef.current = [];
-    hasMoreRef.current = true;
-    setLoading(false);
-    setCommits([]);
-    setHasMore(true);
-    void load(false);
-  }, [repoPath, load]);
-
-  const selectCommit = useCallback(async (commit: CommitInfo) => {
-    const requestedPath = repoPath;
-    if (!requestedPath || !isTauri()) return;
-    const requestId = ++detailRequestRef.current;
-    fileDiffRequestRef.current += 1;
-    setSelectedCommit(commit);
-    setCommitFiles([]);
-    setSelectedFile(null);
-    setFileDiff("");
-    setFileDiffLoading(false);
-    setDetailError(null);
-    setFileDiffError(null);
-    setDetailLoading(true);
-    try {
-      const files = await invoke<CommitFileChange[]>("git_commit_files", { path: requestedPath, commitId: commit.id });
-      if (requestId !== detailRequestRef.current || repoPathRef.current !== requestedPath) return;
-      setCommitFiles(files);
-    } catch (reason) {
-      if (requestId === detailRequestRef.current && repoPathRef.current === requestedPath) { setDetailError(String(reason)); onError(String(reason)); }
-    } finally {
-      if (requestId === detailRequestRef.current && repoPathRef.current === requestedPath) setDetailLoading(false);
-    }
-  }, [onError, repoPath]);
-
-  const selectFile = useCallback(async (filePath: string) => {
-    const requestedPath = repoPath;
-    const commit = selectedCommit;
-    if (!requestedPath || !commit || !isTauri()) return;
-    const requestId = ++fileDiffRequestRef.current;
-    const requestedCommitId = commit.id;
-    setSelectedFile(filePath);
-    setFileDiff("");
-    setFileDiffError(null);
-    setFileDiffLoading(true);
-    try {
-      const diff = await invoke<string>("git_commit_file_diff", { path: requestedPath, commitId: requestedCommitId, filePath });
-      if (requestId !== fileDiffRequestRef.current || repoPathRef.current !== requestedPath) return;
-      setFileDiff(diff);
-    } catch (reason) {
-      if (requestId === fileDiffRequestRef.current && repoPathRef.current === requestedPath) { setFileDiffError(String(reason)); onError(String(reason)); }
-    } finally {
-      if (requestId === fileDiffRequestRef.current && repoPathRef.current === requestedPath) setFileDiffLoading(false);
-    }
-  }, [onError, repoPath, selectedCommit]);
-
-  const closeCommitDetails = useCallback((restoreFocus = true) => {
-    setDetailsOpen(false);
-    if (restoreFocus) requestAnimationFrame(() => lastCommitButtonRef.current?.focus());
-  }, []);
-
-  const commitMessageParts = selectedCommit?.message.split(/\r?\n/) ?? [];
-  const commitSubject = commitMessageParts[0] ?? "";
-  const commitDescription = commitMessageParts.slice(1).join("\n").trim();
-
-  useEffect(() => {
-    detailRequestRef.current += 1;
-    fileDiffRequestRef.current += 1;
-    setDetailsOpen(false);
-    setSelectedCommit(null);
-    setCommitFiles([]);
-    setSelectedFile(null);
-    setFileDiff("");
-    setDetailLoading(false);
-    setFileDiffLoading(false);
-  }, [repoPath]);
-
-  useEffect(() => {
-    if (!detailsOpen || !selectedCommit) return;
-    closeButtonRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeCommitDetails();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [closeCommitDetails, detailsOpen, selectedCommit]);
-
-  return <div className="tool-view">
-    <header className="tool-header"><div><h1>Git Graph</h1><p>{repoPath ? `${commits.length} commits loaded` : "Repository commit history"}</p></div><button className="icon-button refresh-button" aria-label="Refresh history" onClick={() => void load(false)} type="button">↻</button></header>
-    {!repoPath ? <div className="empty-repository graph-empty"><div className="graph-preview"><span /><span /><span /></div><h2>History unavailable</h2><p>Open a Git repository to browse its commit graph.</p></div> : <>
-      <div className="commit-list">{commits.map((commit) => <button className={`commit-row ${selectedCommit?.id === commit.id ? "selected" : ""}`} key={commit.id} onClick={(event) => { lastCommitButtonRef.current = event.currentTarget; setDetailsOpen(false); void selectCommit(commit); }} type="button" aria-pressed={selectedCommit?.id === commit.id}><span className="commit-rail"><svg aria-hidden="true"><line x1="10" y1="0" x2="10" y2="100%" className="commit-line" /></svg><span className="commit-node" /></span><span className="commit-info"><span className="commit-message" title={commit.message}>{commit.message}</span><span className="commit-meta"><code>{commit.shortId}</code><span>{commit.author}</span><time>{new Date(commit.timestamp * 1000).toLocaleDateString()}</time></span>{commit.branches.map((branch) => <span className="branch-label" key={branch}>{branch}</span>)}</span></button>)}
-        {commits.length === 0 && !loading && <div className="change-empty">No commits found.</div>}
-      </div>
-      {commits.length > 0 && hasMore && <button className="load-more" onClick={() => void load(true)} disabled={loading} type="button">{loading ? "Loading…" : "Load more commits"}</button>}
-      {selectedCommit ? <section className="graph-change-panel" aria-label="Selected commit changed files">
-        <header className="graph-change-header">
-          <div className="graph-change-heading"><span>Commit <code>{selectedCommit.shortId}</code></span><strong title={commitSubject}>{commitSubject}</strong></div>
-          <button className="graph-change-details" type="button" onClick={() => setDetailsOpen(true)}>View details <span aria-hidden="true">↗</span></button>
-        </header>
-        <div className="graph-change-meta"><span>{selectedCommit.author}</span><time>{new Date(selectedCommit.timestamp * 1000).toLocaleString()}</time><span>{detailLoading ? "Loading files…" : detailError ? "Files unavailable" : `${commitFiles.length} changed ${commitFiles.length === 1 ? "file" : "files"}`}</span></div>
-        <div className="graph-change-files">
-          {detailLoading ? <div className="graph-change-state" role="status">Loading changed files…</div> : detailError ? <div className="graph-change-state graph-change-error" role="alert"><span>{detailError}</span><button type="button" onClick={() => void selectCommit(selectedCommit)}>Retry</button></div> : commitFiles.length === 0 ? <div className="graph-change-state">No files changed in this commit.</div> : commitFiles.map((file) => <div className="graph-change-file" key={file.path}>
-            <button className="graph-change-open" type="button" onClick={() => onOpenInEditor(selectedCommit, file)} title={`Open ${file.path} in the Code view`}><span className={`change-kind ${file.kind}`}>{file.kind === "deleted" ? "D" : file.kind === "added" ? "A" : file.kind === "renamed" ? "R" : "M"}</span><span className="graph-change-path" title={file.path}>{file.path}</span><span className="graph-change-kind">{file.kind}</span><span className="graph-change-open-icon" aria-hidden="true">↗</span></button>
-            <button className="graph-change-diff" type="button" onClick={() => { setDetailsOpen(true); void selectFile(file.path); }} title={`Review ${file.path} diff`} aria-label={`Review diff for ${file.path}`}>Diff</button>
-          </div>)}
-        </div>
-      </section> : <div className="graph-change-panel graph-change-empty"><span className="read-only-mark" aria-hidden="true">◉</span><span>Select a commit to see its changed files here.</span></div>}
-    </>}
-    <div className="panel-footnote"><span className="read-only-mark">◉</span> Incremental history loading</div>
-    {detailsOpen && selectedCommit && createPortal(
-      <div className="commit-preview-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeCommitDetails(); }}>
-        <section className="commit-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="commit-preview-title" aria-describedby="commit-preview-summary" onKeyDown={(event) => {
-          if (event.key !== "Tab") return;
-          const focusable = event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex="0"]');
-          const first = focusable[0];
-          const last = focusable[focusable.length - 1];
-          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-        }}>
-          <header className="commit-preview-header">
-            <div className="commit-preview-heading">
-              <div className="commit-preview-kicker"><span className="commit-preview-dot" />Commit <code>{selectedCommit.shortId}</code></div>
-              <h2 id="commit-preview-title" title={commitSubject}>{commitSubject}</h2>
-              {commitDescription ? <p className="commit-preview-description" id="commit-preview-summary">{commitDescription}</p> : <p className="commit-preview-description" id="commit-preview-summary">Changes introduced by this commit.</p>}
-
-              <div className="commit-preview-meta"><span>{selectedCommit.author}</span><span>{new Date(selectedCommit.timestamp * 1000).toLocaleString()}</span><code title={selectedCommit.id}>{selectedCommit.id}</code></div>
-              {selectedCommit.branches.length > 0 && <div className="commit-preview-branches" aria-label="Branches">{selectedCommit.branches.map((branch) => <span className="branch-label" key={branch}>{branch}</span>)}</div>}
-            </div>
-            <button ref={closeButtonRef} className="commit-preview-close" onClick={() => closeCommitDetails()} aria-label="Close commit details" title="Close details (Esc)" type="button">×</button>
-          </header>
-          <div className="commit-preview-body">
-            <aside className="commit-preview-files" aria-label="Changed files">
-              <div className="commit-preview-files-heading"><h3>Changed files</h3><span>{detailLoading ? "…" : commitFiles.length}</span></div>
-              <div className="commit-preview-file-list">
-                {detailLoading ? <div className="commit-preview-state" role="status">Loading changed files…</div> : detailError ? <div className="commit-preview-state commit-preview-error" role="alert"><span>{detailError}</span><button type="button" onClick={() => void selectCommit(selectedCommit)}>Retry loading files</button></div> : commitFiles.length === 0 ? <div className="commit-preview-state">No files changed in this commit.</div> : commitFiles.map((file) => <button className="commit-preview-file" key={file.path} onClick={() => { onOpenInEditor(selectedCommit, file); closeCommitDetails(false); }} type="button" title={`Open ${file.path} in the Code view`}>
-                  <span className={`change-kind ${file.kind}`}>{file.kind === "deleted" ? "D" : file.kind === "added" ? "A" : file.kind === "renamed" ? "R" : "M"}</span><span className="commit-preview-file-path">{file.path}</span><span className="commit-preview-file-kind">{file.kind}</span>
-                </button>)}
-              </div>
-            </aside>
-            <section className="commit-preview-diff" aria-label="Selected file diff">
-              <div className="commit-preview-file-heading">
-                {selectedFile ? <><span className={`change-kind ${commitFiles.find((file) => file.path === selectedFile)?.kind ?? "modified"}`}>{commitFiles.find((file) => file.path === selectedFile)?.kind === "deleted" ? "D" : commitFiles.find((file) => file.path === selectedFile)?.kind === "added" ? "A" : commitFiles.find((file) => file.path === selectedFile)?.kind === "renamed" ? "R" : "M"}</span><span title={selectedFile}>{selectedFile}</span></> : <span>Select a file to inspect its changes</span>}
-                {selectedFile && <button className="commit-open-editor" type="button" onClick={() => { const file = commitFiles.find((entry) => entry.path === selectedFile); if (file) { onOpenInEditor(selectedCommit, file); closeCommitDetails(false); } }} title="Open this commit version in the Code view">Open in editor <span aria-hidden="true">↗</span></button>}
-              </div>
-              <div className="commit-preview-diff-content">
-                {detailLoading ? <div className="commit-preview-state" role="status">Loading commit details…</div> : !selectedFile ? <div className="commit-preview-state">Choose a changed file from the list to view its patch.</div> : fileDiffLoading ? <div className="commit-preview-state" role="status">Loading diff…</div> : fileDiffError ? <div className="commit-preview-state commit-preview-error" role="alert"><span>{fileDiffError}</span><button type="button" onClick={() => void selectFile(selectedFile)}>Retry loading diff</button></div> : <DiffViewer diff={fileDiff} emptyMessage="No diff available for this file in the selected commit." />}
-              </div>
-            </section>
-          </div>
-          <footer className="commit-preview-footer"><span>{detailLoading ? "Loading files…" : `${commitFiles.length} changed ${commitFiles.length === 1 ? "file" : "files"}`}</span><span>{fileDiffLoading ? "Loading patch…" : fileDiff ? `${fileDiff.split(/\r?\n/).length} lines` : "Read-only commit details"}</span><span>Press Esc to close</span></footer>
-        </section>
-      </div>,
-      document.body,
-    )}
-  </div>;
-}
 type LayoutRect = { x: number; y: number; width: number; height: number };
 type LayoutDividerInfo = { id: string; direction: "horizontal" | "vertical"; ratio: number; rect: LayoutRect };
 type LayoutGeometry = { panes: Map<string, LayoutRect>; dividers: LayoutDividerInfo[] };

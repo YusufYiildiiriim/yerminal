@@ -84,42 +84,10 @@
 }
 .tool-content .change-action.discard { min-width: 24px; font-size: 14px; }
 .tool-content .change-action:disabled { opacity: .55; }
-.tool-content .commit-list { padding: 4px 0 10px; }
-.tool-content .commit-row { min-height: 65px; padding: 10px 12px; }
-.tool-content .commit-row:hover,
-.tool-content .commit-row.selected {
-  background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 10%, var(--theme-surface, #19191f));
-}
-.tool-content .commit-message { color: var(--theme-text, #efedf4); font-size: 13px; }
-.tool-content .commit-meta { min-width: 0; gap: 8px; color: var(--theme-muted, #aaa8b4); font-size: 11px; }
-.tool-content .commit-meta span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tool-content .branch-label { font-size: 11px; }
-.tool-content .load-more { min-height: 36px; font-size: 12px; }
-.tool-content .graph-change-panel { min-height: 170px; border-color: var(--theme-border, #34343c); background: var(--theme-surface, #19191f); }
-.tool-content .graph-change-panel.graph-change-empty { min-height: 72px; color: var(--theme-muted, #aaa8b4); font-size: 12px; }
-.tool-content .graph-change-header { min-height: 55px; }
-.tool-content .graph-change-heading > span,
-.tool-content .graph-change-heading code,
-.tool-content .graph-change-meta,
-.tool-content .graph-change-kind { font-size: 11px; }
-.tool-content .graph-change-heading strong,
-.tool-content .graph-change-path,
-.tool-content .graph-change-details,
-.tool-content .graph-change-state { font-size: 12px; }
-.tool-content .graph-change-meta { flex-wrap: wrap; min-height: 34px; height: auto; padding-block: 5px; }
-.tool-content .graph-change-open { min-height: 36px; }
-.tool-content .graph-change-diff { min-height: 30px; flex-basis: 42px; font-size: 12px; }
-.tool-content :is(.change-main-row, .change-action, .commit-row, .load-more, .graph-change-open, .graph-change-diff, .graph-change-details, .git-commit-button):focus-visible,
+.tool-content :is(.change-main-row, .change-action, .git-commit-button):focus-visible,
 .tool-content .git-commit-box textarea:focus-visible {
   outline: 2px solid var(--theme-accent, #b3a3ee);
   outline-offset: -2px;
-}
-:is(.commit-preview-dialog) { min-width: 0; }
-:is(.commit-preview-header) { gap: 12px; }
-:is(.commit-preview-meta, .commit-preview-description) { font-size: 12px; }
-:is(.commit-preview-diff-content) .diff-code {
-  font-size: var(--editor-font-size, 13px);
-  font-family: var(--editor-font-family, "Cascadia Code", Consolas, monospace);
 }
 .app-shell[data-theme] .diff-code {
   background: var(--theme-editor, var(--theme-background, #101114));
@@ -340,16 +308,6 @@
 .app-shell[data-theme] .diff-view::-webkit-scrollbar-track { background: #15161a; }
 .app-shell[data-theme] .diff-view::-webkit-scrollbar-thumb { border: 2px solid #15161a; border-radius: 8px; background: #45434f; }
 .app-shell[data-theme] .diff-view::-webkit-scrollbar-thumb:hover { background: #625c72; }
-:is(.commit-preview-close, .commit-open-editor):focus-visible {
-  outline: 2px solid #b3a3ee;
-  outline-offset: -2px;
-}
-@media (max-width: 720px) {
-  .commit-preview-backdrop { padding: 8px; }
-  .commit-preview-header { padding: 12px; }
-  .commit-preview-body { grid-template-columns: minmax(135px, 38%) minmax(0, 1fr); }
-  .commit-preview-footer { overflow: hidden; }
-}
 .git-changes-view .git-repository-list {
   flex: 1;
   min-height: 0;

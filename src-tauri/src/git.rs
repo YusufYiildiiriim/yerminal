@@ -672,12 +672,15 @@ fn is_repo_relative_path(file_path: &str) -> bool {
 
 fn branch_labels(repo: &Repository) -> std::collections::HashMap<String, Vec<String>> {
     let mut labels = std::collections::HashMap::<String, Vec<String>>::new();
-    if let Ok(branches) = repo.branches(Some(BranchType::Local)) {
+    if let Ok(branches) = repo.branches(None) {
         for branch in branches.flatten() {
             let (branch, _) = branch;
             let Some(name) = branch.name().ok().flatten() else {
                 continue;
             };
+            if name.ends_with("/HEAD") {
+                continue;
+            }
             let Some(oid) = branch.get().target() else {
                 continue;
             };
@@ -688,6 +691,59 @@ fn branch_labels(repo: &Repository) -> std::collections::HashMap<String, Vec<Str
         }
     }
     labels
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchInfo {
+    pub name: String,
+    pub is_remote: bool,
+    pub is_head: bool,
+    pub ahead: Option<usize>,
+    pub behind: Option<usize>,
+}
+
+/// Local branches first, then remote-tracking branches, each sorted by name.
+/// Local branches with an upstream report ahead/behind counts against it.
+pub fn branches(path: &str) -> Result<Vec<BranchInfo>, String> {
+    let repo = open_repository(path)?;
+    let mut local = Vec::new();
+    let mut remote = Vec::new();
+    let listed = repo
+        .branches(None)
+        .map_err(|error| format!("Could not list branches: {error}"))?;
+    for entry in listed {
+        let (branch, branch_type) = entry.map_err(|error| format!("Could not read branch: {error}"))?;
+        let Some(name) = branch.name().ok().flatten().map(str::to_owned) else {
+            continue;
+        };
+        match branch_type {
+            BranchType::Local => {
+                let is_head = branch.is_head();
+                let (ahead, behind) = match (branch.get().target(), branch.upstream().ok()) {
+                    (Some(local_oid), Some(upstream)) => match upstream.get().target() {
+                        Some(upstream_oid) => repo
+                            .graph_ahead_behind(local_oid, upstream_oid)
+                            .map(|(ahead, behind)| (Some(ahead), Some(behind)))
+                            .unwrap_or((None, None)),
+                        None => (None, None),
+                    },
+                    _ => (None, None),
+                };
+                local.push(BranchInfo { name, is_remote: false, is_head, ahead, behind });
+            }
+            BranchType::Remote => {
+                if name.ends_with("/HEAD") {
+                    continue;
+                }
+                remote.push(BranchInfo { name, is_remote: true, is_head: false, ahead: None, behind: None });
+            }
+        }
+    }
+    local.sort_by(|a, b| a.name.cmp(&b.name));
+    remote.sort_by(|a, b| a.name.cmp(&b.name));
+    local.extend(remote);
+    Ok(local)
 }
 
 #[cfg(test)]
@@ -1690,6 +1746,102 @@ mod tests {
             );
         }
 
+        let _ = dir;
+    }
+
+    #[test]
+    fn branches_lists_local_then_remote_with_head_and_upstream_counts() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "a.txt", "a\n");
+        let first = stage_and_commit(&path, "a.txt", "first commit");
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let commit = repo.find_commit(git2::Oid::from_str(&first).unwrap()).unwrap();
+        repo.branch("zeta", &commit, false).expect("create zeta");
+        repo.branch("alpha", &commit, false).expect("create alpha");
+        repo.remote("origin", "https://example.invalid/repo.git").expect("add origin");
+        repo.reference("refs/remotes/origin/alpha", commit.id(), true, "remote")
+            .expect("create remote ref");
+        repo.reference("refs/remotes/origin/beta", commit.id(), true, "remote")
+            .expect("create remote ref");
+        repo.find_branch("alpha", BranchType::Local)
+            .unwrap()
+            .set_upstream(Some("origin/alpha"))
+            .expect("set upstream");
+        add_file(dir.path(), "b.txt", "b\n");
+        stage_and_commit(&path, "b.txt", "second commit");
+        let head_name = repository_info(&path).expect("info").branch;
+
+        let branches = branches(&path).expect("branches");
+        let summary: Vec<(String, bool, bool)> = branches
+            .iter()
+            .map(|b| (b.name.clone(), b.is_remote, b.is_head))
+            .collect();
+        let mut local = vec!["alpha".to_owned(), "zeta".to_owned(), head_name.clone()];
+        local.sort();
+        local.dedup();
+        let mut expected: Vec<(String, bool, bool)> = local
+            .iter()
+            .map(|name| (name.clone(), false, *name == head_name))
+            .collect();
+        expected.push(("origin/alpha".to_owned(), true, false));
+        expected.push(("origin/beta".to_owned(), true, false));
+        assert_eq!(summary, expected);
+
+        let alpha = branches.iter().find(|b| b.name == "alpha").unwrap();
+        assert_eq!((alpha.ahead, alpha.behind), (Some(0), Some(0)));
+        let zeta = branches.iter().find(|b| b.name == "zeta").unwrap();
+        assert_eq!((zeta.ahead, zeta.behind), (None, None));
+        let remote = branches.iter().find(|b| b.name == "origin/alpha").unwrap();
+        assert_eq!((remote.ahead, remote.behind), (None, None));
+        let _ = dir;
+    }
+
+    #[test]
+    fn branches_reports_ahead_and_behind_against_upstream() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "a.txt", "a\n");
+        let first = stage_and_commit(&path, "a.txt", "first commit");
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let base = repo.find_commit(git2::Oid::from_str(&first).unwrap()).unwrap();
+        let tree = base.tree().unwrap();
+        let signature = repo.signature().unwrap();
+        repo.branch("tracked", &base, false).expect("create tracked");
+        repo.remote("origin", "https://example.invalid/repo.git").expect("add origin");
+        repo.reference("refs/remotes/origin/tracked", base.id(), true, "remote")
+            .expect("create remote ref");
+        repo.find_branch("tracked", BranchType::Local)
+            .unwrap()
+            .set_upstream(Some("origin/tracked"))
+            .expect("set upstream");
+        // Local tracked gets one commit the remote lacks; the remote gets one the local lacks.
+        repo.commit(Some("refs/heads/tracked"), &signature, &signature, "local only", &tree, &[&base])
+            .expect("local commit");
+        repo.commit(Some("refs/remotes/origin/tracked"), &signature, &signature, "remote only", &tree, &[&base])
+            .expect("remote commit");
+
+        let branches = branches(&path).expect("branches");
+        let tracked = branches.iter().find(|b| b.name == "tracked").unwrap();
+        assert_eq!((tracked.ahead, tracked.behind), (Some(1), Some(1)));
+        assert!(!tracked.is_head);
+        let _ = dir;
+    }
+
+    #[test]
+    fn history_labels_remote_tracking_branches_but_not_origin_head() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "a.txt", "a\n");
+        let oid = stage_and_commit(&path, "a.txt", "first commit");
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let commit = repo.find_commit(git2::Oid::from_str(&oid).unwrap()).unwrap();
+        repo.remote("origin", "https://example.invalid/repo.git").expect("add origin");
+        repo.reference("refs/remotes/origin/develop", commit.id(), true, "remote")
+            .expect("create remote ref");
+        repo.reference("refs/remotes/origin/HEAD", commit.id(), true, "remote")
+            .expect("create origin HEAD ref");
+
+        let commits = history(&path, 0, 10).expect("history");
+        assert!(commits[0].branches.contains(&"origin/develop".to_owned()), "{:?}", commits[0].branches);
+        assert!(!commits[0].branches.iter().any(|name| name.ends_with("/HEAD")), "{:?}", commits[0].branches);
         let _ = dir;
     }
 }
