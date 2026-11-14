@@ -8,6 +8,8 @@ export type CommitInfo = { id: string; shortId: string; message: string; author:
 export type CommitFileChange = { path: string; kind: string };
 /** A request from the branch panel to select a branch tip in the commit list. */
 export type BranchFocusRequest = { name: string };
+/** A request from the branch panel to show one commit's changes in the details panel. */
+export type CommitFocusRequest = { commit: CommitInfo };
 
 const COMMIT_PAGE_SIZE = 50;
 const LOAD_MORE_THRESHOLD_PX = 160;
@@ -16,11 +18,12 @@ type Props = {
   repoPath: string;
   branch: string;
   focusRequest: BranchFocusRequest | null;
+  commitRequest?: CommitFocusRequest | null;
   onError: (message: string) => void;
   onOpenInEditor: (commit: CommitInfo, file: CommitFileChange) => void;
 };
 
-export function GitGraphView({ repoPath, branch, focusRequest, onError, onOpenInEditor }: Props) {
+export function GitGraphView({ repoPath, branch, focusRequest, commitRequest = null, onError, onOpenInEditor }: Props) {
   const [commits, setCommits] = useState<CommitInfo[]>([]);
   const commitsRef = useRef<CommitInfo[]>([]);
   const hasMoreRef = useRef(true);
@@ -191,6 +194,14 @@ export function GitGraphView({ repoPath, branch, focusRequest, onError, onOpenIn
     void selectCommitRef.current(tip);
     listRef.current?.querySelector<HTMLElement>(`[data-commit-id="${tip.id}"]`)?.scrollIntoView({ block: "center" });
   }, [focusRequest, commits, hasMore]);
+
+  // Branch panel asks for one commit (it may be outside the loaded list): show its details.
+  useEffect(() => {
+    if (!commitRequest) return;
+    setBranchNote(null);
+    void selectCommitRef.current(commitRequest.commit);
+    listRef.current?.querySelector<HTMLElement>(`[data-commit-id="${commitRequest.commit.id}"]`)?.scrollIntoView({ block: "center" });
+  }, [commitRequest]);
 
   const focusRowAt = (rows: HTMLButtonElement[], index: number) => {
     const next = rows[index];

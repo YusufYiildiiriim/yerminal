@@ -281,6 +281,42 @@ describe("Git Graph main view and branch panel", () => {
     expect(within(graphView).getByRole("region", { name: "Commit details" })).toBeInTheDocument();
   });
 
+  it("clicking a branch expands its own commits under it and clicking again collapses them", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openGitGraph(user);
+    const panel = document.querySelector(".tools-panel") as HTMLElement;
+    const branchButton = await within(panel).findByRole("button", { name: "main" });
+    await user.click(branchButton);
+
+    expect(branchButton).toHaveAttribute("aria-expanded", "true");
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("git_history", expect.objectContaining({ branch: "main", skip: 0 })));
+    const list = await within(panel).findByRole("list", { name: "Commits on main" });
+    expect(await within(list).findByText("Fix branch list")).toBeInTheDocument();
+
+    await user.click(branchButton);
+    expect(branchButton).toHaveAttribute("aria-expanded", "false");
+    expect(within(panel).queryByRole("list", { name: "Commits on main" })).not.toBeInTheDocument();
+  });
+
+  it("clicking or right-clicking a commit under a branch shows its changes on the right", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openGitGraph(user);
+    const graphView = await screen.findByRole("region", { name: "Commit graph" });
+    const panel = document.querySelector(".tools-panel") as HTMLElement;
+    await user.click(await within(panel).findByRole("button", { name: "main" }));
+    const list = await within(panel).findByRole("list", { name: "Commits on main" });
+
+    fireEvent.contextMenu(await within(list).findByRole("button", { name: /Initial setup/ }));
+    const details = await within(graphView).findByRole("region", { name: "Commit details" });
+    expect(within(details).getByText("Initial setup")).toBeInTheDocument();
+    expect(await within(details).findByText("src/App.tsx")).toBeInTheDocument();
+
+    await user.click(within(list).getByRole("button", { name: /Fix branch list/ }));
+    expect(await within(within(graphView).getByRole("region", { name: "Commit details" })).findByText("Fix branch list")).toBeInTheDocument();
+  });
+
   it("clicking a remote branch selects the commit that carries it", async () => {
     const user = userEvent.setup();
     render(<App />);

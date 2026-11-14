@@ -74,3 +74,21 @@
 .gb-row .label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .gb-row .meta { margin-left: auto; flex: none; color: var(--theme-muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gb-empty { padding: 8px 6px; color: var(--theme-muted); font-size: 12px; }
+
+/* Branch panel scrolls on its own; a branch expands into its commits. */
+.gb-panel { height: 100%; overflow-x: hidden; overflow-y: auto; padding-bottom: 8px; }
+.gb-branch { display: flex; flex-direction: column; min-width: 0; }
+.gb-row > svg.gb-chev { width: 12px; height: 12px; transition: transform 140ms ease; }
+.gb-row > svg.gb-chev.open { transform: rotate(90deg); }
+.gb-commits { margin: 2px 0 6px 13px; padding: 0 0 0 8px; border-left: 1px solid var(--theme-border); list-style: none; }
+.gb-commit { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; height: 26px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--row-text); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.gb-commit:hover, .gb-commit:focus-visible { background: var(--hover); outline: none; }
+.gb-commit.on { background: var(--theme-raised); color: var(--bright); }
+.gb-hash { color: var(--theme-muted); font-family: var(--editor-font-family, "Cascadia Code", Consolas, monospace); font-size: 11px; }
+.gb-msg { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.gb-time { color: var(--theme-muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gb-note { padding: 4px 6px; color: var(--theme-muted); font-size: 12px; }
+.gb-error { color: var(--theme-text); overflow-wrap: anywhere; }
+.gb-more { width: 100%; height: 26px; margin-top: 2px; border: 1px solid var(--theme-border); border-radius: 6px; background: var(--theme-raised); color: var(--theme-text); font: inherit; font-size: 12px; cursor: pointer; }
+.gb-more:hover, .gb-more:focus-visible { background: var(--hover); outline: none; }
+@media (prefers-reduced-motion: reduce) { .gb-row > svg.gb-chev { transition: none; } }

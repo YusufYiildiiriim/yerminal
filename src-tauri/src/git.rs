@@ -494,9 +494,33 @@ pub fn history(path: &str, skip: usize, limit: usize) -> Result<Vec<CommitInfo>,
         .map_err(|error| format!("Could not open commit history: {error}"))?;
     walk.push_head()
         .map_err(|error| format!("Could not read repository HEAD: {error}"))?;
+    collect_history(&repo, walk, skip, limit)
+}
+
+/// History reachable from one local or remote-tracking branch (e.g. "main", "origin/main").
+pub fn branch_history(path: &str, branch: &str, skip: usize, limit: usize) -> Result<Vec<CommitInfo>, String> {
+    let repo = open_repository(path)?;
+    let found = repo
+        .find_branch(branch, BranchType::Local)
+        .or_else(|_| repo.find_branch(branch, BranchType::Remote))
+        .map_err(|_| format!("Branch not found: {branch}"))?;
+    let target = found
+        .get()
+        .peel_to_commit()
+        .map_err(|error| format!("Could not read branch {branch}: {error}"))?
+        .id();
+    let mut walk = repo
+        .revwalk()
+        .map_err(|error| format!("Could not open commit history: {error}"))?;
+    walk.push(target)
+        .map_err(|error| format!("Could not read branch {branch}: {error}"))?;
+    collect_history(&repo, walk, skip, limit)
+}
+
+fn collect_history(repo: &Repository, mut walk: git2::Revwalk, skip: usize, limit: usize) -> Result<Vec<CommitInfo>, String> {
     walk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)
         .map_err(|error| format!("Could not sort commit history: {error}"))?;
-    let branches = branch_labels(&repo);
+    let branches = branch_labels(repo);
     let mut commits = Vec::new();
     for oid in walk.skip(skip).take(limit.clamp(1, 100)) {
         let oid = oid.map_err(|error| format!("Could not read commit: {error}"))?;
@@ -1823,6 +1847,27 @@ mod tests {
         let tracked = branches.iter().find(|b| b.name == "tracked").unwrap();
         assert_eq!((tracked.ahead, tracked.behind), (Some(1), Some(1)));
         assert!(!tracked.is_head);
+        let _ = dir;
+    }
+
+    #[test]
+    fn branch_history_walks_from_the_named_branch_only() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "a.txt", "a
+");
+        let base = stage_and_commit(&path, "a.txt", "base commit");
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let base_commit = repo.find_commit(git2::Oid::from_str(&base).unwrap()).unwrap();
+        repo.branch("feature", &base_commit, false).expect("create feature");
+        add_file(dir.path(), "b.txt", "b
+");
+        stage_and_commit(&path, "b.txt", "head only commit");
+
+        let feature = branch_history(&path, "feature", 0, 10).expect("feature history");
+        assert_eq!(feature.iter().map(|c| c.message.as_str()).collect::<Vec<_>>(), vec!["base commit"]);
+        let head = history(&path, 0, 10).expect("head history");
+        assert_eq!(head[0].message, "head only commit");
+        assert!(branch_history(&path, "missing", 0, 10).is_err());
         let _ = dir;
     }
 

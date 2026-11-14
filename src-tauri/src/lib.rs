@@ -145,8 +145,11 @@ fn git_diff(path: String, file_path: String, staged: bool) -> Result<String, Str
 }
 
 #[tauri::command]
-fn git_history(path: String, skip: usize, limit: usize) -> Result<Vec<CommitInfo>, String> {
-    git::history(&path, skip, limit)
+fn git_history(path: String, skip: usize, limit: usize, branch: Option<String>) -> Result<Vec<CommitInfo>, String> {
+    match branch.as_deref().filter(|name| !name.is_empty()) {
+        Some(name) => git::branch_history(&path, name, skip, limit),
+        None => git::history(&path, skip, limit),
+    }
 }
 
 #[tauri::command]
