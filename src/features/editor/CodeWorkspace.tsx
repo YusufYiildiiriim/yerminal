@@ -237,6 +237,7 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
     {activeTab ? <>
       {isReadOnly && activeTab.snapshot && <CommitSnapshotBanner snapshot={activeTab.snapshot} filePath={activeTab.path} />}
       <header className="code-editor-header">
+        {(() => { const display = editorDisplayPath(activeTab.root, activeTab.path); return <span className="code-editor-header-path" title={display.full}>{display.label}</span>; })()}
         <div className="code-editor-meta">
           <span>{language?.label ?? "Plain Text"}</span>
           <span className="code-editor-source-label" title={activeTab.sourceLabel ?? "Workspace file"}>{activeTab.sourceLabel ?? "Workspace file"}</span>
@@ -271,12 +272,26 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
       }} />}
       </div>
       <footer className="code-editor-statusbar" aria-live="polite">
-        <span className="code-editor-path" title={activeTab.path}>{activeTab.root.split(/[\\/]/).filter(Boolean).pop() ?? activeTab.root}　›　{activeTab.path}</span>
         <span className={activeTab.saveError ? "code-editor-save-error" : ""}>{activeTab.saveError ?? (activeTab.isSaving ? "Saving changes…" : isDirty ? "Unsaved changes" : isReadOnly ? activeTab.view === "diff" ? "Read-only diff" : "Read-only commit snapshot" : activeTab.status === "ready" ? "All changes saved" : activeTab.status === "loading" ? "Loading" : "Unavailable")}</span>
         <span>{activeTab.status === "ready" ? (activeTab.content?.split(/\r?\n/).length ?? 0) + " lines" : ""}</span><span>UTF-8</span>
       </footer>
     </> : <div className="code-editor-empty"><div className="code-editor-empty-icon">⌘</div><h2>Open a file in this group</h2><p>Choose a file from the workspace explorer or Git history. It will open in this editor group.</p></div>}
   </section>;
+}
+
+// Folder name and the path relative to it for the editor header; the full path goes in the tooltip.
+export function editorDisplayPath(root: string, path: string): { label: string; full: string } {
+  const strip = (value: string) => value.replace(/^\\\\\?\\/, "");
+  const cleanRoot = strip(root).replace(/[\\/]+$/, "");
+  const cleanPath = strip(path);
+  const folder = cleanRoot.split(/[\\/]/).filter(Boolean).pop() ?? cleanRoot;
+  const separator = cleanRoot.includes("\\") ? "\\" : "/";
+  const isAbsolute = /^[a-zA-Z]:[\\/]/.test(cleanPath) || cleanPath.startsWith("/");
+  const full = isAbsolute ? cleanPath : cleanRoot + separator + cleanPath;
+  const relative = full.toLowerCase().startsWith(cleanRoot.toLowerCase() + separator.toLowerCase()) || full.toLowerCase().startsWith(cleanRoot.toLowerCase() + "/")
+    ? full.slice(cleanRoot.length + 1)
+    : cleanPath;
+  return { label: folder + " › " + relative, full };
 }
 
 function EditorMinimap({ content, highlightedHtml, viewport, onNavigate }: { content: string; highlightedHtml: string | null; viewport: { top: number; size: number }; onNavigate: (position: number) => void }) {

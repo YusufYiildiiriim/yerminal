@@ -174,3 +174,28 @@
 @media (prefers-reduced-motion: reduce) {
   .app-shell[data-theme] :is(.code-editor-minimap, .code-editor-minimap-window) { transition: none; }
 }
+
+/* File path sits in the empty left side of the editor header: small and muted, accent on hover. */
+.app-shell[data-theme] .code-editor-header,
+.app-shell[data-theme] .editor-group-pane .code-editor-header {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.app-shell[data-theme] .code-editor-header-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--theme-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+  transition: color 140ms ease;
+}
+.app-shell[data-theme] .code-editor-header-path:hover { color: var(--theme-accent); }
+.app-shell[data-theme] .code-editor-header .code-editor-meta { width: auto; flex: 0 0 auto; }
+@media (prefers-reduced-motion: reduce) {
+  .app-shell[data-theme] .code-editor-header-path { transition: none; }
+}
