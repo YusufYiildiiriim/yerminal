@@ -206,7 +206,8 @@ describe("App user flows", () => {
     await user.click(await screen.findByRole("button", { name: /M.*notes.*U/ }));
     const diffRegion = await screen.findByRole("region", { name: "File diff" });
     expect(diffRegion.parentElement).toHaveClass("is-diff");
-    expect(await within(diffRegion).findByText("@@ -1 +1 @@")).toBeInTheDocument();
+    expect(await within(diffRegion).findByText("new")).toBeInTheDocument();
+    expect(within(diffRegion).queryByText("@@ -1 +1 @@")).not.toBeInTheDocument();
     const changeRow = within(diffRegion).getByLabelText("previous removed line").closest("[role=row]") as HTMLElement;
     expect(changeRow).toHaveClass("has-removed", "has-added");
     expect(within(changeRow).getByLabelText("previous removed line")).toHaveTextContent("old");

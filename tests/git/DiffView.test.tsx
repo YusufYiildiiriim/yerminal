@@ -58,7 +58,10 @@ describe("DiffView", () => {
     fireEvent.click(screen.getByText("Diff details"));
     expect(rawHeaders).toHaveTextContent("index 1234567..abcdef0 100644");
     expect(rawHeaders).toBeVisible();
-    expect(screen.getByText("@@ -4,2 +4,3 @@ function run()")).toBeInTheDocument();
+    const separator = screen.getByText("3 hidden lines");
+    expect(separator.closest("[role=row]")).toHaveClass("hunk");
+    expect(separator).toHaveAttribute("title", "@@ -4,2 +4,3 @@ function run()");
+    expect(screen.queryByText(/^@@ /)).not.toBeInTheDocument();
     expect(screen.getByText("old value")).toBeInTheDocument();
     expect(screen.getByText("new value")).toBeInTheDocument();
     expect(screen.getByText("second added value")).toBeInTheDocument();
@@ -75,6 +78,7 @@ describe("DiffView", () => {
     expect(within(paired!).getByText("const newA = 10;")).toBeInTheDocument();
     expect(within(paired!).getByText("const oldA = 1;")).toBeInTheDocument();
     expect(rows.filter((row) => row.classList.contains("hunk"))).toHaveLength(4);
+    expect(rows.filter((row) => row.classList.contains("hunk")).map((row) => row.textContent)).toEqual(["1 hidden line", "24 hidden lines", "17 hidden lines", "9 hidden lines"]);
 
     const oldBRow = rows.find((row) => within(row).queryByText("const oldB = 2;"));
     expect(oldBRow).toHaveClass("has-removed");
@@ -172,6 +176,16 @@ describe("DiffView", () => {
     // The second file's headers are metadata, not removed/added code rows.
     expect(document.querySelectorAll(".diff-view-cell.removed")).toHaveLength(2);
     expect(screen.getByText("Diff details").closest("details")?.querySelector("pre")).toHaveTextContent("--- a/second.ts");
+  });
+
+  it("shows no separator when a hunk starts right after the previous one or at the first line", () => {
+    const fromTop = ["diff --git a/a.md b/a.md", "--- a/a.md", "+++ b/a.md", "@@ -1,2 +1,2 @@", " ---", "-", "+dddddd"].join("\n");
+    render(<DiffView diff={fromTop} path="a.md" root="repo" staged={false} />);
+    expect(document.querySelector(".diff-view-line.hunk")).toBeNull();
+    const context = screen.getAllByText("---");
+    expect(context).toHaveLength(2);
+    expect(context[0].closest(".diff-view-cell")).toHaveClass("context");
+    expect(screen.getByText("dddddd").closest(".diff-view-cell")).toHaveClass("added");
   });
 
   it("shows the empty state for a diff with no changes", () => {

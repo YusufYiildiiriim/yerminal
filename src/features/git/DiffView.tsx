@@ -3,7 +3,7 @@ import { useMemo } from "react";
 type DiffLineKind = "added" | "removed" | "hunk" | "meta" | "context";
 type DiffRow = { kind: DiffLineKind; oldNumber: number | null; newNumber: number | null; content: string; notes?: string[] };
 type CodeSide = { kind: "added" | "removed" | "context"; number: number | null; content: string; notes?: string[] } | null;
-type DisplayRow = { kind: "hunk" | "meta"; content: string } | { kind: "code"; old: CodeSide; current: CodeSide };
+type DisplayRow = { kind: "meta"; content: string } | { kind: "hunk"; content: string; hidden: number } | { kind: "code"; old: CodeSide; current: CodeSide };
 
 const HUNK_HEADER_PATTERN = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 
@@ -25,7 +25,7 @@ function parseDiffRows(diff: string): DiffRow[] {
       inHunk = true;
       oldNumber = Number(hunkHeader[1]);
       newNumber = Number(hunkHeader[2]);
-      rows.push({ kind: "hunk", oldNumber: null, newNumber: null, content: line });
+      rows.push({ kind: "hunk", oldNumber, newNumber, content: line });
       continue;
     }
     if (line.startsWith("diff --git ")) inHunk = false;
@@ -59,16 +59,28 @@ function parseDiffRows(diff: string): DiffRow[] {
 
 function pairDiffRows(rows: DiffRow[]): DisplayRow[] {
   const display: DisplayRow[] = [];
+  // Next old-side line not yet shown; the gap before a hunk is the unchanged lines git left out.
+  let nextOldLine = 1;
   for (let index = 0; index < rows.length;) {
     const row = rows[index];
-    if (row.kind === "hunk" || row.kind === "meta") {
-      display.push({ kind: row.kind, content: row.content });
+    if (row.kind === "meta") {
+      if (row.content.startsWith("diff --git ")) nextOldLine = 1;
+      display.push({ kind: "meta", content: row.content });
+      index += 1;
+      continue;
+    }
+    if (row.kind === "hunk") {
+      const start = row.oldNumber ?? nextOldLine;
+      const hidden = Math.max(0, start - nextOldLine);
+      if (hidden > 0) display.push({ kind: "hunk", content: row.content, hidden });
+      nextOldLine = Math.max(nextOldLine, start);
       index += 1;
       continue;
     }
     if (row.kind === "context") {
       const side: CodeSide = { kind: "context", number: row.oldNumber, content: row.content, notes: row.notes };
       display.push({ kind: "code", old: side, current: { ...side, number: row.newNumber } });
+      if (row.oldNumber !== null) nextOldLine = row.oldNumber + 1;
       index += 1;
       continue;
     }
@@ -76,6 +88,7 @@ function pairDiffRows(rows: DiffRow[]): DisplayRow[] {
     const changes: DiffRow[] = [];
     while (index < rows.length && (rows[index].kind === "added" || rows[index].kind === "removed")) {
       changes.push(rows[index]);
+      if (rows[index].kind === "removed" && rows[index].oldNumber !== null) nextOldLine = (rows[index].oldNumber as number) + 1;
       index += 1;
     }
     const removed = changes.filter((change) => change.kind === "removed");
@@ -119,6 +132,8 @@ export function DiffView({ diff, path, root, staged, loading = false, emptyMessa
             <DiffCell side="old" value={row.old} />
             <DiffCell side="current" value={row.current} />
           </div>
+          : row.kind === "hunk"
+          ? <div className="diff-view-line hunk" role="row" key={index}><span className="diff-view-hidden" role="cell" title={row.content}>{row.hidden === 1 ? "1 hidden line" : `${row.hidden} hidden lines`}</span></div>
           : <div className={`diff-view-line ${row.kind}`} role="row" key={index}><code className="diff-view-content" role="cell">{row.content}</code></div>)}
       </div>
     </>}

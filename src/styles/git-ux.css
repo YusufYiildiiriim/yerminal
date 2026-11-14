@@ -293,21 +293,25 @@
 .app-shell[data-theme] .diff-view-cell.empty { background: color-mix(in srgb, var(--theme-muted, #85848e) 4%, var(--theme-editor, var(--theme-background, #101114))); }
 .app-shell[data-theme] .diff-view-line.hunk {
   grid-column: 1 / -1;
-  background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 12%, var(--theme-surface, #19191f));
-  color: var(--theme-accent, #b3a3ee);
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  margin: 2px 0;
+  border-block: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-text) 3%, transparent);
+  color: var(--theme-muted);
 }
-.app-shell[data-theme] .diff-view-line:is(.hunk, .meta) { display: block; min-height: 22px; padding: 0 10px; }
+.app-shell[data-theme] .diff-view-hidden {
+  font-family: Inter, "Segoe UI", sans-serif;
+  font-size: 11px;
+  letter-spacing: .01em;
+  cursor: default;
+}
+.app-shell[data-theme] .diff-view-line.meta { display: block; min-height: 22px; padding: 0 10px; }
+.app-shell[data-theme] .diff-view-line.hunk { padding: 0 14px; }
 .app-shell[data-theme] .diff-view-line.hunk .diff-view-content,
 .app-shell[data-theme] .diff-view-line.meta .diff-view-content { padding: 0; }
 .app-shell[data-theme] .diff-view-line.meta { grid-column: 1 / -1; color: var(--theme-muted, #85848e); }
-.app-shell[data-theme] .diff-view {
-  scrollbar-color: #45434f #15161a;
-  scrollbar-width: thin;
-}
-.app-shell[data-theme] .diff-view::-webkit-scrollbar { width: 8px; height: 8px; }
-.app-shell[data-theme] .diff-view::-webkit-scrollbar-track { background: #15161a; }
-.app-shell[data-theme] .diff-view::-webkit-scrollbar-thumb { border: 2px solid #15161a; border-radius: 8px; background: #45434f; }
-.app-shell[data-theme] .diff-view::-webkit-scrollbar-thumb:hover { background: #625c72; }
 .git-changes-view .git-repository-list {
   flex: 1;
   min-height: 0;
