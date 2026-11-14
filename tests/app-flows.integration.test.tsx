@@ -636,8 +636,8 @@ describe("Stored settings and workspace migration", () => {
     const stored = JSON.parse(localStorage.getItem("yerminal.terminal-workspaces") ?? "{}");
     expect(stored.activeId).toBe("workspace-a");
     expect(stored.workspaces).toEqual([
-      { id: "workspace-a", name: "A", rootPath: otherPath, folderPaths: [otherPath, rootPath] },
-      { id: "workspace-b", name: "B", rootPath: "C:\b", folderPaths: ["C:\b"] },
+      { id: "workspace-a", name: "A", rootPath: otherPath, folderPaths: [otherPath, rootPath], groups: [{ id: "terminal-group-default", name: "Terminal 1" }], activeGroupId: "terminal-group-default" },
+      { id: "workspace-b", name: "B", rootPath: "C:\b", folderPaths: ["C:\b"], groups: [{ id: "terminal-group-default", name: "Terminal 1" }], activeGroupId: "terminal-group-default" },
     ]);
   });
 });

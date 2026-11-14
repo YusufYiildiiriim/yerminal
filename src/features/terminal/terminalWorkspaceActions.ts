@@ -28,6 +28,16 @@ export function selectTerminalGroup(state: TerminalGroups, groupId: string): Ter
   return state.groups.some((group) => group.id === groupId) ? { ...state, activeGroupId: groupId } : state;
 }
 
+export function renameTerminalGroup(state: TerminalGroups, groupId: string, name: string): TerminalGroups {
+  const normalizedName = name.trim();
+  const target = state.groups.find((group) => group.id === groupId);
+  if (!target || !normalizedName) return state;
+  const normalizedKey = normalizedName.toLocaleLowerCase();
+  if (state.groups.some((group) => group.id !== groupId && group.name.trim().toLocaleLowerCase() === normalizedKey)) return state;
+  if (target.name === normalizedName) return state;
+  return { ...state, groups: state.groups.map((group) => group.id === groupId ? { ...group, name: normalizedName } : group) };
+}
+
 export function closeTerminalGroup(state: TerminalGroups, groupId: string): TerminalGroups {
   if (state.groups.length <= 1) return state;
   const closingIndex = state.groups.findIndex((group) => group.id === groupId);

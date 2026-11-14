@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { appendTerminalToLayout, closeTerminalGroup, createInitialTerminalGroups, createTerminalGroup, moveTerminalBetweenGroups, openFolderInNewTerminal, removeTerminalFromGroups, selectTerminalGroup, type TerminalLayoutNode } from "../../src/features/terminal/terminalWorkspaceActions";
+import { appendTerminalToLayout, closeTerminalGroup, createInitialTerminalGroups, createTerminalGroup, moveTerminalBetweenGroups, openFolderInNewTerminal, removeTerminalFromGroups, renameTerminalGroup, selectTerminalGroup, type TerminalLayoutNode } from "../../src/features/terminal/terminalWorkspaceActions";
 
 describe("terminal groups", () => {
   it("creates and selects groups without crossing workspace state", () => {
@@ -10,6 +10,25 @@ describe("terminal groups", () => {
     expect(selectTerminalGroup(workspaceA, workspaceA.groups[0].id).activeGroupId).toBe(workspaceA.groups[0].id);
     expect(workspaceB.groups).toHaveLength(1);
     expect(workspaceB.activeGroupId).toBe(workspaceB.groups[0].id);
+  });
+
+  it("renames only the requested group while retaining its id, terminals, and layout", () => {
+    const initial = createTerminalGroup(createInitialTerminalGroups());
+    const layout = appendTerminalToLayout(null, "session-a");
+    const groups = initial.groups.map((group, index) => index === 0
+      ? { ...group, terminalIds: ["session-a"], activeTerminalId: "session-a", layout }
+      : group);
+    const state = { ...initial, groups, activeGroupId: groups[1].id };
+
+    const renamed = renameTerminalGroup(state, groups[0].id, "  Build tools  ");
+
+    expect(renamed.activeGroupId).toBe(state.activeGroupId);
+    expect(renamed.groups[0]).toEqual({ ...groups[0], name: "Build tools" });
+    expect(renamed.groups[0].layout).toBe(layout);
+    expect(renamed.groups[1]).toBe(groups[1]);
+    expect(renameTerminalGroup(renamed, groups[0].id, "  ")).toBe(renamed);
+    expect(renameTerminalGroup(renamed, "missing-group", "Other")).toBe(renamed);
+    expect(renameTerminalGroup(renamed, groups[0].id, groups[1].name)).toBe(renamed);
   });
 
   it("moves a live session between groups while preserving its session id and the other layouts", () => {
