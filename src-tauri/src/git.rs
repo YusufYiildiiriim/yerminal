@@ -186,6 +186,16 @@ pub fn status(path: &str) -> Result<Vec<FileChange>, String> {
     Ok(changes)
 }
 
+/// libgit2 hands each patch line without its marker; put back "+", "-" or " " so the
+/// patch text matches `git diff` and context lines are not read as changes.
+fn push_patch_line(output: &mut String, line: &git2::DiffLine<'_>) {
+    let origin = line.origin();
+    if matches!(origin, '+' | '-' | ' ') {
+        output.push(origin);
+    }
+    output.push_str(&String::from_utf8_lossy(line.content()));
+}
+
 pub fn diff(path: &str, file_path: &str, staged: bool) -> Result<String, String> {
     if file_path.is_empty()
         || Path::new(file_path).is_absolute()
@@ -210,7 +220,7 @@ pub fn diff(path: &str, file_path: &str, staged: bool) -> Result<String, String>
     .map_err(|error| format!("Could not create diff: {error}"))?;
     let mut output = String::new();
     diff.print(DiffFormat::Patch, |_, _, line| {
-        output.push_str(&String::from_utf8_lossy(line.content()));
+        push_patch_line(&mut output, &line);
         true
     })
     .map_err(|error| format!("Could not read diff: {error}"))?;
@@ -586,7 +596,7 @@ pub fn commit_file_diff(path: &str, commit_id: &str, file_path: &str) -> Result<
     let diff = commit_diff(&repo, &commit, Some(file_path))?;
     let mut output = String::new();
     diff.print(DiffFormat::Patch, |_, _, line| {
-        output.push_str(&String::from_utf8_lossy(line.content()));
+        push_patch_line(&mut output, &line);
         true
     })
     .map_err(|error| format!("Could not read commit diff: {error}"))?;
@@ -1641,6 +1651,24 @@ mod tests {
         let unknown = commit_files(&path, &"0".repeat(40)).unwrap_err();
         assert!(unknown.contains("Could not read commit"), "{unknown}");
 
+        let _ = dir;
+    }
+
+    #[test]
+    fn patches_keep_line_markers_so_context_added_and_removed_lines_are_distinct() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "note.md", "---\ntitle: x\n---\n\n# Head\n");
+        stage_and_commit(&path, "note.md", "base commit");
+
+        add_file(dir.path(), "note.md", "---\ntitle: x\n---\ndddddd\n# Head\n");
+        let expected = "\n ---\n-\n+dddddd\n # Head\n";
+        let worktree = diff(&path, "note.md", false).expect("unstaged diff");
+        assert!(worktree.contains(expected), "markers missing:\n{worktree}");
+
+        stage_file(&path, "note.md").expect("stage modification");
+        let commit_id = commit_staged(&path, "edit note").expect("commit");
+        let committed = commit_file_diff(&path, &commit_id, "note.md").expect("commit file diff");
+        assert!(committed.contains(expected), "markers missing:\n{committed}");
         let _ = dir;
     }
 
