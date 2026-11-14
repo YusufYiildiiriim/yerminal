@@ -88,6 +88,35 @@
 /* Match the approved terminal-first layout. */
 .app-shell[data-theme] .titlebar { height: 48px; flex: 0 0 48px; gap: 14px; padding: 0 16px; }
 .app-shell[data-theme] .brand-name { font-size: 14px; font-weight: 600; }
+.app-shell[data-theme] .titlebar-pages { display: flex; align-items: center; gap: 4px; }
+.app-shell[data-theme] .titlebar-page-tab {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--theme-muted);
+  font: 12px/1 Inter, "Segoe UI", sans-serif;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.app-shell[data-theme] .titlebar-page-tab:hover {
+  color: var(--theme-text);
+  background: var(--theme-raised);
+}
+.app-shell[data-theme] .titlebar-page-tab.selected,
+.app-shell[data-theme] .titlebar-page-tab[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--theme-accent) 24%, var(--theme-border));
+  background: color-mix(in srgb, var(--theme-accent) 12%, var(--theme-surface));
+  color: var(--theme-accent);
+  font-weight: 500;
+}
+.app-shell[data-theme] .titlebar-page-tab:focus-visible {
+  outline: 2px solid var(--theme-accent);
+  outline-offset: 1px;
+}
 .app-shell[data-theme] .titlebar-layout-controls { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
 .app-shell[data-theme] .titlebar-layout-controls .editor-create-group { min-height: 30px; padding: 4px 10px; font-size: 12px; }
 .app-shell[data-theme] .terminal-tab-move:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 1px; }
