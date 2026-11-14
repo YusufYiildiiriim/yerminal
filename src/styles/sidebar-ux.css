@@ -122,6 +122,8 @@
 /* Compact terminal navigation fills the space below the Explorer tree. */
 .app-shell[data-theme] .workspace-explorer-tree { flex: 0 1 36%; min-height: 88px; max-height: 46%; }
 .app-shell[data-theme] .workspace-terminal-groups { display: flex; flex: 1 1 auto; min-width: 0; min-height: 78px; flex-direction: column; border-top: 1px solid var(--theme-border); background: var(--theme-surface); }
+.app-shell[data-theme] .workspace-terminal-groups:has(.workspace-terminal-groups-toggle[aria-expanded="false"]) { flex: 0 0 34px; min-height: 34px; }
+.app-shell[data-theme] .workspace-explorer-tree:has(+ .workspace-terminal-groups .workspace-terminal-groups-toggle[aria-expanded="false"]) { flex: 1 1 36%; max-height: none; }
 .app-shell[data-theme] .workspace-terminal-groups-header { display: flex; flex: 0 0 34px; align-items: center; justify-content: space-between; padding: 0 10px 0 14px; }
 .app-shell[data-theme] .workspace-terminal-groups-header h2 { margin: 0; color: var(--theme-text); font-size: 12px; font-weight: 600; }
 .app-shell[data-theme] .workspace-terminal-groups-toggle { width: 26px; height: 26px; border: 0; border-radius: 4px; background: transparent; color: var(--theme-muted); font-size: 15px; }
