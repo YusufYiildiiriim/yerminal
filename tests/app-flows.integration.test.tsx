@@ -13,6 +13,7 @@ const tauriMocks = vi.hoisted(() => ({
   unlistenCloseRequested: vi.fn(),
   destroy: vi.fn(async () => {}),
   closeRequestedHandler: null as null | ((event: { preventDefault: () => void }) => unknown),
+  terminalExitHandlers: new Map<string, (sessionId: string) => void>(),
   openUrl: vi.fn(),
   revealItemInDir: vi.fn(),
 }));
@@ -23,7 +24,7 @@ vi.mock("@tauri-apps/api/window", () => ({
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: tauriMocks.open }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: tauriMocks.openUrl, revealItemInDir: tauriMocks.revealItemInDir }));
-vi.mock("../src/features/terminal/TerminalPane", () => ({ default: () => <div aria-label="Terminal session" /> }));
+vi.mock("../src/features/terminal/TerminalPane", () => ({ default: ({ sessionId, onExit }: { sessionId: string; onExit: (sessionId: string) => void }) => { tauriMocks.terminalExitHandlers.set(sessionId, onExit); return <div aria-label="Terminal session" />; } }));
 
 type InvokeArgs = Record<string, unknown>;
 const rootPath = "C:\\repo";
@@ -95,6 +96,7 @@ beforeEach(() => {
   tauriMocks.onFocusChanged.mockReset();
   tauriMocks.onFocusChanged.mockImplementation(async () => () => {});
   tauriMocks.closeRequestedHandler = null;
+  tauriMocks.terminalExitHandlers.clear();
   tauriMocks.unlistenCloseRequested.mockReset();
   tauriMocks.destroy.mockReset();
   tauriMocks.destroy.mockResolvedValue(undefined);
@@ -354,13 +356,38 @@ describe("Native window close guard", () => {
     return event;
   }
 
-  it("lets the window close normally when no editor tab is unsaved", async () => {
-    const user = userEvent.setup();
+  it("asks before stopping a running terminal when closing the window", async () => {
+    seedWorkspace();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<App />);
+    await waitFor(() => expect(tauriMocks.terminalExitHandlers.size).toBeGreaterThan(0));
+
+    const event = await requestClose();
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/running terminal session.*close Yerminal/i));
+    expect(tauriMocks.destroy).not.toHaveBeenCalled();
+    expect(tauriMocks.invoke).not.toHaveBeenCalledWith("close_terminal", expect.anything());
+  });
+
+  it("destroys the window after the user confirms stopping running terminals", async () => {
+    seedWorkspace();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<App />);
+    await waitFor(() => expect(tauriMocks.terminalExitHandlers.size).toBeGreaterThan(0));
+
+    const event = await requestClose();
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/running terminal session.*close Yerminal/i));
+    expect(tauriMocks.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets the window close without prompting after the terminal has exited", async () => {
     seedWorkspace();
     const confirm = vi.spyOn(window, "confirm");
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: /notes/ }));
-    await screen.findByRole("textbox", { name: "Edit notes.txt" });
+    await waitFor(() => expect(tauriMocks.terminalExitHandlers.size).toBeGreaterThan(0));
+    const [sessionId, onExit] = [...tauriMocks.terminalExitHandlers.entries()][0];
+    await act(async () => onExit(sessionId));
 
     const event = await requestClose();
     expect(event.preventDefault).not.toHaveBeenCalled();
@@ -378,7 +405,7 @@ describe("Native window close guard", () => {
     const event = await requestClose();
     expect(event.preventDefault).toHaveBeenCalled();
     expect(confirm).toHaveBeenCalledTimes(1);
-    expect(confirm.mock.calls[0][0]).toMatch(/unsaved changes.*notes\.txt/i);
+    expect(confirm.mock.calls[0][0]).toMatch(/unsaved changes.*notes\.txt.*running terminal session/i);
     expect(tauriMocks.destroy).not.toHaveBeenCalled();
   });
 

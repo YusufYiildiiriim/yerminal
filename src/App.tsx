@@ -45,7 +45,7 @@ function TerminalNameEditor({ terminalName, value, inputRef, compact = false, on
 
 type ToolId = "explorer" | "changes" | "graph";
 type ShellKind = "powershell" | "bash" | "zsh";
-type TerminalSession = { id: string; name: string; shell: ShellKind; shellLabel: string; profileId?: string; workingDirectory: string | null };
+type TerminalSession = { id: string; name: string; shell: ShellKind; shellLabel: string; profileId?: string; workingDirectory: string | null; exited: boolean };
 type LayoutNode = { type: "terminal"; sessionId: string } | { type: "split"; id: string; direction: "horizontal" | "vertical"; ratio: number; children: [LayoutNode, LayoutNode] };
 type RepositoryInfo = { root: string; branch: string; state: string };
 type FileChange = { path: string; kind: string; staged: boolean; unstaged: boolean };
@@ -677,8 +677,10 @@ function App() {
 
   const editorWorkspacesRef = useRef(editorWorkspaces);
   editorWorkspacesRef.current = editorWorkspaces;
+  const terminalsRef = useRef(terminals);
+  terminalsRef.current = terminals;
 
-  // The native close button does not go through beforeunload, so guard it in Tauri as well.
+  // Native close requests do not pass through beforeunload, so guard them in Tauri too.
   useEffect(() => {
     if (!isTauri()) return;
     let cancelled = false;
@@ -691,9 +693,19 @@ function App() {
             .flatMap((workspace) => workspace.tabs)
             .filter((tab) => tab.isSaving || isEditorTabUnsaved(tab))
             .map((tab) => tab.name))];
-          if (unsavedNames.length === 0) return;
+          const runningTerminalCount = terminalsRef.current.filter((terminal) => !terminal.exited).length;
+          if (unsavedNames.length === 0 && runningTerminalCount === 0) return;
           event.preventDefault();
-          if (window.confirm(`Discard unsaved changes to ${unsavedNames.join(", ")} and close Yerminal?`)) await appWindow.destroy();
+          const unsavedMessage = unsavedNames.length > 0 ? `Discard unsaved changes to ${unsavedNames.join(", ")}` : "";
+          const terminalMessage = runningTerminalCount > 0
+            ? `stop ${runningTerminalCount} running terminal session${runningTerminalCount === 1 ? "" : "s"}`
+            : "";
+          const prompt = unsavedMessage && terminalMessage
+            ? `${unsavedMessage} and ${terminalMessage} before closing Yerminal?`
+            : unsavedMessage
+              ? `${unsavedMessage} and close Yerminal?`
+              : `${terminalMessage[0].toLocaleUpperCase()}${terminalMessage.slice(1)} and close Yerminal?`;
+          if (window.confirm(prompt)) await appWindow.destroy();
         });
         if (cancelled) stop();
         else unlisten = stop;
@@ -706,7 +718,6 @@ function App() {
       unlisten?.();
     };
   }, []);
-
   const createEditorGroup = useCallback(() => {
     const workspaceId = activeTerminalWorkspace?.id;
     if (!workspaceId) return;
@@ -964,6 +975,7 @@ function App() {
       if (activeTerminalWorkspace) terminalTabScrollTargetRef.current = { workspaceId: activeTerminalWorkspace.id, terminalId: id };
       const terminal: TerminalSession = {
         id,
+        exited: false,
         name: activeWorkspaceTerminalIds.length === 0 ? (shell === "powershell" ? "PowerShell" : shell) : `Terminal ${activeWorkspaceTerminalIds.length + 1}`,
         shell,
         shellLabel: shell === "powershell" ? "PowerShell" : shell,
@@ -1009,7 +1021,7 @@ function App() {
   }, [showToast]);
 
   const handleTerminalExit = useCallback((id: string) => {
-    setTerminals((current) => current.map((terminal) => terminal.id === id ? { ...terminal, shellLabel: `${terminal.shellLabel} · exited` } : terminal));
+    setTerminals((current) => current.map((terminal) => terminal.id === id ? { ...terminal, exited: true, shellLabel: terminal.exited ? terminal.shellLabel : `${terminal.shellLabel} · exited` } : terminal));
   }, []);
 
   const focusTerminal = useCallback((id: string) => {
