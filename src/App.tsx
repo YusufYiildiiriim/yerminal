@@ -302,6 +302,24 @@ function App() {
 
   const [repoInfo, setRepoInfo] = useState<RepositoryInfo | null>(null);
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
+  const handleTerminalExit = useCallback((id: string) => {
+    setTerminals((current) => current.map((terminal) => terminal.id === id ? { ...terminal, exited: true, shellLabel: terminal.exited ? terminal.shellLabel : `${terminal.shellLabel} · exited` } : terminal));
+  }, []);
+
+  // PTYs outlive their workspace view, so observe exits at the app level.
+  useEffect(() => {
+    if (!isTauri()) return;
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+    void listen<string>("terminal-exited", ({ payload }) => handleTerminalExit(payload)).then((stop) => {
+      if (cancelled) stop();
+      else unlisten = stop;
+    }).catch((error: unknown) => console.warn("Could not listen for terminal exits:", error));
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [handleTerminalExit]);
   const [editingTerminalId, setEditingTerminalId] = useState<string | null>(null);
   const [terminalNameDraft, setTerminalNameDraft] = useState("");
   const terminalNameInputRef = useRef<HTMLInputElement>(null);
@@ -1019,10 +1037,6 @@ function App() {
     }));
     setTerminalViews((current) => Object.fromEntries(Object.entries(current).map(([workspaceId, selectedId]) => [workspaceId, selectedId === id ? null : selectedId])));
   }, [showToast]);
-
-  const handleTerminalExit = useCallback((id: string) => {
-    setTerminals((current) => current.map((terminal) => terminal.id === id ? { ...terminal, exited: true, shellLabel: terminal.exited ? terminal.shellLabel : `${terminal.shellLabel} · exited` } : terminal));
-  }, []);
 
   const focusTerminal = useCallback((id: string) => {
     const owner = terminalWorkspaceState.workspaces.find((workspace) => workspace.terminalIds.includes(id));

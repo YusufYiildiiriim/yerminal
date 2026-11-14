@@ -7,7 +7,8 @@ const tauriMocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   isTauri: vi.fn(() => true),
   open: vi.fn(),
-  listen: vi.fn(async () => () => {}),
+  listen: vi.fn(async (_event: string, _handler: (event: { payload: unknown }) => void) => () => {}),
+  eventHandlers: new Map<string, (event: { payload: unknown }) => void>(),
   onFocusChanged: vi.fn(async () => () => {}),
   onCloseRequested: vi.fn(),
   unlistenCloseRequested: vi.fn(),
@@ -92,7 +93,11 @@ beforeEach(() => {
   invokeMock.mockImplementation(async (command: string, args?: InvokeArgs) => defaultInvokeResult(command, args));
   tauriMocks.isTauri.mockReturnValue(true);
   tauriMocks.listen.mockReset();
-  tauriMocks.listen.mockImplementation(async () => () => {});
+  tauriMocks.eventHandlers.clear();
+  tauriMocks.listen.mockImplementation(async (event, handler) => {
+    tauriMocks.eventHandlers.set(event, handler);
+    return () => { if (tauriMocks.eventHandlers.get(event) === handler) tauriMocks.eventHandlers.delete(event); };
+  });
   tauriMocks.onFocusChanged.mockReset();
   tauriMocks.onFocusChanged.mockImplementation(async () => () => {});
   tauriMocks.closeRequestedHandler = null;
@@ -349,6 +354,25 @@ describe("Closing editor tabs", () => {
 });
 
 describe("Native window close guard", () => {
+  it("tracks an exited terminal after its workspace is no longer active", async () => {
+    const user = userEvent.setup();
+    seedTwoWorkspaces();
+    const confirm = vi.spyOn(window, "confirm");
+    render(<App />);
+    await waitFor(() => expect(tauriMocks.terminalExitHandlers.size).toBeGreaterThan(0));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Active terminal workspace" }), "workspace-2");
+    await waitFor(() => expect(tauriMocks.terminalExitHandlers.size).toBeGreaterThanOrEqual(2));
+    const terminalIds = [...tauriMocks.terminalExitHandlers.keys()];
+    expect(terminalIds).toHaveLength(2);
+
+    await act(async () => tauriMocks.terminalExitHandlers.get(terminalIds[1])?.(terminalIds[1]));
+    await act(async () => tauriMocks.eventHandlers.get("terminal-exited")?.({ payload: terminalIds[0] }));
+
+    const event = await requestClose();
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
   async function requestClose() {
     await waitFor(() => expect(tauriMocks.closeRequestedHandler).not.toBeNull());
     const event = { preventDefault: vi.fn() };
