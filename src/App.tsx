@@ -1342,13 +1342,20 @@ function App() {
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
+      if (event.repeat && key !== "tab") return;
+      const target = event.target;
+      const isTerminalInput = target instanceof HTMLElement && target.matches(".xterm-helper-textarea");
+      const isEditorInput = target instanceof HTMLElement && target.matches(".code-editor-input");
+      const isTextEntry = target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || (target instanceof HTMLElement && target.isContentEditable);
+      if (isTextEntry && !isTerminalInput && !isEditorInput) return;
       if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && key === "p") {
         event.preventDefault();
         if (!settingsOpen && !quickOpenOpen) setQuickOpenOpen(true);
         return;
       }
-      const target = event.target;
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable)) return;
       if (!(event.ctrlKey || event.metaKey)) return;
       if (event.shiftKey && key === "t") { event.preventDefault(); void createTerminal(); }
       else if (event.shiftKey && key === "w" && activeTerminalId) { event.preventDefault(); void closeTerminal(activeTerminalId); }
