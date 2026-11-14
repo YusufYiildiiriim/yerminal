@@ -106,10 +106,9 @@ export function GitGraphBranches({ repoPath, onError, onSelectBranch, onSelectCo
       </button>
       {state && <ul className="gb-commits" aria-label={`Commits on ${branch.name}`}>
         {state.commits.map((commit) => <li key={commit.id}>
-          <button type="button" className={`gb-commit${selectedCommitId === commit.id ? " on" : ""}`} aria-pressed={selectedCommitId === commit.id} title={`${commit.shortId} · ${commit.message} · ${formatFullDate(commit.timestamp)}`} onClick={(event) => chooseCommit(commit, event)} onContextMenu={(event) => chooseCommit(commit, event)}>
-            <span className="gb-hash">{commit.shortId.slice(0, 7)}</span>
+          <button type="button" className={`gb-commit${selectedCommitId === commit.id ? " on" : ""}`} aria-pressed={selectedCommitId === commit.id} aria-description={formatFullDate(commit.timestamp)} onClick={(event) => chooseCommit(commit, event)} onContextMenu={(event) => chooseCommit(commit, event)}>
             <span className="gb-msg">{commit.message}</span>
-            <span className="gb-time">{formatRelativeTime(commit.timestamp)}</span>
+            <span className="gb-sub"><span className="gb-hash">{commit.shortId.slice(0, 7)}</span><span aria-hidden="true">·</span><span className="gb-time">{formatRelativeTime(commit.timestamp)}</span></span>
           </button>
         </li>)}
         {state.loading && <li className="gb-note" role="status">Loading commits…</li>}

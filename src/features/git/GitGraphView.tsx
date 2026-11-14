@@ -265,12 +265,12 @@ export function GitGraphView({ repoPath, branch, focusRequest, commitRequest = n
             const selected = selectedCommit?.id === commit.id;
             const isHead = branch !== "" && commit.branches.includes(branch);
             const fullDate = formatFullDate(commit.timestamp);
-            return <button type="button" key={commit.id} data-commit-id={commit.id} className={`g-row${isHead ? " head" : ""}${selected ? " on" : ""}`} aria-pressed={selected} onClick={() => void selectCommit(commit)} title={`${commit.shortId} · ${fullDate}`}>
+            return <button type="button" key={commit.id} data-commit-id={commit.id} className={`g-row${isHead ? " head" : ""}${selected ? " on" : ""}`} aria-pressed={selected} onClick={() => void selectCommit(commit)} aria-description={`${commit.author}, ${fullDate}`}>
               <span className="lane" aria-hidden="true" />
               <span className="h">{commit.shortId}</span>
               <span className="m">{commit.branches.map((name) => <span className={`tag${remoteNames.has(name) ? " remote" : ""}`} key={name}>{name}</span>)}<span className="msg">{commit.message}</span></span>
               <span className="a">{commit.author}</span>
-              <span className="t" title={fullDate}>{formatRelativeTime(commit.timestamp)}</span>
+              <span className="t">{formatRelativeTime(commit.timestamp)}</span>
             </button>;
           })}
           {commits.length === 0 && !loading && <div className="g-state">No commits found.</div>}
