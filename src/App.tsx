@@ -5,8 +5,8 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { GitGraphView, type CommitFocusRequest } from "./features/git/GitGraphView";
 import { GitGraphBranches } from "./features/git/GitGraphBranches";
+import type { CommitFileChange, CommitInfo } from "./features/git/gitTypes";
 import { TerminalResourceGraph } from "./features/terminal/TerminalResourceGraph";
 import { PaneRenameInput, TerminalPaneMenu } from "./features/terminal/TerminalPaneMenu";
 import { CodeWorkspace, type EditorFileTab, type EditorGroupState } from "./features/editor/CodeWorkspace";
@@ -300,10 +300,7 @@ function App() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
-  const [activeMainView, setActiveMainView] = useState<"code" | "terminals" | "graph">("terminals");
-  const focusGraphBranch = useCallback(() => { setActiveMainView("graph"); }, []);
-  const [graphCommitFocus, setGraphCommitFocus] = useState<CommitFocusRequest | null>(null);
-  const focusGraphCommit = useCallback((commit: CommitFocusRequest["commit"]) => { setGraphCommitFocus({ commit }); setActiveMainView("graph"); }, []);
+  const [activeMainView, setActiveMainView] = useState<"code" | "terminals">("terminals");
   const [terminalLayoutMode, setTerminalLayoutMode] = useState<TerminalLayoutMode>("tiled");
   const [editorLayoutMode, setEditorLayoutMode] = useState<EditorLayoutMode>("tiled");
   const [terminalViews, setTerminalViews] = useState<Record<string, string | null>>({});
@@ -372,14 +369,13 @@ function App() {
   const activeWorkspaceTerminals = terminals.filter((terminal) => activeWorkspaceTerminalIds.includes(terminal.id));
   const activeGroupTerminals = activeWorkspaceTerminals.filter((terminal) => activeGroupTerminalIds.includes(terminal.id));
   const repoPath = activeTerminalWorkspace?.rootPath ?? "";
-  useEffect(() => { setGraphCommitFocus(null); }, [repoPath]);
   const activeTerminalId = activeTerminalWorkspace?.activeTerminalId ?? null;
   const layout = activeTerminalWorkspace?.layout ?? null;
   const activeEditorWorkspace = editorWorkspaces[activeTerminalWorkspace?.id ?? ""] ?? createEmptyEditorWorkspaceState();
 
   const handleToolClick = (toolId: ToolId, clickCount: number) => {
     setActiveTool(toolId);
-    setActiveMainView(toolId === "terminal" ? "terminals" : toolId === "graph" ? "graph" : "code");
+    setActiveMainView(toolId === "terminal" ? "terminals" : "code");
     const firstClick = toolClickRef.current;
     if (clickCount >= 2 && firstClick?.toolId === toolId) {
       if (firstClick.initiallyCollapsed) {
@@ -518,6 +514,11 @@ function App() {
       updateTab((tab) => ({ ...tab, status: "error", error }));
     }
   }, [activeTerminalWorkspace?.id, editorWorkspaces]);
+
+  const openCommitFileInEditor = useCallback((commit: CommitInfo, file: CommitFileChange) => {
+    void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } });
+    setActiveMainView("code");
+  }, [openEditorFile, repoPath]);
 
   const updateEditorFileContent = useCallback((tabId: string, content: string) => {
     const workspaceId = activeTerminalWorkspace?.id;
@@ -1401,7 +1402,7 @@ function App() {
       else if (event.shiftKey && key === "h") { consumeShortcut(); void splitActiveTerminal("horizontal"); }
       else if (event.shiftKey && key === "v") { consumeShortcut(); void splitActiveTerminal("vertical"); }
       else if (event.shiftKey && key === "g") { consumeShortcut(); setActiveTool("changes"); setActiveMainView("code"); }
-      else if (event.shiftKey && key === "b") { consumeShortcut(); setActiveTool("graph"); setActiveMainView("graph"); }
+      else if (event.shiftKey && key === "b") { consumeShortcut(); setActiveTool("graph"); setActiveMainView("code"); }
       else if (key === "tab" && activeGroupTerminals.length > 1) {
         consumeShortcut();
         const index = activeGroupTerminals.findIndex((terminal) => terminal.id === activeTerminalId);
@@ -1423,9 +1424,7 @@ function App() {
 
   const activeEditorGroup = activeEditorWorkspace.groups.find((group) => group.id === activeEditorWorkspace.activeGroupId);
   const activeEditorTab = activeEditorWorkspace.tabs.find((tab) => tab.id === activeEditorGroup?.activeTabId);
-  const titlebarBreadcrumb = activeMainView === "graph"
-    ? (repoInfo?.branch ? `Git Graph · ${repoInfo.branch}` : "Git Graph")
-    : activeMainView === "terminals"
+  const titlebarBreadcrumb = activeMainView === "terminals"
     ? `Terminal · ${activeTerminalGroup?.name ?? "Terminal"}`
     : activeEditorTab ? `Editor · ${activeEditorTab.name}` : "Editor";
 
@@ -1465,7 +1464,7 @@ function App() {
             </nav>
             <div className="workspace-sidebar-content">
             <section className="tool-content" aria-label={tools.find((tool) => tool.id === activeTool)?.label}>
-              {activeTool === "terminal" || activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} mode={activeTool === "terminal" ? "terminal" : "files"} terminalLayoutMode={terminalLayoutMode} onChangeTerminalLayoutMode={changeTerminalLayoutMode} activeTerminalGroupName={activeTerminalGroup?.name ?? "Terminal"} editorLayoutMode={editorLayoutMode} onChangeEditorLayoutMode={changeEditorLayoutMode} onCreateEditorGroup={createEditorGroup} onGoToFile={() => { if (!settingsOpen) setQuickOpenOpen(true); }} workspaces={terminalWorkspaceState.workspaces} activeWorkspaceId={activeTerminalWorkspace?.id ?? ""} onActivateWorkspace={activateWorkspace} onCreateWorkspace={createWorkspace} onRenameWorkspace={renameWorkspace} onDeleteWorkspace={() => void deleteWorkspace()} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} onFolderContextAction={handleFolderContextAction} refreshRequest={workspaceFolderRefresh} terminalGroups={activeTerminalWorkspace?.groups ?? []} activeTerminalGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} activeTerminalId={activeTerminalId ?? ""} terminals={activeWorkspaceTerminals} onCreateTerminalGroup={addTerminalGroup} onCloseTerminalGroup={closeTerminalGroup} onRenameTerminalGroup={renameTerminalGroup} onSelectTerminalGroup={(groupId) => { chooseTerminalGroup(groupId); setActiveMainView("terminals"); }} onSelectTerminal={(groupId, terminalId) => { setActiveMainView("terminals"); if (groupId !== activeTerminalWorkspace?.activeGroupId) chooseTerminalGroup(groupId); selectTerminalView(terminalId); }} onAddTerminal={() => { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToWorkspace(); }} terminalUsageOpen={terminalUsageOpen} onToggleTerminalUsage={() => { setActiveMainView("terminals"); setTerminalUsageOpen((open) => !open); }} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenDiff={(change, staged) => void openEditorFile({ id: `gitdiff:${repoPath}:${staged ? "index" : "worktree"}:${change.path}`, root: repoPath, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onError={showToast} /> : <GitGraphBranches repoPath={repoInfo ? repoPath : ""} currentBranch={repoInfo?.branch ?? ""} selectedCommitId={graphCommitFocus?.commit.id ?? null} onError={showToast} onSelectBranch={focusGraphBranch} onSelectCommit={focusGraphCommit} />}
+              {activeTool === "terminal" || activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} mode={activeTool === "terminal" ? "terminal" : "files"} terminalLayoutMode={terminalLayoutMode} onChangeTerminalLayoutMode={changeTerminalLayoutMode} activeTerminalGroupName={activeTerminalGroup?.name ?? "Terminal"} editorLayoutMode={editorLayoutMode} onChangeEditorLayoutMode={changeEditorLayoutMode} onCreateEditorGroup={createEditorGroup} onGoToFile={() => { if (!settingsOpen) setQuickOpenOpen(true); }} workspaces={terminalWorkspaceState.workspaces} activeWorkspaceId={activeTerminalWorkspace?.id ?? ""} onActivateWorkspace={activateWorkspace} onCreateWorkspace={createWorkspace} onRenameWorkspace={renameWorkspace} onDeleteWorkspace={() => void deleteWorkspace()} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} onFolderContextAction={handleFolderContextAction} refreshRequest={workspaceFolderRefresh} terminalGroups={activeTerminalWorkspace?.groups ?? []} activeTerminalGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} activeTerminalId={activeTerminalId ?? ""} terminals={activeWorkspaceTerminals} onCreateTerminalGroup={addTerminalGroup} onCloseTerminalGroup={closeTerminalGroup} onRenameTerminalGroup={renameTerminalGroup} onSelectTerminalGroup={(groupId) => { chooseTerminalGroup(groupId); setActiveMainView("terminals"); }} onSelectTerminal={(groupId, terminalId) => { setActiveMainView("terminals"); if (groupId !== activeTerminalWorkspace?.activeGroupId) chooseTerminalGroup(groupId); selectTerminalView(terminalId); }} onAddTerminal={() => { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToWorkspace(); }} terminalUsageOpen={terminalUsageOpen} onToggleTerminalUsage={() => { setActiveMainView("terminals"); setTerminalUsageOpen((open) => !open); }} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenDiff={(change, staged) => void openEditorFile({ id: `gitdiff:${repoPath}:${staged ? "index" : "worktree"}:${change.path}`, root: repoPath, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onError={showToast} /> : <GitGraphBranches repoPath={repoInfo ? repoPath : ""} currentBranch={repoInfo?.branch ?? ""} onError={showToast} onOpenFile={openCommitFileInEditor} />}
             </section>
             </div>
           </div>
@@ -1486,7 +1485,7 @@ function App() {
             onMoveTab={moveEditorTab}
             onCloseGroup={closeEditorGroup}
             onModeState={registerEditorLayoutControl}
-          />} graph={activeMainView === "graph" ? <GitGraphView key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} commitRequest={graphCommitFocus} onCloseCommit={() => setGraphCommitFocus(null)} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } })} /> : null} terminal={<div className={`terminal-workspace-view${terminalUsageOpen ? " has-terminal-usage" : ""}`}>
+          />} terminal={<div className={`terminal-workspace-view${terminalUsageOpen ? " has-terminal-usage" : ""}`}>
           <section className="terminal-surface" aria-label="Terminal workspace">
             <TerminalWorkspaceLayout layout={layout} focusedTerminalId={focusedTerminalView && activeGroupTerminalIds.includes(focusedTerminalView) ? focusedTerminalView : null} terminals={activeWorkspaceTerminals} visibleTerminalIds={activeGroupTerminalIds} workspaceId={`${activeTerminalWorkspace?.id ?? ""}:${activeTerminalGroup?.id ?? ""}`} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} onLinkHint={showToast} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} groups={activeTerminalWorkspace?.groups ?? []} activeGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} nameInputRef={terminalNameInputRef} onBeginRename={beginRenameTerminal} onChangeRenameDraft={setTerminalNameDraft} onSaveRename={saveTerminalName} onCancelRename={cancelTerminalRename} onMoveToGroup={moveTerminalToGroup} onSplit={(terminalId) => void splitActiveTerminal("horizontal", terminalId)} onShowAll={() => selectTerminalView(null)} />
             {activeGroupTerminalIds.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Terminal group is empty</div><p>Add a terminal to get started.</p><button className="primary-button" onClick={() => void addTerminalToWorkspace()} type="button">New Terminal</button></div>}

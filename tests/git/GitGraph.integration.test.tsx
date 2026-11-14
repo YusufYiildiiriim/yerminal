@@ -94,21 +94,6 @@ async function openGitGraph(user: ReturnType<typeof userEvent.setup>) {
   return rail;
 }
 
-async function selectBranchCommit(user: ReturnType<typeof userEvent.setup>, branch: string, commit: RegExp, how: "click" | "contextmenu" = "click") {
-  const panel = document.querySelector(".tools-panel") as HTMLElement;
-  let list = within(panel).queryByRole("list", { name: `Commits on ${branch}` });
-  if (!list) {
-    await user.click(await within(panel).findByRole("button", { name: branch }));
-    list = await within(panel).findByRole("list", { name: `Commits on ${branch}` });
-  }
-  const row = await within(list).findByRole("button", { name: commit });
-  if (how === "contextmenu") fireEvent.contextMenu(row);
-  else await user.click(row);
-  const graphView = await screen.findByRole("region", { name: "Commit graph" });
-  const details = await within(graphView).findByRole("region", { name: "Commit details" });
-  return { panel, list, graphView, details };
-}
-
 beforeEach(() => {
   cleanup();
   localStorage.clear();
@@ -122,17 +107,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Git Graph: branches on the left, file changes in the middle, commit details on the right", () => {
-  it("opens with the branch panel, expands the current branch and shows no duplicate commit list in the middle", async () => {
+describe("Git Graph lives in the side panel: branches, commits, and commit details under the commit", () => {
+  it("opens the branch panel with the current branch expanded and keeps the editor in the main area", async () => {
     const user = userEvent.setup();
     render(<App />);
     const rail = await openGitGraph(user);
     expect(within(rail).getByRole("button", { name: "Git Graph" })).toHaveAttribute("aria-pressed", "true");
-
-    const graphView = await screen.findByRole("region", { name: "Commit graph" });
-    expect(within(graphView).getByText("Select a commit on the left to see its changes.")).toBeInTheDocument();
-    expect(graphView.querySelector(".g-row")).toBeNull();
-    expect(graphView.querySelector(".g-list")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Commit graph" })).not.toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent(/^Editor/));
 
     const panel = document.querySelector(".tools-panel") as HTMLElement;
     expect(within(panel).getByText("Branches")).toBeInTheDocument();
@@ -144,82 +126,69 @@ describe("Git Graph: branches on the left, file changes in the middle, commit de
     expect(invoke).toHaveBeenCalledWith("git_history", expect.objectContaining({ branch: "develop", skip: 0 }));
   });
 
-  it("shows the current branch in the breadcrumb, or Git Graph alone without a repository", async () => {
-    const user = userEvent.setup();
-    const { unmount } = render(<App />);
-    await openGitGraph(user);
-    await waitFor(() => expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent("Git Graph · develop"));
-    unmount();
-
-    cleanup();
-    localStorage.clear();
-    seedWorkspace();
-    installGitMock({ repo: false });
-    render(<App />);
-    await openGitGraph(userEvent.setup());
-    await waitFor(() => expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent(/^Git Graph$/));
-  });
-
-  it("selecting a commit shows its details and files on the right and the first file diff in the middle", async () => {
+  it("clicking a commit opens its message, author, date and changed files right under it, and clicking again closes them", async () => {
     const user = userEvent.setup();
     render(<App />);
     await openGitGraph(user);
-    const { graphView, details } = await selectBranchCommit(user, "develop", /Add graph view/);
+    const panel = document.querySelector(".tools-panel") as HTMLElement;
+    const list = await within(panel).findByRole("list", { name: "Commits on develop" });
+    const commit = await within(list).findByRole("button", { name: /Add graph view/ });
+    await user.click(commit);
 
-    expect(within(details).getByRole("heading", { name: "Add graph view" })).toBeInTheDocument();
+    expect(commit).toHaveAttribute("aria-expanded", "true");
+    const details = await within(list).findByRole("region", { name: "Details for Add graph view" });
+    expect(commit.closest("li")?.contains(details)).toBe(true);
+    expect(within(details).getByText("Yusuf")).toBeInTheDocument();
     expect(within(details).getByText("aaaaaaaa")).toBeInTheDocument();
-    expect(await within(details).findByRole("button", { name: "src/App.tsx" })).toHaveAttribute("aria-pressed", "true");
+    expect(await within(details).findByRole("button", { name: "src/App.tsx" })).toBeInTheDocument();
+    expect(within(details).getByRole("button", { name: "src/features/git/GitGraphView.tsx" })).toBeInTheDocument();
     expect(invoke).toHaveBeenCalledWith("git_commit_files", { path: rootPath, commitId: "a".repeat(40) });
+    expect(screen.queryByRole("region", { name: "Commit details" })).not.toBeInTheDocument();
 
-    const diff = await within(graphView).findByRole("region", { name: "File changes" });
-    expect(details.contains(diff)).toBe(false);
-    expect(invoke).toHaveBeenCalledWith("git_commit_file_diff", { path: rootPath, commitId: "a".repeat(40), filePath: "src/App.tsx" });
-    expect(within(diff).getByText("new line")).toBeInTheDocument();
-    expect(within(diff).getByText("old line")).toBeInTheDocument();
-    expect(diff.querySelector(".diff-line.added")).toBeInTheDocument();
-    expect(diff.querySelector(".diff-line.removed")).toBeInTheDocument();
+    await user.click(commit);
+    expect(commit).toHaveAttribute("aria-expanded", "false");
+    expect(within(list).queryByRole("region", { name: "Details for Add graph view" })).not.toBeInTheDocument();
   });
 
-  it("clicking another changed file shows that file in the middle", async () => {
+  it("clicking a changed file opens it from that commit in the editor", async () => {
     const user = userEvent.setup();
     render(<App />);
     await openGitGraph(user);
-    const { details } = await selectBranchCommit(user, "develop", /Add graph view/);
-    const other = await within(details).findByRole("button", { name: "src/features/git/GitGraphView.tsx" });
-    await user.click(other);
-    expect(other).toHaveAttribute("aria-pressed", "true");
-    await waitFor(() => expect(invoke).toHaveBeenCalledWith("git_commit_file_diff", { path: rootPath, commitId: "a".repeat(40), filePath: "src/features/git/GitGraphView.tsx" }));
-    expect(document.querySelector(".g-diff-head")).toHaveTextContent("src/features/git/GitGraphView.tsx");
+    const panel = document.querySelector(".tools-panel") as HTMLElement;
+    const list = await within(panel).findByRole("list", { name: "Commits on develop" });
+    await user.click(await within(list).findByRole("button", { name: /Add graph view/ }));
+    const details = await within(list).findByRole("region", { name: "Details for Add graph view" });
+    await user.click(await within(details).findByRole("button", { name: "src/App.tsx" }));
+
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("git_commit_file_content", { path: rootPath, commitId: "a".repeat(40), filePath: "src/App.tsx" }));
+    await waitFor(() => expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent("Editor · App.tsx"));
   });
 
-  it("Open in editor opens the shown file from the commit in the editor", async () => {
+  it("right-clicking a commit opens its details too", async () => {
     const user = userEvent.setup();
     render(<App />);
     await openGitGraph(user);
-    const { graphView } = await selectBranchCommit(user, "develop", /Add graph view/);
-    await user.click(await within(graphView).findByRole("button", { name: "Open src/App.tsx in editor" }));
-    await waitFor(() => expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent(/^Editor/));
-    expect(invoke).toHaveBeenCalledWith("git_commit_file_content", { path: rootPath, commitId: "a".repeat(40), filePath: "src/App.tsx" });
+    const panel = document.querySelector(".tools-panel") as HTMLElement;
+    await user.click(await within(panel).findByRole("button", { name: "main" }));
+    const list = await within(panel).findByRole("list", { name: "Commits on main" });
+    fireEvent.contextMenu(await within(list).findByRole("button", { name: /Initial setup/ }));
+    const details = await within(list).findByRole("region", { name: "Details for Initial setup" });
+    expect(await within(details).findByRole("button", { name: "src/App.tsx" })).toBeInTheDocument();
   });
 
-  it("shows an inline error in the middle when the file diff fails", async () => {
-    installGitMock({ failDiff: true });
+  it("shows an inline error under the commit when its files cannot be loaded", async () => {
     const user = userEvent.setup();
     render(<App />);
     await openGitGraph(user);
-    const { graphView } = await selectBranchCommit(user, "develop", /Add graph view/);
-    const main = graphView.querySelector(".g-main") as HTMLElement;
-    expect(await within(main).findByRole("alert")).toHaveTextContent("diff unavailable");
-  });
-
-  it("closing the details clears the selection and the middle goes back to its empty state", async () => {
-    const user = userEvent.setup();
-    render(<App />);
-    await openGitGraph(user);
-    const { graphView, details } = await selectBranchCommit(user, "develop", /Add graph view/);
-    await user.click(within(details).getByRole("button", { name: "Close commit details" }));
-    expect(within(graphView).queryByRole("region", { name: "Commit details" })).not.toBeInTheDocument();
-    expect(within(graphView).getByText("Select a commit on the left to see its changes.")).toBeInTheDocument();
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === "git_commit_files") throw "files unavailable";
+      return undefined;
+    });
+    const panel = document.querySelector(".tools-panel") as HTMLElement;
+    const list = await within(panel).findByRole("list", { name: "Commits on develop" });
+    await user.click(within(list).getByRole("button", { name: /Add graph view/ }));
+    const details = await within(list).findByRole("region", { name: "Details for Add graph view" });
+    expect(await within(details).findByRole("alert")).toHaveTextContent("files unavailable");
   });
 
   it("clicking a branch expands its own commits under it and clicking again collapses them", async () => {
@@ -240,20 +209,13 @@ describe("Git Graph: branches on the left, file changes in the middle, commit de
     expect(within(panel).queryByRole("list", { name: "Commits on main" })).not.toBeInTheDocument();
   });
 
-  it("right-clicking a commit under a branch shows its changes too", async () => {
-    const user = userEvent.setup();
-    render(<App />);
-    await openGitGraph(user);
-    const { details } = await selectBranchCommit(user, "main", /Initial setup/, "contextmenu");
-    expect(within(details).getByRole("heading", { name: "Initial setup" })).toBeInTheDocument();
-    expect(await within(details).findByText("src/App.tsx")).toBeInTheDocument();
-  });
-
-  it("Ctrl+Shift+B opens the graph view", async () => {
+  it("Ctrl+Shift+B selects Git Graph in the rail", async () => {
     const user = userEvent.setup();
     render(<App />);
     await user.keyboard("{Control>}{Shift>}b{/Shift}{/Control}");
-    await waitFor(() => expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent("Git Graph · develop"));
-    expect(await screen.findByRole("region", { name: "Commit graph" })).toBeVisible();
+    const rail = screen.getByRole("navigation", { name: "Workspace tools" });
+    expect(within(rail).getByRole("button", { name: "Git Graph" })).toHaveAttribute("aria-pressed", "true");
+    const panel = document.querySelector(".tools-panel") as HTMLElement;
+    expect(await within(panel).findByText("Branches")).toBeInTheDocument();
   });
 });

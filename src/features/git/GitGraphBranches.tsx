@@ -1,37 +1,46 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import type { CommitInfo } from "./GitGraphView";
-import { formatFullDate, formatRelativeTime } from "./gitGraphFormat";
+import type { CommitFileChange, CommitInfo } from "./gitTypes";
+import { changeKindLetter, formatFullDate, formatRelativeTime } from "./gitGraphFormat";
+import "./git-graph.css";
 
 export type BranchInfo = { name: string; isRemote: boolean; isHead: boolean; ahead: number | null; behind: number | null };
 
 type Props = {
   repoPath: string;
   currentBranch?: string;
-  selectedCommitId?: string | null;
   onError: (message: string) => void;
-  onSelectBranch: (name: string) => void;
-  onSelectCommit: (commit: CommitInfo) => void;
+  onOpenFile: (commit: CommitInfo, file: CommitFileChange) => void;
 };
 
 type BranchCommits = { commits: CommitInfo[]; hasMore: boolean; loading: boolean; error: string | null };
+type CommitDetails = { files: CommitFileChange[]; loading: boolean; error: string | null };
 
 const BRANCH_PAGE_SIZE = 30;
 
-/** Side panel for Git Graph: branches expand to their own commits; a commit click shows its changes on the right. */
-export function GitGraphBranches({ repoPath, currentBranch = "", selectedCommitId = null, onError, onSelectBranch, onSelectCommit }: Props) {
+/**
+ * Git Graph side panel: branches expand to their commits; a commit expands in place to show its
+ * message, author, date and changed files; a file opens in the editor.
+ */
+export function GitGraphBranches({ repoPath, currentBranch = "", onError, onOpenFile }: Props) {
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [expanded, setExpanded] = useState<Record<string, BranchCommits>>({});
+  const [openCommit, setOpenCommit] = useState<{ branch: string; id: string } | null>(null);
+  const [details, setDetails] = useState<Record<string, CommitDetails>>({});
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
   const repoPathRef = useRef(repoPath);
   repoPathRef.current = repoPath;
   const expandedRef = useRef(expanded);
   expandedRef.current = expanded;
+  const detailsRequestRef = useRef(0);
 
   useEffect(() => {
     setBranches([]);
     setExpanded({});
+    setOpenCommit(null);
+    setDetails({});
+    detailsRequestRef.current += 1;
     if (!repoPath || !isTauri()) return;
     let cancelled = false;
     invoke<BranchInfo[]>("git_branches", { path: repoPath })
@@ -77,21 +86,43 @@ export function GitGraphBranches({ repoPath, currentBranch = "", selectedCommitI
   }, [branches, currentBranch, repoPath]);
 
   const toggleBranch = (name: string) => {
-    onSelectBranch(name);
     if (expandedRef.current[name]) {
       setExpanded((current) => {
         const next = { ...current };
         delete next[name];
         return next;
       });
+      if (openCommit?.branch === name) setOpenCommit(null);
       return;
     }
     void loadBranch(name, false);
   };
 
-  const chooseCommit = (commit: CommitInfo, event?: MouseEvent) => {
+  const loadDetails = async (commit: CommitInfo) => {
+    const requestedPath = repoPathRef.current;
+    if (!requestedPath || !isTauri()) return;
+    const requestId = ++detailsRequestRef.current;
+    setDetails((current) => ({ ...current, [commit.id]: { files: [], loading: true, error: null } }));
+    try {
+      const response = await invoke<CommitFileChange[]>("git_commit_files", { path: requestedPath, commitId: commit.id });
+      if (repoPathRef.current !== requestedPath) return;
+      setDetails((current) => ({ ...current, [commit.id]: { files: Array.isArray(response) ? response : [], loading: false, error: null } }));
+    } catch (reason) {
+      if (repoPathRef.current !== requestedPath) return;
+      setDetails((current) => ({ ...current, [commit.id]: { files: [], loading: false, error: String(reason) } }));
+      if (requestId === detailsRequestRef.current) onErrorRef.current(String(reason));
+    }
+  };
+
+  const toggleCommit = (branch: string, commit: CommitInfo, event?: MouseEvent) => {
     event?.preventDefault();
-    onSelectCommit(commit);
+    if (openCommit?.branch === branch && openCommit.id === commit.id) {
+      if (event?.type !== "contextmenu") setOpenCommit(null);
+      return;
+    }
+    setOpenCommit({ branch, id: commit.id });
+    const known = details[commit.id];
+    if (!known || known.error) void loadDetails(commit);
   };
 
   if (!repoPath) {
@@ -104,6 +135,39 @@ export function GitGraphBranches({ repoPath, currentBranch = "", selectedCommitI
   const local = branches.filter((branch) => !branch.isRemote);
   const remote = branches.filter((branch) => branch.isRemote);
 
+  const renderDetails = (commit: CommitInfo) => {
+    const state = details[commit.id];
+    const lines = commit.message.split(/\r?\n/);
+    const subject = lines[0] ?? "";
+    const body = lines.slice(1).join("\n").trim();
+    return <section className="gb-detail" aria-label={`Details for ${subject}`}>
+      {body && <p className="gb-detail-body">{body}</p>}
+      <dl className="gb-detail-meta">
+        <div><dt>Author</dt><dd>{commit.author}</dd></div>
+        <div><dt>Date</dt><dd>{formatFullDate(commit.timestamp)}</dd></div>
+        <div><dt>Commit</dt><dd><code>{commit.shortId}</code></dd></div>
+      </dl>
+      <div className="gb-detail-files-head"><span>Changed files</span><span>{state?.loading ? "…" : state?.files.length ?? 0}</span></div>
+      {!state || state.loading ? <div className="gb-note" role="status">Loading changed files…</div>
+        : state.error ? <div className="gb-note gb-error" role="alert"><span>{state.error}</span> <button type="button" className="gb-retry" onClick={() => void loadDetails(commit)}>Retry</button></div>
+        : state.files.length === 0 ? <div className="gb-note">No files changed in this commit.</div>
+        : <ul className="gb-files" aria-label={`Changed files in ${commit.shortId}`}>
+          {state.files.map((file) => {
+            const letter = changeKindLetter(file.kind);
+            const name = file.path.split(/[\\/]/).pop() ?? file.path;
+            const folder = file.path.slice(0, Math.max(0, file.path.length - name.length - 1));
+            return <li key={file.path}>
+              <button type="button" className="gb-file" aria-label={file.path} onClick={() => onOpenFile(commit, file)}>
+                <span className={`k ${letter}`} aria-hidden="true">{letter}</span>
+                <span className="n">{name}</span>
+                {folder && <span className="d">{folder}</span>}
+              </button>
+            </li>;
+          })}
+        </ul>}
+    </section>;
+  };
+
   const renderBranch = (branch: BranchInfo) => {
     const state = expanded[branch.name];
     return <div className="gb-branch" key={branch.name}>
@@ -114,12 +178,16 @@ export function GitGraphBranches({ repoPath, currentBranch = "", selectedCommitI
         {!branch.isRemote && <span className="meta">{aheadBehindLabel(branch)}</span>}
       </button>
       {state && <ul className="gb-commits" aria-label={`Commits on ${branch.name}`}>
-        {state.commits.map((commit) => <li key={commit.id}>
-          <button type="button" className={`gb-commit${selectedCommitId === commit.id ? " on" : ""}`} aria-pressed={selectedCommitId === commit.id} aria-description={formatFullDate(commit.timestamp)} onClick={(event) => chooseCommit(commit, event)} onContextMenu={(event) => chooseCommit(commit, event)}>
-            <span className="gb-msg">{commit.message}</span>
-            <span className="gb-sub"><span className="gb-hash">{commit.shortId.slice(0, 7)}</span><span aria-hidden="true">·</span><span className="gb-time">{formatRelativeTime(commit.timestamp)}</span></span>
-          </button>
-        </li>)}
+        {state.commits.map((commit) => {
+          const open = openCommit?.branch === branch.name && openCommit.id === commit.id;
+          return <li key={commit.id} className={open ? "open" : undefined}>
+            <button type="button" className={`gb-commit${open ? " on" : ""}`} aria-expanded={open} aria-description={formatFullDate(commit.timestamp)} onClick={(event) => toggleCommit(branch.name, commit, event)} onContextMenu={(event) => toggleCommit(branch.name, commit, event)}>
+              <span className="gb-msg">{commit.message.split(/\r?\n/)[0]}</span>
+              <span className="gb-sub"><span className="gb-hash">{commit.shortId.slice(0, 7)}</span><span aria-hidden="true">·</span><span className="gb-time">{formatRelativeTime(commit.timestamp)}</span></span>
+            </button>
+            {open && renderDetails(commit)}
+          </li>;
+        })}
         {state.loading && <li className="gb-note" role="status">Loading commits…</li>}
         {state.error && <li className="gb-note gb-error" role="alert">{state.error}</li>}
         {!state.loading && !state.error && state.commits.length === 0 && <li className="gb-note">No commits</li>}

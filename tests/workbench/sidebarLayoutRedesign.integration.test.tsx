@@ -143,7 +143,7 @@ describe("Sidebar and header layout redesign", () => {
     await user.click(within(rail).getByRole("button", { name: "Terminal" }));
     await user.keyboard("{Control>}{Shift>}b{/Shift}{/Control}");
     expect(within(rail).getByRole("button", { name: "Git Graph" })).toHaveAttribute("aria-pressed", "true");
-    expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent(/^Git Graph/);
+    expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent(/^Editor/);
   });
 
   it("labels the side panel layout block as a group", () => {
