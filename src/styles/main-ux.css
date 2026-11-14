@@ -130,3 +130,47 @@
 
 /* Usage strip sits flush under the panes. */
 .app-shell[data-theme] .terminal-workspace-view.has-terminal-usage { gap: 0; padding-bottom: 0; }
+
+/* Minimap: a soft inset card on the editor's right edge, tinted from the theme. */
+.app-shell[data-theme] .code-editor-minimap {
+  top: 6px;
+  right: 6px;
+  bottom: 6px;
+  width: 86px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  border-left-color: color-mix(in srgb, var(--theme-border) 70%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--theme-surface) 70%, var(--theme-editor));
+  opacity: 1;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+.app-shell[data-theme] .code-editor-minimap:hover {
+  border-color: color-mix(in srgb, var(--theme-text) 14%, var(--theme-border));
+}
+.app-shell[data-theme] .code-editor-minimap-code {
+  padding: 4px 0 0 6px;
+  opacity: .62;
+}
+.app-shell[data-theme] .code-editor-minimap:hover .code-editor-minimap-code { opacity: .78; }
+.app-shell[data-theme] .code-editor-minimap-window {
+  left: 3px;
+  right: 3px;
+  border: 0;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--theme-text) 9%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-text) 10%, transparent);
+  transition: background-color 160ms ease;
+}
+.app-shell[data-theme] .code-editor-minimap:hover .code-editor-minimap-window {
+  background: color-mix(in srgb, var(--theme-text) 13%, transparent);
+}
+.app-shell[data-theme] .code-editor-minimap:active .code-editor-minimap-window {
+  background: color-mix(in srgb, var(--theme-accent) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 32%, transparent);
+}
+@media (max-width: 1000px) {
+  .app-shell[data-theme] .code-editor-minimap { width: 58px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell[data-theme] :is(.code-editor-minimap, .code-editor-minimap-window) { transition: none; }
+}
