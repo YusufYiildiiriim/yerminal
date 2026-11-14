@@ -350,11 +350,12 @@ function App() {
   const editorModeSetterRef = useRef<((mode: EditorLayoutMode) => void) | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeTerminalWorkspace = terminalWorkspaceState.workspaces.find((workspace) => workspace.id === terminalWorkspaceState.activeId) ?? terminalWorkspaceState.workspaces[0];
-  const selectedTerminalView = terminalViews[activeTerminalWorkspace?.id ?? ""] ?? null;
+  const activeViewKey = terminalViewKey(activeTerminalWorkspace?.id ?? "", activeTerminalWorkspace?.activeGroupId ?? "");
+  const selectedTerminalView = terminalViews[activeViewKey] ?? null;
   const focusedTerminalView = selectedTerminalView && activeTerminalWorkspace?.terminalIds.includes(selectedTerminalView) ? selectedTerminalView : null;
   const selectTerminalView = (id: string | null) => {
     if (activeTerminalWorkspace) {
-      setTerminalViews((current) => ({ ...current, [activeTerminalWorkspace.id]: id }));
+      setTerminalViews((current) => ({ ...current, [activeViewKey]: id }));
       const group = activeTerminalWorkspace.groups.find((item) => item.id === activeTerminalWorkspace.activeGroupId) ?? activeTerminalWorkspace.groups[0];
       if (!id && group && !group.layout && group.terminalIds.length > 1) {
         updateTerminalWorkspace(activeTerminalWorkspace.id, (workspace) => updateActiveTerminalGroup(workspace, (active) => ({ ...active, layout: active.layout ?? buildTerminalLayout(active.terminalIds) })));
@@ -851,7 +852,6 @@ function App() {
       const next = createTerminalGroup({ groups: current.groups, activeGroupId: current.activeGroupId });
       return syncTerminalGroups(current, next.groups, next.activeGroupId);
     });
-    setTerminalViews((current) => ({ ...current, [workspace.id]: null }));
   }, [activeTerminalWorkspace, updateTerminalWorkspace]);
 
   const chooseTerminalGroup = useCallback((groupId: string) => {
@@ -861,7 +861,6 @@ function App() {
       const next = selectTerminalGroupState({ groups: current.groups, activeGroupId: current.activeGroupId }, groupId);
       return syncTerminalGroups(current, next.groups, next.activeGroupId);
     });
-    setTerminalViews((current) => ({ ...current, [workspace.id]: null }));
   }, [activeTerminalWorkspace, updateTerminalWorkspace]);
 
   const moveTerminalToGroup = useCallback((sessionId: string, groupId: string) => {
@@ -871,7 +870,7 @@ function App() {
       const next = moveTerminalBetweenGroups({ groups: current.groups, activeGroupId: current.activeGroupId }, sessionId, groupId);
       return syncTerminalGroups(current, next.groups, next.activeGroupId);
     });
-    setTerminalViews((current) => ({ ...current, [workspace.id]: null }));
+    setTerminalViews((current) => ({ ...current, [terminalViewKey(workspace.id, workspace.activeGroupId)]: null }));
   }, [activeTerminalWorkspace, updateTerminalWorkspace]);
 
   const closeTerminalGroup = useCallback((groupId: string) => {
@@ -881,7 +880,6 @@ function App() {
       const next = closeTerminalGroupState({ groups: current.groups, activeGroupId: current.activeGroupId }, groupId);
       return next === current || next.groups === current.groups ? current : syncTerminalGroups(current, next.groups, next.activeGroupId);
     });
-    setTerminalViews((current) => ({ ...current, [workspace.id]: null }));
   }, [activeTerminalWorkspace, updateTerminalWorkspace]);
 
   const dockTerminalToTiledLayout = useCallback((sessionId: string, edge: TerminalDockEdge) => {
@@ -907,7 +905,7 @@ function App() {
   const changeTerminalLayoutMode = useCallback((mode: TerminalLayoutMode) => {
     const workspace = activeTerminalWorkspace;
     if (mode === "floating" && workspace) {
-      setTerminalViews((current) => ({ ...current, [workspace.id]: null }));
+      setTerminalViews((current) => ({ ...current, [terminalViewKey(workspace.id, workspace.activeGroupId)]: null }));
     }
     const group = workspace?.groups.find((item) => item.id === workspace.activeGroupId) ?? workspace?.groups[0];
     if (mode === "tiled" && workspace && group && !group.layout && group.terminalIds.length > 1) {
@@ -1067,6 +1065,23 @@ function App() {
       pendingTerminalCloseIdsRef.current.delete(id);
     }
   }, [showToast]);
+
+  // Picking a terminal in the sidebar: inside the current group it focuses that terminal; coming
+  // from another group it keeps the target group's remembered view (a group shown as "all
+  // terminals" stays that way and the terminal just becomes active).
+  const selectTerminalFromSidebar = (groupId: string, terminalId: string) => {
+    const workspace = activeTerminalWorkspace;
+    if (!workspace) return;
+    setActiveMainView("terminals");
+    const key = terminalViewKey(workspace.id, groupId);
+    if (groupId === workspace.activeGroupId) {
+      setTerminalViews((current) => ({ ...current, [key]: terminalId }));
+      return;
+    }
+    chooseTerminalGroup(groupId);
+    if (terminalViews[key]) setTerminalViews((current) => ({ ...current, [key]: terminalId }));
+    else focusTerminal(terminalId);
+  };
 
   const focusTerminal = useCallback((id: string) => {
     const owner = terminalWorkspaceState.workspaces.find((workspace) => workspace.terminalIds.includes(id));
@@ -1311,7 +1326,7 @@ function App() {
       folderPath,
       createTerminalAt: (path) => createTerminal(true, path),
       activateTerminal: (id) => {
-        setTerminalViews((current) => ({ ...current, [workspace.id]: id }));
+        setTerminalViews((current) => ({ ...current, [terminalViewKey(workspace.id, workspace.activeGroupId)]: id }));
         setActiveMainView("terminals");
       },
       onDesktopRequired: () => showToast("Install Rust/Cargo and launch the desktop app with npm run tauri dev."),
@@ -1408,7 +1423,7 @@ function App() {
         const next = (index + direction + activeGroupTerminals.length) % activeGroupTerminals.length;
         const nextId = activeGroupTerminals[next].id;
         focusTerminal(nextId);
-        if (focusedTerminalView && activeTerminalWorkspace) setTerminalViews((current) => ({ ...current, [activeTerminalWorkspace.id]: nextId }));
+        if (focusedTerminalView && activeTerminalWorkspace) setTerminalViews((current) => ({ ...current, [activeViewKey]: nextId }));
       }
     };
     window.addEventListener("keydown", handleShortcut, true);
@@ -1462,7 +1477,7 @@ function App() {
             </nav>
             <div className="workspace-sidebar-content">
             <section className="tool-content" aria-label={tools.find((tool) => tool.id === activeTool)?.label}>
-              {activeTool === "terminal" || activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} mode={activeTool === "terminal" ? "terminal" : "files"} terminalLayoutMode={terminalLayoutMode} onChangeTerminalLayoutMode={changeTerminalLayoutMode} activeTerminalGroupName={activeTerminalGroup?.name ?? "Terminal"} editorLayoutMode={editorLayoutMode} onChangeEditorLayoutMode={changeEditorLayoutMode} onCreateEditorGroup={createEditorGroup} onGoToFile={() => { if (!settingsOpen) setQuickOpenOpen(true); }} workspaces={terminalWorkspaceState.workspaces} activeWorkspaceId={activeTerminalWorkspace?.id ?? ""} onActivateWorkspace={activateWorkspace} onCreateWorkspace={createWorkspace} onRenameWorkspace={renameWorkspace} onDeleteWorkspace={() => void deleteWorkspace()} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} onFolderContextAction={handleFolderContextAction} refreshRequest={workspaceFolderRefresh} terminalGroups={activeTerminalWorkspace?.groups ?? []} activeTerminalGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} activeTerminalId={activeTerminalId ?? ""} terminals={activeWorkspaceTerminals} onCreateTerminalGroup={addTerminalGroup} onCloseTerminalGroup={closeTerminalGroup} onRenameTerminalGroup={renameTerminalGroup} onSelectTerminalGroup={(groupId) => { chooseTerminalGroup(groupId); setActiveMainView("terminals"); }} onSelectTerminal={(groupId, terminalId) => { setActiveMainView("terminals"); if (groupId !== activeTerminalWorkspace?.activeGroupId) chooseTerminalGroup(groupId); selectTerminalView(terminalId); }} onAddTerminal={() => { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToWorkspace(); }} terminalUsageOpen={terminalUsageOpen} onToggleTerminalUsage={() => { setActiveMainView("terminals"); setTerminalUsageOpen((open) => !open); }} onRenameTerminal={(groupId, terminal) => { setActiveMainView("terminals"); if (groupId !== activeTerminalWorkspace?.activeGroupId) chooseTerminalGroup(groupId); selectTerminalView(terminal.id); beginRenameTerminal(terminal); }} onMoveTerminal={moveTerminalToGroup} onCloseTerminal={(terminalId) => void closeTerminal(terminalId)} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenDiff={(change, staged) => void openEditorFile({ id: `gitdiff:${repoPath}:${staged ? "index" : "worktree"}:${change.path}`, root: repoPath, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onError={showToast} /> : <GitGraphPanel key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} onOpenFile={openCommitFileInEditor} />}
+              {activeTool === "terminal" || activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} mode={activeTool === "terminal" ? "terminal" : "files"} terminalLayoutMode={terminalLayoutMode} onChangeTerminalLayoutMode={changeTerminalLayoutMode} activeTerminalGroupName={activeTerminalGroup?.name ?? "Terminal"} editorLayoutMode={editorLayoutMode} onChangeEditorLayoutMode={changeEditorLayoutMode} onCreateEditorGroup={createEditorGroup} onGoToFile={() => { if (!settingsOpen) setQuickOpenOpen(true); }} workspaces={terminalWorkspaceState.workspaces} activeWorkspaceId={activeTerminalWorkspace?.id ?? ""} onActivateWorkspace={activateWorkspace} onCreateWorkspace={createWorkspace} onRenameWorkspace={renameWorkspace} onDeleteWorkspace={() => void deleteWorkspace()} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} onFolderContextAction={handleFolderContextAction} refreshRequest={workspaceFolderRefresh} terminalGroups={activeTerminalWorkspace?.groups ?? []} activeTerminalGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} activeTerminalId={activeTerminalId ?? ""} terminals={activeWorkspaceTerminals} onCreateTerminalGroup={addTerminalGroup} onCloseTerminalGroup={closeTerminalGroup} onRenameTerminalGroup={renameTerminalGroup} onSelectTerminalGroup={(groupId) => { chooseTerminalGroup(groupId); setActiveMainView("terminals"); }} onSelectTerminal={selectTerminalFromSidebar} onAddTerminal={() => { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToWorkspace(); }} terminalUsageOpen={terminalUsageOpen} onToggleTerminalUsage={() => { setActiveMainView("terminals"); setTerminalUsageOpen((open) => !open); }} onRenameTerminal={(groupId, terminal) => { selectTerminalFromSidebar(groupId, terminal.id); beginRenameTerminal(terminal); }} onMoveTerminal={moveTerminalToGroup} onCloseTerminal={(terminalId) => void closeTerminal(terminalId)} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenDiff={(change, staged) => void openEditorFile({ id: `gitdiff:${repoPath}:${staged ? "index" : "worktree"}:${change.path}`, root: repoPath, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onError={showToast} /> : <GitGraphPanel key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} onOpenFile={openCommitFileInEditor} />}
             </section>
             </div>
           </div>
@@ -2430,6 +2445,10 @@ function buildTerminalLayout(sessionIds: string[]): LayoutNode {
     children: [{ type: "terminal", sessionId: sessionIds[0] }, buildTerminalLayout(sessionIds.slice(1))],
   };
 }
+function terminalViewKey(workspaceId: string, groupId: string): string {
+  return `${workspaceId}/${groupId}`;
+}
+
 function terminalMenuItems(moveTargets: TerminalGroup[], actions: { onRename: () => void; onMove: (groupId: string) => void; onSplit?: () => void; onClose: () => void }): PointerMenuItem[] {
   const items: PointerMenuItem[] = [{ label: "Rename", onSelect: actions.onRename }];
   moveTargets.forEach((group, index) => items.push({ label: `Move to ${group.name}`, onSelect: () => actions.onMove(group.id), separatorBefore: index === 0 }));

@@ -334,3 +334,54 @@ describe("terminal right-click menus", () => {
     await waitFor(() => expect(screen.queryByRole("menu", { name: /actions$/ })).not.toBeInTheDocument());
   });
 });
+
+describe("remembered terminal view per group", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem("yerminal.terminal-workspaces", JSON.stringify({
+      workspaces: [{ id: "workspace-1", name: "Workspace 1", rootPath: "", folderPaths: [] }],
+      activeId: "workspace-1",
+    }));
+    vi.mocked(invoke).mockReset();
+    vi.mocked(invoke).mockImplementation(async (command: string) => command === "terminal_output_snapshot" ? { events: [] } : undefined);
+  });
+
+  const visiblePanes = () => [...document.querySelectorAll<HTMLElement>(".terminal-pane-frame")].filter((pane) => pane.style.display !== "none");
+
+  it("keeps a group on 'all terminals' after visiting another group and picking its terminal from the sidebar", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("create_terminal", expect.anything()));
+    await user.click(screen.getByRole("button", { name: "Add terminal to group" }));
+    await waitFor(() => expect(screen.getAllByTestId("mock-terminal")).toHaveLength(2));
+    await waitFor(() => expect(visiblePanes()).toHaveLength(2));
+
+    await user.click(screen.getByRole("button", { name: "New terminal group" }));
+    await user.click(screen.getByRole("button", { name: "Add terminal to group" }));
+    await waitFor(() => expect(screen.getAllByTestId("mock-terminal")).toHaveLength(3));
+    await waitFor(() => expect(visiblePanes()).toHaveLength(1));
+
+    const groups = within(screen.getByRole("region", { name: "Terminal groups" }));
+    await user.click(groups.getByRole("button", { name: "Select terminal bash" }));
+    await waitFor(() => expect(visiblePanes()).toHaveLength(2));
+  });
+
+  it("remembers a group's focused terminal and restores it when coming back", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("create_terminal", expect.anything()));
+    await user.click(screen.getByRole("button", { name: "Add terminal to group" }));
+    await waitFor(() => expect(visiblePanes()).toHaveLength(2));
+    const groups = within(screen.getByRole("region", { name: "Terminal groups" }));
+    await user.click(groups.getByRole("button", { name: "Select terminal bash" }));
+    await user.click(groups.getByRole("button", { name: "Select terminal Terminal 2" }));
+    await user.click(screen.getByRole("button", { name: "Show all terminals" }));
+    await waitFor(() => expect(visiblePanes()).toHaveLength(2));
+
+    await user.click(screen.getByRole("button", { name: "New terminal group" }));
+    await user.click(screen.getByRole("button", { name: "Add terminal to group" }));
+    await waitFor(() => expect(visiblePanes()).toHaveLength(1));
+    await user.click(groups.getByRole("button", { name: "Select terminal group Terminal 1" }));
+    await waitFor(() => expect(visiblePanes()).toHaveLength(2));
+  });
+});
