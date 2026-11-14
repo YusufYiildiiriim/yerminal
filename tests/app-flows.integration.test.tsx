@@ -486,6 +486,57 @@ describe("Window close guard", () => {
   });
 });
 
+describe("Workspace controls placement", () => {
+  it("keeps workspace management in Explorer and Help & Settings in the activity rail", async () => {
+    const user = userEvent.setup();
+    seedTwoWorkspaces();
+    vi.spyOn(window, "prompt").mockReturnValueOnce("Workspace 3").mockReturnValueOnce("Renamed Workspace");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<App />);
+
+    const explorer = screen.getByRole("region", { name: "Explorer" });
+    const picker = within(explorer).getByRole("combobox", { name: "Active terminal workspace" });
+    expect(within(explorer).getByRole("button", { name: "Add folders to this workspace" })).toBeInTheDocument();
+    const titlebar = document.querySelector(".titlebar") as HTMLElement;
+    expect(within(titlebar).queryByRole("combobox", { name: "Active terminal workspace" })).not.toBeInTheDocument();
+    expect(within(titlebar).queryByRole("button", { name: "Create workspace" })).not.toBeInTheDocument();
+    expect(within(titlebar).queryByRole("button", { name: "Help & Settings" })).not.toBeInTheDocument();
+
+    await user.selectOptions(picker, "workspace-2");
+    expect(picker).toHaveValue("workspace-2");
+    await user.click(within(explorer).getByRole("button", { name: "Create workspace" }));
+    const createdWorkspaceOption = await within(explorer).findByRole("option", { name: "Workspace 3" });
+    const createdWorkspaceId = createdWorkspaceOption.getAttribute("value");
+    await user.click(within(explorer).getByRole("button", { name: "Rename workspace" }));
+    expect(await within(explorer).findByRole("option", { name: "Renamed Workspace" })).toBeInTheDocument();
+    await user.click(within(explorer).getByRole("button", { name: "Delete workspace" }));
+    await waitFor(() => expect(within(explorer).queryByRole("option", { name: "Renamed Workspace" })).not.toBeInTheDocument());
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("yerminal.terminal-workspaces") ?? "{}").workspaces.some((workspace: { id: string }) => workspace.id === createdWorkspaceId)).toBe(false));
+
+    const tools = screen.getByRole("navigation", { name: "Workspace tools" });
+    expect(within(tools).getByRole("button", { name: "Help & Settings" })).toBeInTheDocument();
+    expect(within(tools).getByRole("button", { name: /automatic.*workspace panel/i })).toBeInTheDocument();
+    expect(within(tools).getByRole("button", { name: /automatic.*workspace panel/i })).toHaveAttribute("aria-pressed", "false");
+    await user.click(within(tools).getByRole("button", { name: "Help & Settings" }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(dialog.querySelector("button.settings-close")).toHaveFocus();
+    await user.click(within(dialog).getByRole("button", { name: /Help & shortcuts/ }));
+    expect(within(dialog).getByRole("heading", { name: /Help & shortcuts/ })).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: /Explorer/ }));
+    expect(within(dialog).getByRole("heading", { name: "Explorer" })).toBeInTheDocument();
+  });
+});
+describe("Workspace management safeguards in Explorer", () => {
+  it("keeps the final workspace and disables its delete action", () => {
+    seedWorkspace();
+    render(<App />);
+
+    const explorer = screen.getByRole("region", { name: "Explorer" });
+    expect(within(explorer).getByRole("button", { name: "Delete workspace" })).toBeDisabled();
+    expect(within(explorer).getByRole("combobox", { name: "Active terminal workspace" })).toHaveValue("workspace-1");
+  });
+});
 describe("Workspace deletion with unsaved editor tabs", () => {
   it("warns about unsaved files and keeps the workspace and edits when cancelled", async () => {
     const user = userEvent.setup();
