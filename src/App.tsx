@@ -1342,7 +1342,6 @@ function App() {
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
-      if (event.repeat && key !== "tab") return;
       const target = event.target;
       const isTerminalInput = target instanceof HTMLElement && target.matches(".xterm-helper-textarea");
       const isEditorInput = target instanceof HTMLElement && target.matches(".code-editor-input");
@@ -1351,20 +1350,30 @@ function App() {
         || target instanceof HTMLSelectElement
         || (target instanceof HTMLElement && target.isContentEditable);
       if (isTextEntry && !isTerminalInput && !isEditorInput) return;
+      const consumeShortcut = () => { event.preventDefault(); event.stopPropagation(); };
+      const hasAppModifier = event.ctrlKey || event.metaKey;
+      const isKnownShortcut = hasAppModifier && !event.altKey && (
+        (key === "p" && !event.shiftKey)
+        || (event.shiftKey && ["t", "w", "h", "v", "g", "b", "tab"].includes(key))
+      );
+      if (event.repeat && key !== "tab") {
+        if (isKnownShortcut) consumeShortcut();
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && key === "p") {
-        event.preventDefault();
+        consumeShortcut();
         if (!settingsOpen && !quickOpenOpen) setQuickOpenOpen(true);
         return;
       }
       if (!(event.ctrlKey || event.metaKey)) return;
-      if (event.shiftKey && key === "t") { event.preventDefault(); void createTerminal(); }
-      else if (event.shiftKey && key === "w" && activeTerminalId) { event.preventDefault(); void closeTerminal(activeTerminalId); }
-      else if (event.shiftKey && key === "h") { event.preventDefault(); void splitActiveTerminal("horizontal"); }
-      else if (event.shiftKey && key === "v") { event.preventDefault(); void splitActiveTerminal("vertical"); }
-      else if (event.shiftKey && key === "g") { event.preventDefault(); setActiveTool("changes"); }
-      else if (event.shiftKey && key === "b") { event.preventDefault(); setActiveTool("graph"); }
+      if (event.shiftKey && key === "t") { consumeShortcut(); void createTerminal(); }
+      else if (event.shiftKey && key === "w" && activeTerminalId) { consumeShortcut(); void closeTerminal(activeTerminalId); }
+      else if (event.shiftKey && key === "h") { consumeShortcut(); void splitActiveTerminal("horizontal"); }
+      else if (event.shiftKey && key === "v") { consumeShortcut(); void splitActiveTerminal("vertical"); }
+      else if (event.shiftKey && key === "g") { consumeShortcut(); setActiveTool("changes"); }
+      else if (event.shiftKey && key === "b") { consumeShortcut(); setActiveTool("graph"); }
       else if (key === "tab" && activeGroupTerminals.length > 1) {
-        event.preventDefault();
+        consumeShortcut();
         const index = activeGroupTerminals.findIndex((terminal) => terminal.id === activeTerminalId);
         const direction = event.shiftKey ? -1 : 1;
         const next = (index + direction + activeGroupTerminals.length) % activeGroupTerminals.length;
@@ -1373,8 +1382,8 @@ function App() {
         if (focusedTerminalView && activeTerminalWorkspace) setTerminalViews((current) => ({ ...current, [activeTerminalWorkspace.id]: nextId }));
       }
     };
-    window.addEventListener("keydown", handleShortcut);
-    return () => window.removeEventListener("keydown", handleShortcut);
+    window.addEventListener("keydown", handleShortcut, true);
+    return () => window.removeEventListener("keydown", handleShortcut, true);
   }, [activeTerminalId, activeTerminalWorkspace, activeGroupTerminals, closeTerminal, createTerminal, focusTerminal, focusedTerminalView, quickOpenOpen, settingsOpen, splitActiveTerminal]);
 
   const activeTerminal = useMemo(

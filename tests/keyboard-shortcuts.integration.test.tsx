@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   open: vi.fn(async () => null),
   openUrl: vi.fn(async () => undefined),
   revealItemInDir: vi.fn(async () => undefined),
+  terminalKeyEvents: [] as string[],
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke, isTauri: mocks.isTauri }));
@@ -18,7 +19,22 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ onFocusCha
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: mocks.open }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: mocks.openUrl, revealItemInDir: mocks.revealItemInDir }));
 vi.mock("../src/features/terminal/TerminalPane", () => ({
-  default: () => React.createElement("textarea", { className: "xterm-helper-textarea", "aria-label": "Mock terminal input" }),
+  default: () => {
+    const inputRef = React.useRef<HTMLTextAreaElement>(null);
+    React.useEffect(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      const handleTerminalKey = (event: KeyboardEvent) => {
+        if (!event.ctrlKey && !event.metaKey && !event.altKey) return;
+        mocks.terminalKeyEvents.push(event.key);
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      input.addEventListener("keydown", handleTerminalKey, true);
+      return () => input.removeEventListener("keydown", handleTerminalKey, true);
+    }, []);
+    return React.createElement("textarea", { ref: inputRef, className: "xterm-helper-textarea", "aria-label": "Mock terminal input" });
+  },
 }));
 
 const rootPath = "C:\\repo";
@@ -39,6 +55,7 @@ beforeEach(() => {
   localStorage.clear();
   seedWorkspace();
   mocks.invoke.mockClear();
+  mocks.terminalKeyEvents.length = 0;
   mocks.invoke.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
     if (command === "list_workspace_directory" && args?.path === rootPath) {
       return [{ name: "notes.txt", path: `${rootPath}\\notes.txt`, isDir: false, size: 14, extension: "txt" }];
@@ -65,6 +82,7 @@ describe("global keyboard shortcuts", () => {
     fireEvent.keyDown(terminalInput, { key: "g", ctrlKey: true, shiftKey: true });
 
     expect(screen.getByRole("button", { name: "Git Changes" })).toHaveAttribute("aria-pressed", "true");
+    expect(mocks.terminalKeyEvents).not.toContain("g");
   });
 
   it("runs an application shortcut while the code editor textarea is focused", async () => {
@@ -110,14 +128,26 @@ describe("global keyboard shortcuts", () => {
 
   it("ignores repeated keydown events so holding the shortcut does not create more terminals", async () => {
     render(<App />);
-    await screen.findByRole("textbox", { name: "Mock terminal input" });
+    const terminalInput = await screen.findByRole("textbox", { name: "Mock terminal input" });
     await waitFor(() => expect(terminalCount()).toBe(1));
-    const app = screen.getByRole("main");
+    terminalInput.focus();
 
-    fireEvent.keyDown(app, { key: "t", ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(terminalInput, { key: "t", ctrlKey: true, shiftKey: true });
     await waitFor(() => expect(terminalCount()).toBe(2));
-    fireEvent.keyDown(app, { key: "t", ctrlKey: true, shiftKey: true, repeat: true });
+    fireEvent.keyDown(terminalInput, { key: "t", ctrlKey: true, shiftKey: true, repeat: true });
 
     expect(terminalCount()).toBe(2);
+    expect(mocks.terminalKeyEvents).not.toContain("t");
+  });
+
+  it("still lets ordinary terminal control keys reach the terminal", async () => {
+    render(<App />);
+    const terminalInput = await screen.findByRole("textbox", { name: "Mock terminal input" });
+    terminalInput.focus();
+
+    fireEvent.keyDown(terminalInput, { key: "c", ctrlKey: true });
+
+    expect(mocks.terminalKeyEvents).toContain("c");
+    expect(screen.getByRole("button", { name: "Git Changes" })).toHaveAttribute("aria-pressed", "false");
   });
 });
