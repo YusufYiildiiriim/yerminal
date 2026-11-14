@@ -45,19 +45,41 @@ describe("Sidebar and header layout redesign", () => {
     });
   });
 
-  it("places tool pages in the titlebar next to the brand name and removes old titlebar buttons", () => {
+  it("places tool pages in the left workspace rail, not the titlebar, and switches panels on click", async () => {
+    const user = userEvent.setup();
     render(<App />);
     const titlebar = document.querySelector(".titlebar") as HTMLElement;
     expect(titlebar).toBeInTheDocument();
+    expect(within(titlebar).queryByRole("navigation", { name: "Tool pages" })).not.toBeInTheDocument();
+    expect(within(titlebar).queryByRole("button", { name: "Explorer" })).not.toBeInTheDocument();
+    expect(within(titlebar).queryByRole("button", { name: "Git Changes" })).not.toBeInTheDocument();
+    expect(within(titlebar).queryByRole("button", { name: "Git Graph" })).not.toBeInTheDocument();
 
-    const titlebarPages = within(titlebar).getByRole("navigation", { name: "Tool pages" });
-    expect(within(titlebarPages).getByRole("button", { name: "Explorer" })).toBeInTheDocument();
-    expect(within(titlebarPages).getByRole("button", { name: "Git Changes" })).toBeInTheDocument();
-    expect(within(titlebarPages).getByRole("button", { name: "Git Graph" })).toBeInTheDocument();
+    const rail = screen.getByRole("navigation", { name: "Workspace tools" });
+    expect(within(rail).getByRole("button", { name: "Explorer" })).toBeInTheDocument();
+    expect(within(rail).getByRole("button", { name: "Git Changes" })).toBeInTheDocument();
+    expect(within(rail).getByRole("button", { name: "Git Graph" })).toBeInTheDocument();
+
+    await user.click(within(rail).getByRole("button", { name: "Git Changes" }));
+    expect(within(rail).getByRole("button", { name: "Git Changes" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("region", { name: "Git Changes" })).toBeInTheDocument();
+    await user.click(within(rail).getByRole("button", { name: "Git Graph" }));
+    expect(screen.getByRole("region", { name: "Git Graph" })).toBeInTheDocument();
 
     // The + and CPU/RAM buttons should no longer be in the titlebar
     expect(within(titlebar).queryByRole("button", { name: "Add terminal to group" })).not.toBeInTheDocument();
     expect(within(titlebar).queryByRole("button", { name: "CPU / RAM" })).not.toBeInTheDocument();
+  });
+
+  it("renders a gear icon, not a '?' text glyph, on the Help & Settings rail button", () => {
+    render(<App />);
+    const rail = screen.getByRole("navigation", { name: "Workspace tools" });
+    const settings = within(rail).getByRole("button", { name: "Help & Settings" });
+    expect(settings.querySelector("svg")).toBeInTheDocument();
+    expect(settings.querySelector(".tool-sidebar-icon")?.textContent).toBe("");
+    // Settings stays at the bottom of the rail, after the tool pages
+    const buttons = within(rail).getAllByRole("button");
+    expect(buttons.indexOf(settings)).toBeGreaterThan(buttons.findIndex((button) => button.getAttribute("aria-label") === "Git Graph"));
   });
 
   it("places a vertical resize handle between Explorer tree and terminal groups", () => {

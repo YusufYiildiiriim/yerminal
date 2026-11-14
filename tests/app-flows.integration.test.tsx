@@ -515,6 +515,7 @@ describe("Workspace controls placement", () => {
 
     const tools = screen.getByRole("navigation", { name: "Workspace tools" });
     expect(within(tools).getByRole("button", { name: "Help & Settings" })).toBeInTheDocument();
+    expect(within(tools).getByRole("button", { name: "Help & Settings" }).querySelector("svg")).toBeInTheDocument();
     expect(within(tools).getByRole("button", { name: /automatic.*workspace panel/i })).toBeInTheDocument();
     expect(within(tools).getByRole("button", { name: /automatic.*workspace panel/i })).toHaveAttribute("aria-pressed", "false");
     await user.click(within(tools).getByRole("button", { name: "Help & Settings" }));

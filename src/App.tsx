@@ -1474,21 +1474,6 @@ function App() {
       <header className="titlebar">
         <span className="brand-name">yerminal</span>
         <span className="title-divider" />
-        <nav className="titlebar-pages" aria-label="Tool pages">
-          {tools.map((tool) => (
-            <button
-              key={tool.id}
-              className={`titlebar-page-tab ${activeTool === tool.id ? "selected" : ""}`}
-              onClick={(event) => handleToolClick(tool.id, event.detail)}
-              type="button"
-              aria-label={tool.label}
-              aria-pressed={activeTool === tool.id}
-              title={`${tool.label} · Double-click to toggle panel`}
-            >
-              {tool.label}
-            </button>
-          ))}
-        </nav>
         <nav className="workspace-view-tabs" role="tablist" aria-label="Workspace views">
           <button className={`workspace-view-tab ${activeMainView === "terminals" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "terminals"} onClick={() => setActiveMainView("terminals")} type="button">Terminal</button>
           <button className={`workspace-view-tab ${activeMainView === "code" ? "selected" : ""}`} role="tab" aria-selected={activeMainView === "code"} onClick={() => setActiveMainView("code")} type="button">Editor</button>
@@ -1517,8 +1502,12 @@ function App() {
         }}>
           <div className="workspace-tool-layout">
             <nav className="tool-sidebar" aria-label="Workspace tools">
+              {tools.map((tool) => <button key={tool.id} className={`tool-sidebar-item ${activeTool === tool.id ? "selected" : ""}`} onClick={(event) => handleToolClick(tool.id, event.detail)} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={`${tool.label} · Double-click to toggle panel`}>
+                <span className="tool-sidebar-icon" aria-hidden="true">{tool.icon}</span>
+                <span className="tool-sidebar-label">{tool.label}</span>
+              </button>)}
               <button className="tool-sidebar-settings" type="button" aria-label="Help & Settings" title="Help & Settings" aria-haspopup="dialog" onClick={() => setSettingsOpen(true)}>
-                <span className="tool-sidebar-icon" aria-hidden="true">?</span><span className="tool-sidebar-label">Help &amp; Settings</span>
+                <span className="tool-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" focusable="false"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></span><span className="tool-sidebar-label">Help &amp; Settings</span>
               </button>
               <button className="tool-sidebar-autohide" type="button" aria-label={toolPanelAutoHide ? "Disable automatic hiding of workspace panel" : "Automatically hide workspace panel"} aria-pressed={toolPanelAutoHide} title={toolPanelAutoHide ? "Keep workspace panel visible" : "Automatically hide workspace panel"} onClick={() => setToolPanelAutoHide((enabled) => !enabled)}>
                 <span aria-hidden="true">{toolPanelAutoHide ? "⌖" : "◧"}</span>
