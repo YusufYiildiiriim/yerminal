@@ -313,7 +313,6 @@ function App() {
   const autoSaveTimersRef = useRef(new Map<string, { content: string; timer: ReturnType<typeof setTimeout> | null }>());
   const autoSaveQueuedRef = useRef(new Set<string>());
 
-  const [repoInfo, setRepoInfo] = useState<RepositoryInfo | null>(null);
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
   const handleTerminalExit = useCallback((id: string) => {
     setTerminals((current) => current.map((terminal) => terminal.id === id ? { ...terminal, exited: true, shellLabel: terminal.exited ? terminal.shellLabel : `${terminal.shellLabel} · exited` } : terminal));
@@ -519,8 +518,8 @@ function App() {
     }
   }, [activeTerminalWorkspace?.id, editorWorkspaces]);
 
-  const openCommitFileInEditor = useCallback((commit: CommitInfo, file: CommitFileChange) => {
-    void openEditorFile({ id: `commitdiff:${commit.id}:${file.path}`, view: "diff", root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } });
+  const openCommitFileInEditor = useCallback((commit: CommitInfo, file: CommitFileChange, root: string = repoPath) => {
+    void openEditorFile({ id: `commitdiff:${root}:${commit.id}:${file.path}`, view: "diff", root, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } });
     setActiveMainView("code");
   }, [openEditorFile, repoPath]);
 
@@ -969,14 +968,6 @@ function App() {
     }
   }, [showToast, terminalWorkspaceState]);
 
-  useEffect(() => {
-    if (!repoPath || !isTauri()) { setRepoInfo(null); return; }
-    let cancelled = false;
-    void invoke<RepositoryInfo>("git_repository_info", { path: repoPath })
-      .then((info) => { if (!cancelled) setRepoInfo(info); })
-      .catch(() => { if (!cancelled) setRepoInfo(null); });
-    return () => { cancelled = true; };
-  }, [activeTerminalWorkspace?.id, repoPath]);
 
   useEffect(() => () => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
@@ -1138,7 +1129,6 @@ function App() {
     if (!terminalWorkspaceState.workspaces.some((workspace) => workspace.id === id)) return;
     setEditingTerminalId(null);
     setTerminalWorkspaceState((current) => ({ ...current, activeId: id }));
-    setRepoInfo(null);
   }, [terminalWorkspaceState.workspaces]);
 
   const sendTerminalDirectoryCommand = useCallback((workspaceId: string, terminal: TerminalSession, path: string) => {
@@ -1173,7 +1163,6 @@ function App() {
       const folderPaths = mergeWorkspaceFolders(current.folderPaths, [...additions, ...(path ? [path] : [])]);
       return { ...current, folderPaths, rootPath: path && folderPaths.includes(path) ? path : "" };
     });
-    setRepoInfo(null);
     if (!path || !rootChanged || options.changeTerminalDirectory === false || !isTauri()) return;
     const terminal = terminals.find((item) => item.id === workspace.activeTerminalId && workspace.terminalIds.includes(item.id));
     if (!terminal) return;
@@ -1202,7 +1191,6 @@ function App() {
       ...createInitialTerminalGroups(),
     };
     setTerminalWorkspaceState((current) => ({ workspaces: [...current.workspaces, workspace], activeId: workspace.id }));
-    setRepoInfo(null);
   }, [showToast, terminalWorkspaceState.workspaces]);
 
   const renameWorkspace = useCallback(() => {
@@ -1242,7 +1230,6 @@ function App() {
       const workspaces = current.workspaces.filter((workspace) => workspace.id !== target.id);
       return { workspaces, activeId: current.activeId === target.id ? workspaces[0]?.id ?? "" : current.activeId };
     });
-    setRepoInfo(null);
   }, [activeTerminalWorkspace, editorWorkspaces, showToast, terminalWorkspaceState.workspaces]);
 
   const addWorkspaceFolders = useCallback(async () => {
@@ -1274,7 +1261,6 @@ function App() {
       rootPath: current.rootPath === path ? rootPath : current.rootPath,
     }));
     if (workspace.rootPath !== path) return;
-    setRepoInfo(null);
     if (!rootPath || !isTauri()) return;
     const terminal = terminals.find((item) => item.id === workspace.activeTerminalId && workspace.terminalIds.includes(item.id));
     if (!terminal) return;
@@ -1468,7 +1454,7 @@ function App() {
             </nav>
             <div className="workspace-sidebar-content">
             <section className="tool-content" aria-label={tools.find((tool) => tool.id === activeTool)?.label}>
-              {activeTool === "terminal" || activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} mode={activeTool === "terminal" ? "terminal" : "files"} terminalLayoutMode={terminalLayoutMode} onChangeTerminalLayoutMode={changeTerminalLayoutMode} activeTerminalGroupName={activeTerminalGroup?.name ?? "Terminal"} editorLayoutMode={editorLayoutMode} onChangeEditorLayoutMode={changeEditorLayoutMode} onCreateEditorGroup={createEditorGroup} onGoToFile={() => { if (!settingsOpen) setQuickOpenOpen(true); }} workspaces={terminalWorkspaceState.workspaces} activeWorkspaceId={activeTerminalWorkspace?.id ?? ""} onActivateWorkspace={activateWorkspace} onCreateWorkspace={createWorkspace} onRenameWorkspace={renameWorkspace} onDeleteWorkspace={() => void deleteWorkspace()} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} onFolderContextAction={handleFolderContextAction} refreshRequest={workspaceFolderRefresh} terminalGroups={activeTerminalWorkspace?.groups ?? []} activeTerminalGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} activeTerminalId={activeTerminalId ?? ""} terminals={activeWorkspaceTerminals} onCreateTerminalGroup={addTerminalGroup} onCloseTerminalGroup={closeTerminalGroup} onRenameTerminalGroup={renameTerminalGroup} onSelectTerminalGroup={(groupId) => { chooseTerminalGroup(groupId); setActiveMainView("terminals"); }} onSelectTerminal={(groupId, terminalId) => { setActiveMainView("terminals"); if (groupId !== activeTerminalWorkspace?.activeGroupId) chooseTerminalGroup(groupId); selectTerminalView(terminalId); }} onAddTerminal={() => { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToWorkspace(); }} terminalUsageOpen={terminalUsageOpen} onToggleTerminalUsage={() => { setActiveMainView("terminals"); setTerminalUsageOpen((open) => !open); }} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenDiff={(change, staged) => void openEditorFile({ id: `gitdiff:${repoPath}:${staged ? "index" : "worktree"}:${change.path}`, root: repoPath, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onError={showToast} /> : <GitGraphBranches repoPath={repoInfo ? repoPath : ""} currentBranch={repoInfo?.branch ?? ""} onError={showToast} onOpenFile={openCommitFileInEditor} />}
+              {activeTool === "terminal" || activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} mode={activeTool === "terminal" ? "terminal" : "files"} terminalLayoutMode={terminalLayoutMode} onChangeTerminalLayoutMode={changeTerminalLayoutMode} activeTerminalGroupName={activeTerminalGroup?.name ?? "Terminal"} editorLayoutMode={editorLayoutMode} onChangeEditorLayoutMode={changeEditorLayoutMode} onCreateEditorGroup={createEditorGroup} onGoToFile={() => { if (!settingsOpen) setQuickOpenOpen(true); }} workspaces={terminalWorkspaceState.workspaces} activeWorkspaceId={activeTerminalWorkspace?.id ?? ""} onActivateWorkspace={activateWorkspace} onCreateWorkspace={createWorkspace} onRenameWorkspace={renameWorkspace} onDeleteWorkspace={() => void deleteWorkspace()} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} onFolderContextAction={handleFolderContextAction} refreshRequest={workspaceFolderRefresh} terminalGroups={activeTerminalWorkspace?.groups ?? []} activeTerminalGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} activeTerminalId={activeTerminalId ?? ""} terminals={activeWorkspaceTerminals} onCreateTerminalGroup={addTerminalGroup} onCloseTerminalGroup={closeTerminalGroup} onRenameTerminalGroup={renameTerminalGroup} onSelectTerminalGroup={(groupId) => { chooseTerminalGroup(groupId); setActiveMainView("terminals"); }} onSelectTerminal={(groupId, terminalId) => { setActiveMainView("terminals"); if (groupId !== activeTerminalWorkspace?.activeGroupId) chooseTerminalGroup(groupId); selectTerminalView(terminalId); }} onAddTerminal={() => { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToWorkspace(); }} terminalUsageOpen={terminalUsageOpen} onToggleTerminalUsage={() => { setActiveMainView("terminals"); setTerminalUsageOpen((open) => !open); }} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenDiff={(change, staged) => void openEditorFile({ id: `gitdiff:${repoPath}:${staged ? "index" : "worktree"}:${change.path}`, root: repoPath, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onError={showToast} /> : <GitGraphPanel key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} onOpenFile={openCommitFileInEditor} />}
             </section>
             </div>
           </div>
@@ -1960,14 +1946,13 @@ function formatFileSize(size: number): string {
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
-function GitChanges({ repoPaths, onOpenRepository, onOpenDiff, onError }: { repoPaths: string[]; onOpenRepository: () => void; onOpenDiff: (change: FileChange, staged: boolean) => void; onError: (message: string) => void }) {
+function useRepositories(repoPaths: string[], refreshNonce = 0): RepositoryInfo[] {
   const [repositories, setRepositories] = useState<RepositoryInfo[]>([]);
-  const [refreshNonce, setRefreshNonce] = useState(0);
-
+  const pathsKey = [...new Set(repoPaths.filter(Boolean))].join("\n");
   useEffect(() => {
     let cancelled = false;
-    if (!isTauri() || repoPaths.length === 0) { setRepositories([]); return; }
-    const paths = [...new Set(repoPaths.filter(Boolean))];
+    const paths = pathsKey ? pathsKey.split("\n") : [];
+    if (!isTauri() || paths.length === 0) { setRepositories([]); return; }
     void Promise.all(paths.map((path) => invoke<RepositoryInfo>("git_repository_info", { path }).catch(() => null)))
       .then((infos) => {
         if (cancelled) return;
@@ -1980,7 +1965,38 @@ function GitChanges({ repoPaths, onOpenRepository, onOpenDiff, onError }: { repo
         setRepositories([...unique.values()]);
       });
     return () => { cancelled = true; };
-  }, [refreshNonce, repoPaths]);
+  }, [refreshNonce, pathsKey]);
+  return repositories;
+}
+
+function repoLabel(info: RepositoryInfo): string {
+  return info.root.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || info.root;
+}
+
+function GitGraphPanel({ repoPaths, onOpenRepository, onError, onOpenFile }: { repoPaths: string[]; onOpenRepository: () => void; onError: (message: string) => void; onOpenFile: (commit: CommitInfo, file: CommitFileChange, root: string) => void }) {
+  const repositories = useRepositories(repoPaths);
+  const [selectedRoot, setSelectedRoot] = useState("");
+  const selected = repositories.find((info) => info.root === selectedRoot) ?? repositories[0] ?? null;
+  if (!selected) {
+    return <div className="g-empty-repo">
+      <h2>{repoPaths.length ? "No Git repository found" : "History unavailable"}</h2>
+      <p>{repoPaths.length ? "Add a folder that belongs to a Git repository to browse its commit graph." : "Open a folder to browse its commit graph."}</p>
+      <button className="primary-button" onClick={onOpenRepository} type="button">Open Folder</button>
+    </div>;
+  }
+  return <div className="gg-panel">
+    {repositories.length > 1 && <label className="gg-repo-picker"><span>Repository</span>
+      <select aria-label="Select repository" value={selected.root} onChange={(event) => setSelectedRoot(event.target.value)}>
+        {repositories.map((info) => <option key={info.root} value={info.root}>{repoLabel(info)}{info.branch ? ` · ${info.branch}` : ""}</option>)}
+      </select>
+    </label>}
+    <GitGraphBranches key={selected.root} repoPath={selected.root} currentBranch={selected.branch ?? ""} onError={onError} onOpenFile={(commit, file) => onOpenFile(commit, file, selected.root)} />
+  </div>;
+}
+
+function GitChanges({ repoPaths, onOpenRepository, onOpenDiff, onError }: { repoPaths: string[]; onOpenRepository: () => void; onOpenDiff: (change: FileChange, staged: boolean) => void; onError: (message: string) => void }) {
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const repositories = useRepositories(repoPaths, refreshNonce);
 
   return <div className="tool-view git-changes-view">
     <header className="tool-header"><div><h1>Git Changes</h1><p>{repositories.length > 0 ? `${repositories.length} ${repositories.length === 1 ? "repository" : "repositories"}` : repoPaths.length ? "Searching opened folders for Git repositories" : "Review your working trees"}</p></div><button className="icon-button refresh-button" aria-label="Refresh repositories and changes" onClick={() => setRefreshNonce((value) => value + 1)} type="button">↻</button></header>

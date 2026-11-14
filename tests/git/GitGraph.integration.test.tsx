@@ -187,12 +187,13 @@ describe("Git Graph lives in the side panel: branches, commits, and commit detai
     const user = userEvent.setup();
     render(<App />);
     await openGitGraph(user);
+    const panel = document.querySelector(".tools-panel") as HTMLElement;
+    const list = await within(panel).findByRole("list", { name: "Commits on develop" });
+    await within(list).findByRole("button", { name: /Add graph view/ });
     vi.mocked(invoke).mockImplementation(async (command: string) => {
       if (command === "git_commit_files") throw "files unavailable";
       return undefined;
     });
-    const panel = document.querySelector(".tools-panel") as HTMLElement;
-    const list = await within(panel).findByRole("list", { name: "Commits on develop" });
     await user.click(within(list).getByRole("button", { name: /Add graph view/ }));
     const details = await within(list).findByRole("region", { name: "Details for Add graph view" });
     expect(await within(details).findByRole("alert")).toHaveTextContent("files unavailable");
@@ -224,5 +225,30 @@ describe("Git Graph lives in the side panel: branches, commits, and commit detai
     expect(within(rail).getByRole("button", { name: "Git Graph" })).toHaveAttribute("aria-pressed", "true");
     const panel = document.querySelector(".tools-panel") as HTMLElement;
     expect(await within(panel).findByText("Branches")).toBeInTheDocument();
+  });
+});
+
+describe("Git Graph repository picker", () => {
+  it("lets the user pick which opened repository the graph shows", async () => {
+    const otherPath = "C:\other-repo";
+    localStorage.setItem("yerminal.terminal-workspaces", JSON.stringify({
+      workspaces: [{ id: "workspace-1", name: "Workspace 1", rootPath, folderPaths: [rootPath, otherPath] }],
+      activeId: "workspace-1",
+    }));
+    const branchCalls: string[] = [];
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+      if (command === "terminal_output_snapshot") return { events: [] };
+      if (command === "git_repository_info") return { root: args?.path, branch: args?.path === otherPath ? "trunk" : "develop", state: "clean" };
+      if (command === "git_branches") { branchCalls.push(String(args?.path)); return branches; }
+      if (command === "git_history") return commits;
+      return undefined;
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await openGitGraph(user);
+    const picker = await screen.findByRole("combobox", { name: "Select repository" });
+    await waitFor(() => expect(branchCalls).toContain(rootPath));
+    await user.selectOptions(picker, otherPath);
+    await waitFor(() => expect(branchCalls).toContain(otherPath));
   });
 });
