@@ -118,6 +118,10 @@ describe("global keyboard shortcuts", () => {
     fireEvent.click(renameButton!);
     const renameInput = await screen.findByRole("textbox", { name: /new name for/i });
     renameInput.focus();
+    const ctrlP = new KeyboardEvent("keydown", { key: "p", ctrlKey: true, bubbles: true, cancelable: true });
+    renameInput.dispatchEvent(ctrlP);
+    expect(ctrlP.defaultPrevented).toBe(true);
+    expect(screen.queryByPlaceholderText("Search files by name or path…")).not.toBeInTheDocument();
     fireEvent.keyDown(renameInput, { key: "g", ctrlKey: true, shiftKey: true });
     fireEvent.change(renameInput, { target: { value: "terminal draft" } });
 

@@ -1349,9 +1349,13 @@ function App() {
         || target instanceof HTMLTextAreaElement
         || target instanceof HTMLSelectElement
         || (target instanceof HTMLElement && target.isContentEditable);
-      if (isTextEntry && !isTerminalInput && !isEditorInput) return;
       const consumeShortcut = () => { event.preventDefault(); event.stopPropagation(); };
       const hasAppModifier = event.ctrlKey || event.metaKey;
+      const isQuickOpenShortcut = hasAppModifier && !event.altKey && !event.shiftKey && key === "p";
+      if (isTextEntry && !isTerminalInput && !isEditorInput) {
+        if (isQuickOpenShortcut) consumeShortcut();
+        return;
+      }
       const isKnownShortcut = hasAppModifier && !event.altKey && (
         (key === "p" && !event.shiftKey)
         || (event.shiftKey && ["t", "w", "h", "v", "g", "b", "tab"].includes(key))
@@ -1360,7 +1364,7 @@ function App() {
         if (isKnownShortcut) consumeShortcut();
         return;
       }
-      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && key === "p") {
+      if (isQuickOpenShortcut) {
         consumeShortcut();
         if (!settingsOpen && !quickOpenOpen) setQuickOpenOpen(true);
         return;
