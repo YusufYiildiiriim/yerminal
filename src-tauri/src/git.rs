@@ -874,8 +874,15 @@ mod tests {
 
         let info = repository_info(&path).expect("repository info");
 
-        let root = normalize_path_text(&info.root);
-        let expected_root = normalize_path_text(&dir.path().to_string_lossy());
+        // Resolve both through the file system: a temp dir can be reported with its 8.3 short
+        // name (C:\Users\RUNNER~1\...) while libgit2 returns the long one (runneradmin).
+        let resolve = |path: &Path| {
+            path.canonicalize()
+                .map(|resolved| resolved.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| path.to_string_lossy().into_owned())
+        };
+        let root = normalize_path_text(&resolve(Path::new(&info.root)));
+        let expected_root = normalize_path_text(&resolve(dir.path()));
         #[cfg(windows)]
         assert!(
             root.eq_ignore_ascii_case(&expected_root),
