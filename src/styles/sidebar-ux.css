@@ -126,8 +126,10 @@
 .app-shell[data-theme] .workspace-explorer-tree:has(+ .workspace-terminal-groups .workspace-terminal-groups-toggle[aria-expanded="false"]) { flex: 1 1 36%; max-height: none; }
 .app-shell[data-theme] .workspace-terminal-groups-header { display: flex; flex: 0 0 34px; align-items: center; justify-content: space-between; padding: 0 10px 0 14px; }
 .app-shell[data-theme] .workspace-terminal-groups-header h2 { margin: 0; color: var(--theme-text); font-size: 12px; font-weight: 600; }
-.app-shell[data-theme] .workspace-terminal-groups-toggle { width: 26px; height: 26px; border: 0; border-radius: 4px; background: transparent; color: var(--theme-muted); font-size: 15px; }
-.app-shell[data-theme] .workspace-terminal-groups-toggle:hover { color: var(--theme-text); background: var(--theme-raised); }
+.app-shell[data-theme] .workspace-terminal-groups-actions { display: flex; align-items: center; gap: 2px; }
+.app-shell[data-theme] .workspace-terminal-group-create, .app-shell[data-theme] .workspace-terminal-groups-toggle { width: 26px; height: 26px; border: 0; border-radius: 4px; background: transparent; color: var(--theme-muted); font-size: 15px; }
+.app-shell[data-theme] .workspace-terminal-group-create { color: var(--theme-accent); font-size: 18px; }
+.app-shell[data-theme] .workspace-terminal-group-create:hover, .app-shell[data-theme] .workspace-terminal-groups-toggle:hover { color: var(--theme-text); background: var(--theme-raised); }
 .app-shell[data-theme] .workspace-terminal-groups-list { min-width: 0; min-height: 0; flex: 1 1 auto; overflow: auto; padding: 0 7px 8px; scrollbar-width: thin; scrollbar-color: var(--theme-border) transparent; }
 .app-shell[data-theme] .workspace-terminal-group { padding: 2px 0 4px; }
 .app-shell[data-theme] .workspace-terminal-group-select, .app-shell[data-theme] .workspace-terminal-select { display: flex; width: 100%; min-width: 0; align-items: center; gap: 8px; border: 0; border-radius: 4px; text-align: left; }
@@ -143,3 +145,9 @@
 .app-shell[data-theme] .workspace-terminal-active { margin-left: auto; color: var(--theme-accent); font-size: 10px; }
 .app-shell[data-theme] .workspace-terminal-empty { padding: 5px 8px 5px 22px; color: var(--theme-muted); font-size: 11px; }
 .app-shell[data-theme] :is(.workspace-terminal-groups-toggle, .workspace-terminal-group-select, .workspace-terminal-select):focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }
+
+.app-shell[data-theme] .workspace-terminal-group-header { display: flex; align-items: center; gap: 3px; }
+.app-shell[data-theme] .workspace-terminal-group-select { flex: 1 1 auto; }
+.app-shell[data-theme] .workspace-terminal-group-close { width: 24px; height: 24px; flex: 0 0 24px; border: 0; border-radius: 4px; background: transparent; color: var(--theme-muted); font-size: 14px; }
+.app-shell[data-theme] .workspace-terminal-group-close:hover { color: var(--theme-text); background: var(--theme-raised); }
+.app-shell[data-theme] :is(.workspace-terminal-group-create, .workspace-terminal-group-close):focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }

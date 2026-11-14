@@ -1416,13 +1416,6 @@ function App() {
         <div className="titlebar-spacer" />
         <div className="titlebar-layout-controls">
           {activeMainView === "terminals" ? <>
-            <div className="terminal-group-toolbar" role="tablist" aria-label="Terminal groups">
-              {activeTerminalWorkspace?.groups.map((group) => <div key={group.id} className={`terminal-group-tab-item ${group.id === activeTerminalWorkspace.activeGroupId ? "selected" : ""}`}>
-                <button className="terminal-group-tab" type="button" role="tab" aria-selected={group.id === activeTerminalWorkspace.activeGroupId} onClick={() => chooseTerminalGroup(group.id)}>{group.name}<span>{group.terminalIds.length}</span></button>
-                {activeTerminalWorkspace.groups.length > 1 && <button className="terminal-group-close" type="button" aria-label={`Close ${group.name} and move its terminals`} title={`Close ${group.name} and move its terminals`} onClick={() => closeTerminalGroup(group.id)}>×</button>}
-              </div>)}
-              <button className="terminal-group-create" type="button" aria-label="New terminal group" title="New terminal group" onClick={addTerminalGroup}>＋</button>
-            </div>
             <FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={changeTerminalLayoutMode} />
             <button className="icon-button titlebar-new-terminal" aria-label="Add terminal to group" title="Add terminal to group" onClick={() => { selectTerminalView(null); void addTerminalToWorkspace(); }} type="button">＋</button>
           </> : <>
@@ -1456,7 +1449,7 @@ function App() {
             </nav>
             <div className="workspace-sidebar-content">
             <section className="tool-content" aria-label={tools.find((tool) => tool.id === activeTool)?.label}>
-              {activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} onFolderContextAction={handleFolderContextAction} refreshRequest={workspaceFolderRefresh} terminalGroups={activeTerminalWorkspace?.groups ?? []} activeTerminalGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} activeTerminalId={activeTerminalId ?? ""} terminals={activeWorkspaceTerminals} onSelectTerminalGroup={(groupId) => { chooseTerminalGroup(groupId); setActiveMainView("terminals"); }} onSelectTerminal={(groupId, terminalId) => { setActiveMainView("terminals"); if (groupId !== activeTerminalWorkspace?.activeGroupId) chooseTerminalGroup(groupId); selectTerminalView(terminalId); }} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenDiff={(change, staged) => void openEditorFile({ id: `gitdiff:${repoPath}:${staged ? "index" : "worktree"}:${change.path}`, root: repoPath, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onError={showToast} /> : <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } })} />}
+              {activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} onFolderContextAction={handleFolderContextAction} refreshRequest={workspaceFolderRefresh} terminalGroups={activeTerminalWorkspace?.groups ?? []} activeTerminalGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} activeTerminalId={activeTerminalId ?? ""} terminals={activeWorkspaceTerminals} onCreateTerminalGroup={addTerminalGroup} onCloseTerminalGroup={closeTerminalGroup} onSelectTerminalGroup={(groupId) => { chooseTerminalGroup(groupId); setActiveMainView("terminals"); }} onSelectTerminal={(groupId, terminalId) => { setActiveMainView("terminals"); if (groupId !== activeTerminalWorkspace?.activeGroupId) chooseTerminalGroup(groupId); selectTerminalView(terminalId); }} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenDiff={(change, staged) => void openEditorFile({ id: `gitdiff:${repoPath}:${staged ? "index" : "worktree"}:${change.path}`, root: repoPath, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onError={showToast} /> : <GitGraph key={activeTerminalWorkspace?.id ?? ""} repoPath={repoInfo ? repoPath : ""} onError={showToast} onOpenInEditor={(commit, file) => void openEditorFile({ id: `commit:${commit.id}:${file.path}`, root: repoPath, path: file.path, name: file.path.split(/[\\/]/).pop() ?? file.path, sourceCommitId: commit.id, sourceLabel: `${commit.shortId} · ${file.kind}`, snapshot: { shortId: commit.shortId, message: commit.message, changeKind: file.kind, author: commit.author, timestamp: commit.timestamp } })} />}
             </section>
             </div>
           </div>
@@ -1546,7 +1539,7 @@ function isWorkspaceItemMissing(reason: unknown): boolean {
   return String(reason).includes(WORKSPACE_ITEM_MISSING_MARKER);
 }
 
-function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOpenFile, onFolderContextAction, refreshRequest, collapseOtherFolders, terminalGroups, activeTerminalGroupId, activeTerminalId, terminals, onSelectTerminalGroup, onSelectTerminal }: { folders: string[]; activePath: string; onAdd: () => void; onActivate: (path: string) => void; onRemove: (path: string) => void; onOpenFile: (root: string, entry: WorkspaceEntry) => void; onFolderContextAction: (action: FolderContextMenuAction, target: { root: string; path: string; isWorkspaceRoot: boolean }) => void; refreshRequest: { root: string; path: string; nonce: number } | null; collapseOtherFolders: boolean; terminalGroups: TerminalGroup[]; activeTerminalGroupId: string; activeTerminalId: string; terminals: TerminalSession[]; onSelectTerminalGroup: (groupId: string) => void; onSelectTerminal: (groupId: string, terminalId: string) => void }) {
+function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOpenFile, onFolderContextAction, refreshRequest, collapseOtherFolders, terminalGroups, activeTerminalGroupId, activeTerminalId, terminals, onCreateTerminalGroup, onCloseTerminalGroup, onSelectTerminalGroup, onSelectTerminal }: { folders: string[]; activePath: string; onAdd: () => void; onActivate: (path: string) => void; onRemove: (path: string) => void; onOpenFile: (root: string, entry: WorkspaceEntry) => void; onFolderContextAction: (action: FolderContextMenuAction, target: { root: string; path: string; isWorkspaceRoot: boolean }) => void; refreshRequest: { root: string; path: string; nonce: number } | null; collapseOtherFolders: boolean; terminalGroups: TerminalGroup[]; activeTerminalGroupId: string; activeTerminalId: string; terminals: TerminalSession[]; onCreateTerminalGroup: () => void; onCloseTerminalGroup: (groupId: string) => void; onSelectTerminalGroup: (groupId: string) => void; onSelectTerminal: (groupId: string, terminalId: string) => void }) {
   const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
   const [entriesByPath, setEntriesByPath] = useState<Record<string, WorkspaceEntry[]>>({});
   const [loadingPaths, setLoadingPaths] = useState<Record<string, boolean>>({});
@@ -1779,19 +1772,25 @@ function WorkspacePanel({ folders, activePath, onAdd, onActivate, onRemove, onOp
     <section className="workspace-terminal-groups" aria-label="Explorer terminal groups">
       <header className="workspace-terminal-groups-header">
         <h2>Terminal groups</h2>
-        <button className="workspace-terminal-groups-toggle" type="button" aria-label={(terminalGroupsCollapsed ? "Expand" : "Collapse") + " terminal groups"} aria-expanded={!terminalGroupsCollapsed} aria-controls="workspace-terminal-groups-list" onClick={() => setTerminalGroupsCollapsed((collapsed) => !collapsed)}>
-          <span aria-hidden="true">{terminalGroupsCollapsed ? "›" : "⌄"}</span>
-        </button>
+        <div className="workspace-terminal-groups-actions">
+          <button className="workspace-terminal-group-create" type="button" aria-label="New terminal group" title="New terminal group" onClick={onCreateTerminalGroup}>＋</button>
+          <button className="workspace-terminal-groups-toggle" type="button" aria-label={(terminalGroupsCollapsed ? "Expand" : "Collapse") + " terminal groups"} aria-expanded={!terminalGroupsCollapsed} aria-controls="workspace-terminal-groups-list" onClick={() => setTerminalGroupsCollapsed((collapsed) => !collapsed)}>
+            <span aria-hidden="true">{terminalGroupsCollapsed ? "›" : "⌄"}</span>
+          </button>
+        </div>
       </header>
       {!terminalGroupsCollapsed && <div id="workspace-terminal-groups-list" className="workspace-terminal-groups-list">
         {terminalGroups.map((group) => {
           const groupTerminals = group.terminalIds.map((id) => terminals.find((terminal) => terminal.id === id)).filter((terminal): terminal is TerminalSession => Boolean(terminal));
           const selected = group.id === activeTerminalGroupId;
           return <div className={"workspace-terminal-group" + (selected ? " selected" : "")} key={group.id}>
-            <button className="workspace-terminal-group-select" type="button" aria-label={"Select terminal group " + group.name} aria-pressed={selected} onClick={() => onSelectTerminalGroup(group.id)}>
-              <span className="workspace-terminal-group-name">{group.name}</span>
-              <span className="workspace-terminal-group-count">{groupTerminals.length}</span>
-            </button>
+            <div className="workspace-terminal-group-header">
+              <button className="workspace-terminal-group-select" type="button" aria-label={"Select terminal group " + group.name} aria-pressed={selected} onClick={() => onSelectTerminalGroup(group.id)}>
+                <span className="workspace-terminal-group-name">{group.name}</span>
+                <span className="workspace-terminal-group-count">{groupTerminals.length}</span>
+              </button>
+              {terminalGroups.length > 1 && <button className="workspace-terminal-group-close" type="button" aria-label={"Close " + group.name + " and move its terminals"} title={"Close " + group.name + " and move its terminals"} onClick={() => onCloseTerminalGroup(group.id)}>×</button>}
+            </div>
             {groupTerminals.map((terminal) => <button className={"workspace-terminal-select" + (terminal.id === activeTerminalId ? " selected" : "")} type="button" key={terminal.id} aria-label={"Select terminal " + terminal.name} aria-pressed={terminal.id === activeTerminalId} title={terminal.name} onClick={() => onSelectTerminal(group.id, terminal.id)}>
               <span className="workspace-terminal-indicator" aria-hidden="true" />
               <span className="workspace-terminal-name">{terminal.name}</span>
