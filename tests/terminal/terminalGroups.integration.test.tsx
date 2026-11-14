@@ -111,4 +111,26 @@ describe("terminal groups", () => {
     expect(collapse).toHaveAttribute("aria-expanded", "false");
     expect(within(explorerGroups).queryByRole("button", { name: "Select terminal Terminal 2" })).not.toBeInTheDocument();
   });
+  it("opens the terminal view when a group or terminal is selected from Explorer", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("create_terminal", expect.anything()));
+    await screen.findByTestId("mock-terminal");
+
+    await user.click(screen.getByRole("button", { name: "Add terminal to group" }));
+    await waitFor(() => expect(screen.getAllByTestId("mock-terminal")).toHaveLength(2));
+    await user.click(screen.getByRole("button", { name: "New terminal group" }));
+    await user.click(screen.getByRole("button", { name: "Add terminal to group" }));
+    await waitFor(() => expect(screen.getAllByTestId("mock-terminal")).toHaveLength(3));
+
+    const explorerGroups = screen.getByRole("region", { name: "Explorer terminal groups" });
+    await user.click(screen.getByRole("tab", { name: "Editor" }));
+    await user.click(within(explorerGroups).getByRole("button", { name: "Select terminal group Terminal 1" }));
+    expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
+
+    await user.click(screen.getByRole("tab", { name: "Editor" }));
+    await user.click(within(explorerGroups).getByRole("button", { name: "Select terminal Terminal 2" }));
+    expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
+    expect(within(screen.getByRole("tablist", { name: "Terminal sessions" })).getByRole("tab", { name: /Terminal 2/ })).toHaveAttribute("aria-selected", "true");
+  });
 });
