@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { highlightCode } from "./highlighter";
+import { highlightCode, highlightCodeSync } from "./highlighter";
 import { CommitSnapshotBanner } from "./CommitSnapshotBanner";
 import { DiffView } from "../git/DiffView";
 import { useFloatingEditorLayout, type EditorLayoutMode, type EditorResizeDirection } from "./floatingEditorLayout";
@@ -74,6 +74,7 @@ type EditorGroupPaneProps = {
 };
 
 const HIGHLIGHT_DEBOUNCE_MS = 150;
+const SYNC_HIGHLIGHT_MAX_CHARS = 150_000;
 
 function normalizeNewlines(content: string | null): string {
   return (content ?? "").replace(/\r\n/g, "\n");
@@ -114,7 +115,14 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
   const currentHighlight = highlight && highlight.key === highlightKey ? highlight : null;
   const highlightedHtml = currentHighlight?.html ?? null;
   // The editable overlay is the only visible text (the textarea is transparent), so it must match exactly.
-  const editableHighlightedHtml = currentHighlight && currentHighlight.source === activeTab?.content ? currentHighlight.html : null;
+  // While the async pass is pending, recolor synchronously (engine already loaded) so typing never drops to plain text.
+  const exactHighlightHtml = currentHighlight && currentHighlight.source === activeTab?.content ? currentHighlight.html : null;
+  const syncHighlightHtml = useMemo(() => {
+    if (exactHighlightHtml || !activeTab || activeTab.content === null || activeTab.view === "diff" || !language?.id || language.id === "plaintext") return null;
+    if (activeTab.content.length > SYNC_HIGHLIGHT_MAX_CHARS) return null;
+    return highlightCodeSync(activeTab.content, language.id);
+  }, [exactHighlightHtml, activeTab?.content, activeTab?.view, language?.id]);
+  const editableHighlightedHtml = exactHighlightHtml ?? syncHighlightHtml;
   // The tab/language last scheduled for highlighting, kept even when highlighting fails.
   const lastHighlightKeyRef = useRef<string | null>(null);
   const editorContentRef = useRef<HTMLDivElement>(null);

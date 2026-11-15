@@ -37,6 +37,7 @@ const languageLoaders: Record<string, () => Promise<{ default: LanguageRegistrat
 };
 
 let highlighterPromise: Promise<HighlighterCore> | null = null;
+let readyHighlighter: HighlighterCore | null = null;
 
 function getHighlighter(): Promise<HighlighterCore> {
   if (!highlighterPromise) {
@@ -58,6 +59,22 @@ export async function highlightCode(code: string, language: string): Promise<str
   const loadLanguage = languageLoaders[language];
   if (!loadLanguage) throw new Error(`Unsupported syntax language: ${language}`);
   const highlighter = await getHighlighter();
+  readyHighlighter = highlighter;
   if (!highlighter.getLoadedLanguages().includes(language)) await highlighter.loadLanguage(loadLanguage);
   return highlighter.codeToHtml(code, { lang: language, theme: "github-dark" });
+}
+
+
+
+/**
+ * Highlights synchronously once the engine and the language are already loaded; returns null otherwise.
+ * Lets the editable overlay recolor every keystroke instead of flashing to plain text until the async pass lands.
+ */
+export function highlightCodeSync(code: string, language: string): string | null {
+  if (!readyHighlighter || !readyHighlighter.getLoadedLanguages().includes(language)) return null;
+  try {
+    return readyHighlighter.codeToHtml(code, { lang: language, theme: "github-dark" });
+  } catch {
+    return null;
+  }
 }

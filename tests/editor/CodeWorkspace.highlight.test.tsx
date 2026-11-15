@@ -1,7 +1,7 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const highlighter = vi.hoisted(() => ({ highlightCode: vi.fn() }));
+const highlighter = vi.hoisted(() => ({ highlightCode: vi.fn(), highlightCodeSync: vi.fn(() => null) }));
 vi.mock("../../src/features/editor/highlighter", () => highlighter);
 
 import { CodeWorkspace, type EditorFileTab } from "../../src/features/editor/CodeWorkspace";
@@ -50,6 +50,18 @@ describe("CodeWorkspace syntax highlighting", () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+  });
+
+  it("recolors the editable overlay synchronously while typing instead of dropping to plain text", async () => {
+    highlighter.highlightCodeSync.mockImplementation((code: string) => html(code));
+    const view = render(workspace("const a = 1;"));
+    await advance(200);
+    for (const content of ["const a = 12;", "const a = 123;"]) {
+      view.rerender(workspace(content));
+      expect(editableHtml()).toBe(html(content));
+    }
+    highlighter.highlightCodeSync.mockReset();
+    highlighter.highlightCodeSync.mockReturnValue(null);
   });
 
   it("highlights once per burst of edits and keeps the previous highlight until the new one is ready", async () => {
