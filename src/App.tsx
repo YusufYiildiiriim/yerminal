@@ -266,8 +266,6 @@ const tools: { id: ToolId; label: string; icon: ReactElement }[] = [
   { id: "graph", label: "Git Graph", icon: <svg {...toolIconProps}><circle cx="5" cy="6" r="2" /><circle cx="5" cy="18" r="2" /><circle cx="19" cy="12" r="2" /><path d="M5 8v8M7 12h10" /></svg> },
 ];
 
-const PRIMARY_TOOL_IDS: ToolId[] = ["terminal", "explorer"];
-
 const SETTINGS_KEY = "yerminal.app-settings.v1";
 const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13, quickOpenScope: "active", collapseOtherFolders: false, autoSave: false };
 function readAppSettings(): AppSettings {
@@ -376,8 +374,8 @@ function App() {
   const layout = activeTerminalWorkspace?.layout ?? null;
   const activeEditorWorkspace = editorWorkspaces[activeTerminalWorkspace?.id ?? ""] ?? createEmptyEditorWorkspaceState();
 
-  const primaryToolSwitch = <div className="tool-primary-switch" role="group" aria-label="Primary tool">
-    {tools.filter((tool) => PRIMARY_TOOL_IDS.includes(tool.id)).map((tool) => <button key={tool.id} className={`tool-primary-switch-item${activeTool === tool.id ? " selected" : ""}`} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={`${tool.label} · Double-click to toggle panel`} onClick={(event) => handleToolClick(tool.id, event.detail)}>
+  const primaryToolSwitch = <div className="tool-primary-switch" role="tablist" aria-label="Workspace view">
+    {tools.map((tool) => <button key={tool.id} role="tab" className={`tool-primary-switch-item${activeTool === tool.id ? " selected" : ""}`} type="button" aria-selected={activeTool === tool.id} title={`${tool.label} · Double-click to toggle panel`} onClick={(event) => handleToolClick(tool.id, event.detail)}>
       <span className="tool-sidebar-icon" aria-hidden="true">{tool.icon}</span>
       <span className="tool-primary-switch-label">{tool.label}</span>
     </button>)}
@@ -1470,9 +1468,11 @@ function App() {
         }}>
           <div className="workspace-tool-layout">
             <nav className="tool-sidebar" aria-label="Workspace tools">
-              {tools.filter((tool) => !PRIMARY_TOOL_IDS.includes(tool.id)).map((tool) => <Fragment key={tool.id}>
-                <button className={`tool-sidebar-item ${activeTool === tool.id ? "selected" : ""}`} onClick={(event) => handleToolClick(tool.id, event.detail)} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={`${tool.label} · Double-click to toggle panel`}>
+              {tools.map((tool) => <Fragment key={tool.id}>
+                {tool.id === "changes" && <div className="tool-sidebar-separator" aria-hidden="true" />}
+                <button className={`tool-sidebar-item${tool.id === "terminal" || tool.id === "explorer" ? " main-btn" : ""} ${activeTool === tool.id ? "selected" : ""}`} onClick={(event) => handleToolClick(tool.id, event.detail)} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={`${tool.label} · Double-click to toggle panel`}>
                   <span className="tool-sidebar-icon" aria-hidden="true">{tool.icon}</span>
+                  {(tool.id === "terminal" || tool.id === "explorer") && <span className="tool-sidebar-label">{tool.label}</span>}
                 </button>
               </Fragment>)}
               <button className="tool-sidebar-settings" type="button" aria-label="Help & Settings" title="Help & Settings" aria-haspopup="dialog" onClick={() => setSettingsOpen(true)}>

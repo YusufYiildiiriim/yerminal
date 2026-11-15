@@ -58,9 +58,15 @@ describe("Sidebar and header layout redesign", () => {
 
     const rail = screen.getByRole("navigation", { name: "Workspace tools" });
     const railLabels = within(rail).getAllByRole("button").map((button) => button.getAttribute("aria-label"));
-    expect(railLabels.slice(0, 2)).toEqual(["Git Changes", "Git Graph"]);
-    const primary = screen.getByRole("group", { name: "Primary tool" });
-    expect(within(primary).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["Terminal", "Editor"]);
+    expect(railLabels.slice(0, 4)).toEqual(["Terminal", "Editor", "Git Changes", "Git Graph"]);
+    expect(rail.querySelector(".tool-sidebar-separator")).toBeInTheDocument();
+    const switcher = screen.getByRole("tablist", { name: "Workspace view" });
+    expect(within(switcher).getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Terminal", "Editor", "Git Changes", "Git Graph"]);
+    await user.click(within(switcher).getByRole("tab", { name: "Git Graph" }));
+    expect(screen.getByRole("region", { name: "Git Graph" })).toBeInTheDocument();
+    expect(within(screen.getByRole("tablist", { name: "Workspace view" })).getByRole("tab", { name: "Git Graph" })).toHaveAttribute("aria-selected", "true");
+    await user.click(within(screen.getByRole("tablist", { name: "Workspace view" })).getByRole("tab", { name: "Editor" }));
+    await user.click(within(rail).getByRole("button", { name: "Terminal" }));
 
     await user.click(within(rail).getByRole("button", { name: "Git Changes" }));
     expect(within(rail).getByRole("button", { name: "Git Changes" })).toHaveAttribute("aria-pressed", "true");
