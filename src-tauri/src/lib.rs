@@ -180,6 +180,39 @@ fn git_commit_file_content(
     git::commit_file_content(&path, &commit_id, &file_path)
 }
 
+
+#[tauri::command]
+async fn git_checkout_branch(path: String, name: String) -> Result<RepositoryInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || git::checkout_branch(&path, &name))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn git_create_branch(
+    path: String,
+    name: String,
+    from: Option<String>,
+    checkout: bool,
+) -> Result<RepositoryInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || git::create_branch(&path, &name, from.as_deref(), checkout))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn git_delete_branch(path: String, name: String, force: bool) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || git::delete_branch(&path, &name, force))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn git_rename_branch(path: String, old_name: String, new_name: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || git::rename_branch(&path, &old_name, &new_name))
+        .await
+        .map_err(|error| error.to_string())?
+}
 #[tauri::command]
 fn list_workspace_directory(root: String, path: String) -> Result<Vec<WorkspaceEntry>, String> {
     workspace_fs::list_directory(&root, &path)
@@ -250,6 +283,10 @@ pub fn run() {
             git_diff,
             git_history,
             git_branches,
+            git_checkout_branch,
+            git_create_branch,
+            git_delete_branch,
+            git_rename_branch,
             git_commit_files,
             git_commit_file_diff,
             git_commit_file_content,

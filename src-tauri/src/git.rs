@@ -735,6 +735,7 @@ pub struct BranchInfo {
     pub is_head: bool,
     pub ahead: Option<usize>,
     pub behind: Option<usize>,
+    pub upstream: Option<String>,
 }
 
 /// Local branches first, then remote-tracking branches, each sorted by name.
@@ -764,13 +765,14 @@ pub fn branches(path: &str) -> Result<Vec<BranchInfo>, String> {
                     },
                     _ => (None, None),
                 };
-                local.push(BranchInfo { name, is_remote: false, is_head, ahead, behind });
+                let upstream = branch.upstream().ok().and_then(|upstream| upstream.name().ok().flatten().map(str::to_owned));
+                local.push(BranchInfo { name, is_remote: false, is_head, ahead, behind, upstream });
             }
             BranchType::Remote => {
                 if name.ends_with("/HEAD") {
                     continue;
                 }
-                remote.push(BranchInfo { name, is_remote: true, is_head: false, ahead: None, behind: None });
+                remote.push(BranchInfo { name, is_remote: true, is_head: false, ahead: None, behind: None, upstream: None });
             }
         }
     }
@@ -780,6 +782,141 @@ pub fn branches(path: &str) -> Result<Vec<BranchInfo>, String> {
     Ok(local)
 }
 
+
+fn validate_branch_name(name: &str) -> Result<(), String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("Branch name cannot be empty".to_owned());
+    }
+    if trimmed != name || name.starts_with('-') || !git2::Branch::name_is_valid(name).unwrap_or(false) {
+        return Err(format!("'{name}' is not a valid branch name"));
+    }
+    Ok(())
+}
+
+fn require_clean_state(repo: &Repository, action: &str) -> Result<(), String> {
+    if repo.state() == RepositoryState::Clean {
+        Ok(())
+    } else {
+        Err(format!("Finish the operation in progress before {action}"))
+    }
+}
+
+fn checkout_commit_tree(repo: &Repository, commit: &git2::Commit<'_>) -> Result<(), String> {
+    let mut options = git2::build::CheckoutBuilder::new();
+    options.safe();
+    repo.checkout_tree(commit.as_object(), Some(&mut options)).map_err(|error| {
+        if error.code() == git2::ErrorCode::Conflict {
+            "Your local changes would be overwritten. Commit or stash them first".to_owned()
+        } else {
+            format!("Could not check out: {error}")
+        }
+    })
+}
+
+/// Switches to a local branch. A remote-tracking name such as `origin/feature` creates (or reuses)
+/// the matching local branch. The checkout is "safe": it refuses instead of overwriting local changes.
+pub fn checkout_branch(path: &str, name: &str) -> Result<RepositoryInfo, String> {
+    let repo = open_repository(path)?;
+    require_clean_state(&repo, "switching branches")?;
+    let local_name = if repo.find_branch(name, BranchType::Local).is_ok() {
+        name.to_owned()
+    } else {
+        let remote = repo
+            .find_branch(name, BranchType::Remote)
+            .map_err(|_| format!("Branch '{name}' was not found"))?;
+        let short = name.split_once('/').map(|(_, rest)| rest).unwrap_or(name).to_owned();
+        if repo.find_branch(&short, BranchType::Local).is_err() {
+            let commit = remote
+                .get()
+                .peel_to_commit()
+                .map_err(|error| format!("Could not read '{name}': {error}"))?;
+            let mut created = repo
+                .branch(&short, &commit, false)
+                .map_err(|error| format!("Could not create '{short}': {error}"))?;
+            created.set_upstream(Some(name)).ok();
+        }
+        short
+    };
+    let branch = repo
+        .find_branch(&local_name, BranchType::Local)
+        .map_err(|error| format!("Could not find '{local_name}': {error}"))?;
+    let reference_name = branch
+        .get()
+        .name()
+        .ok_or_else(|| "Branch name is not valid UTF-8".to_owned())?
+        .to_owned();
+    let commit = branch
+        .get()
+        .peel_to_commit()
+        .map_err(|error| format!("Could not read '{local_name}': {error}"))?;
+    checkout_commit_tree(&repo, &commit)?;
+    repo.set_head(&reference_name)
+        .map_err(|error| format!("Could not move HEAD: {error}"))?;
+    repository_info(path)
+}
+
+/// Creates a branch from `from` (a branch name or commit id; HEAD when absent), optionally checking it out.
+pub fn create_branch(path: &str, name: &str, from: Option<&str>, checkout: bool) -> Result<RepositoryInfo, String> {
+    validate_branch_name(name)?;
+    let repo = open_repository(path)?;
+    if repo.find_branch(name, BranchType::Local).is_ok() {
+        return Err(format!("Branch '{name}' already exists"));
+    }
+    let commit = match from.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(revision) => repo
+            .revparse_single(revision)
+            .and_then(|object| object.peel_to_commit())
+            .map_err(|_| format!("Could not find '{revision}'"))?,
+        None => repo
+            .head()
+            .and_then(|head| head.peel_to_commit())
+            .map_err(|_| "Make a first commit before creating branches".to_owned())?,
+    };
+    repo.branch(name, &commit, false)
+        .map_err(|error| format!("Could not create '{name}': {error}"))?;
+    if checkout {
+        return checkout_branch(path, name);
+    }
+    repository_info(path)
+}
+
+/// Deletes a local branch. The checked-out branch is never deleted; an unmerged branch needs `force`.
+pub fn delete_branch(path: &str, name: &str, force: bool) -> Result<(), String> {
+    let repo = open_repository(path)?;
+    let mut branch = repo
+        .find_branch(name, BranchType::Local)
+        .map_err(|_| format!("Local branch '{name}' was not found"))?;
+    if branch.is_head() {
+        return Err("Cannot delete the checked-out branch".to_owned());
+    }
+    if !force {
+        let tip = branch.get().target();
+        let head = repo.head().ok().and_then(|head| head.target());
+        let merged = match (tip, head) {
+            (Some(tip), Some(head)) => tip == head || repo.graph_descendant_of(head, tip).unwrap_or(false),
+            _ => false,
+        };
+        if !merged {
+            return Err(format!("Branch '{name}' is not fully merged"));
+        }
+    }
+    branch
+        .delete()
+        .map_err(|error| format!("Could not delete '{name}': {error}"))
+}
+
+pub fn rename_branch(path: &str, old_name: &str, new_name: &str) -> Result<(), String> {
+    validate_branch_name(new_name)?;
+    let repo = open_repository(path)?;
+    let mut branch = repo
+        .find_branch(old_name, BranchType::Local)
+        .map_err(|_| format!("Local branch '{old_name}' was not found"))?;
+    branch
+        .rename(new_name, false)
+        .map(|_| ())
+        .map_err(|error| format!("Could not rename '{old_name}': {error}"))
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1923,5 +2060,115 @@ mod tests {
         assert!(commits[0].branches.contains(&"origin/develop".to_owned()), "{:?}", commits[0].branches);
         assert!(!commits[0].branches.iter().any(|name| name.ends_with("/HEAD")), "{:?}", commits[0].branches);
         let _ = dir;
+    }
+
+    fn head_branch(root: &str) -> String {
+        repository_info(root).expect("repository info").branch
+    }
+
+    #[test]
+    fn create_branch_switches_to_it_and_rejects_bad_or_duplicate_names() {
+        let (dir, root) = init_repo();
+        add_file(dir.path(), "a.txt", "one\n");
+        stage_and_commit(&root, "a.txt", "first");
+        let base = head_branch(&root);
+
+        let info = create_branch(&root, "feature/login", None, true).expect("create and checkout");
+        assert_eq!(info.branch, "feature/login");
+        assert!(create_branch(&root, "feature/login", None, false).unwrap_err().contains("already exists"));
+        for bad in ["", "has space", "-lead", "a..b", "end.lock", "tilde~x"] {
+            assert!(create_branch(&root, bad, None, false).is_err(), "{bad:?} should be rejected");
+        }
+        let kept = create_branch(&root, "side", Some(&base), false).expect("create without checkout");
+        assert_eq!(kept.branch, "feature/login");
+        let names: Vec<String> = branches(&root).unwrap().into_iter().map(|b| b.name).collect();
+        assert!(names.contains(&"side".to_owned()) && names.contains(&base));
+    }
+
+    #[test]
+    fn checkout_branch_moves_head_and_working_tree() {
+        let (dir, root) = init_repo();
+        add_file(dir.path(), "a.txt", "one\n");
+        stage_and_commit(&root, "a.txt", "first");
+        let base = head_branch(&root);
+        create_branch(&root, "other", None, true).unwrap();
+        add_file(dir.path(), "b.txt", "only on other\n");
+        stage_and_commit(&root, "b.txt", "second");
+
+        checkout_branch(&root, &base).expect("back to base");
+        assert_eq!(head_branch(&root), base);
+        assert!(!dir.path().join("b.txt").exists(), "files of the other branch are removed");
+        checkout_branch(&root, "other").expect("to other");
+        assert!(dir.path().join("b.txt").exists());
+        assert!(checkout_branch(&root, "missing").unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn checkout_refuses_instead_of_overwriting_local_changes() {
+        let (dir, root) = init_repo();
+        add_file(dir.path(), "a.txt", "one\n");
+        stage_and_commit(&root, "a.txt", "first");
+        let base = head_branch(&root);
+        create_branch(&root, "other", None, true).unwrap();
+        add_file(dir.path(), "a.txt", "changed on other\n");
+        stage_and_commit(&root, "a.txt", "second");
+        checkout_branch(&root, &base).unwrap();
+        add_file(dir.path(), "a.txt", "dirty edit\n");
+
+        let error = checkout_branch(&root, "other").unwrap_err();
+        assert!(error.contains("local changes"), "{error}");
+        assert_eq!(head_branch(&root), base);
+        assert_eq!(fs::read_to_string(dir.path().join("a.txt")).unwrap(), "dirty edit\n");
+    }
+
+    #[test]
+    fn checkout_of_a_remote_branch_creates_a_tracking_local_branch() {
+        let (dir, root) = init_repo();
+        add_file(dir.path(), "a.txt", "one\n");
+        stage_and_commit(&root, "a.txt", "first");
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let head = repo.head().unwrap().target().unwrap();
+        repo.remote("origin", "https://example.invalid/repo.git").unwrap();
+        repo.reference("refs/remotes/origin/feature", head, true, "test remote").unwrap();
+        drop(repo);
+
+        let info = checkout_branch(&root, "origin/feature").expect("checkout remote branch");
+        assert_eq!(info.branch, "feature");
+        let listed = branches(&root).unwrap();
+        let local = listed.iter().find(|b| !b.is_remote && b.name == "feature").expect("local feature branch");
+        assert_eq!(local.upstream.as_deref(), Some("origin/feature"));
+    }
+
+    #[test]
+    fn delete_branch_protects_the_checked_out_and_unmerged_branches() {
+        let (dir, root) = init_repo();
+        add_file(dir.path(), "a.txt", "one\n");
+        stage_and_commit(&root, "a.txt", "first");
+        let base = head_branch(&root);
+        create_branch(&root, "merged", None, false).unwrap();
+        create_branch(&root, "unmerged", None, true).unwrap();
+        add_file(dir.path(), "b.txt", "extra\n");
+        stage_and_commit(&root, "b.txt", "extra");
+        checkout_branch(&root, &base).unwrap();
+
+        assert!(delete_branch(&root, &base, true).unwrap_err().contains("checked-out"));
+        delete_branch(&root, "merged", false).expect("merged branch deletes without force");
+        assert!(delete_branch(&root, "unmerged", false).unwrap_err().contains("not fully merged"));
+        delete_branch(&root, "unmerged", true).expect("force deletes the unmerged branch");
+        let names: Vec<String> = branches(&root).unwrap().into_iter().map(|b| b.name).collect();
+        assert_eq!(names, vec![base]);
+    }
+
+    #[test]
+    fn rename_branch_validates_and_renames() {
+        let (dir, root) = init_repo();
+        add_file(dir.path(), "a.txt", "one\n");
+        stage_and_commit(&root, "a.txt", "first");
+        create_branch(&root, "old", None, true).unwrap();
+
+        assert!(rename_branch(&root, "old", "bad name").is_err());
+        rename_branch(&root, "old", "renamed").expect("rename");
+        assert_eq!(head_branch(&root), "renamed");
+        assert!(rename_branch(&root, "old", "x").unwrap_err().contains("not found"));
     }
 }
