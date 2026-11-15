@@ -9,13 +9,13 @@
 .bp-trigger .bp-chevron { margin-left: auto; opacity: .6; }
 .bp-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bp-popover { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0; display: flex; flex-direction: column; gap: 6px; max-height: 340px; padding: 8px; border: 1px solid var(--theme-border, #2c2c34); border-radius: 8px; background: var(--theme-surface, #19191f); box-shadow: 0 8px 24px rgb(0 0 0 / 35%); }
-.bp-input { width: 100%; height: 26px; padding: 0 8px; border: 1px solid var(--theme-border, #2c2c34); border-radius: 6px; background: transparent; color: var(--theme-text); font: inherit; font-size: 12px; }
+.bp-input { flex: none; width: 100%; height: 30px; padding: 0 8px; border: 1px solid var(--theme-border, #2c2c34); border-radius: 6px; background: transparent; color: var(--theme-text); font: inherit; font-size: 12px; }
 .bp-input:focus { outline: 1px solid var(--theme-accent, #b3a3ee); }
-.bp-new { height: 32px; padding: 0 8px; border: 1px dashed var(--theme-border, #2c2c34); border-radius: 6px; background: transparent; color: var(--theme-muted); font: inherit; font-size: 12px; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bp-new { flex: none; height: 32px; padding: 0 8px; border: 1px dashed var(--theme-border, #2c2c34); border-radius: 6px; background: transparent; color: var(--theme-muted); font: inherit; font-size: 12px; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bp-new:hover { color: var(--theme-text); border-color: var(--theme-accent, #b3a3ee); }
-.bp-list { min-height: 0; overflow-y: auto; }
+.bp-list { flex: 1 1 auto; min-height: 60px; overflow-y: auto; }
 .bp-list ul { margin: 0; padding: 0; list-style: none; }
-.bp-section { padding: 6px 4px 2px; color: var(--theme-muted); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; }
+.bp-section { flex: none; padding: 6px 4px 2px; color: var(--theme-muted); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; }
 .bp-row { position: relative; display: flex; flex-wrap: wrap; align-items: center; border-radius: 6px; }
 .bp-row:hover { background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 9%, transparent); }
 .bp-item { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 0; height: 26px; padding: 0 6px; border: 0; background: transparent; color: var(--theme-text); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
