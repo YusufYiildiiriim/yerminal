@@ -100,6 +100,24 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
         onLinkHintRef.current?.(message);
       },
     });
+    // Ctrl+Shift+C / Ctrl+Shift+V: copy / paste. Without this xterm turns Ctrl+Shift+C into ^C and interrupts the running process.
+    terminal.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown" || !event.ctrlKey || !event.shiftKey || event.altKey || event.metaKey) return true;
+      const key = event.key.toLowerCase();
+      if (key === "c") {
+        event.preventDefault();
+        if (terminal.hasSelection()) void navigator.clipboard?.writeText(terminal.getSelection()).catch(() => {});
+        return false;
+      }
+      if (key === "v") {
+        event.preventDefault();
+        void navigator.clipboard?.readText().then((text) => {
+          if (text && !disposed) terminal.paste(text);
+        }).catch(() => {});
+        return false;
+      }
+      return true;
+    });
     const handleFocus = () => onFocusRef.current(sessionId);
     hostRef.current.addEventListener("focusin", handleFocus);
     // Windows-terminal style right-click: copy the selection (and clear it), otherwise paste the clipboard.

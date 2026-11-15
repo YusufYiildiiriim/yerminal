@@ -8,6 +8,7 @@ const xterm = vi.hoisted(() => ({
     getSelection: ReturnType<typeof vi.fn>;
     clearSelection: ReturnType<typeof vi.fn>;
     paste: ReturnType<typeof vi.fn>;
+    keyHandler: ((e: KeyboardEvent) => boolean) | null;
   },
 }));
 
@@ -20,6 +21,8 @@ vi.mock("@xterm/xterm", () => ({
     getSelection = vi.fn(() => "");
     clearSelection = vi.fn();
     paste = vi.fn();
+    keyHandler: ((e: KeyboardEvent) => boolean) | null = null;
+    attachCustomKeyEventHandler(h: (e: KeyboardEvent) => boolean) { this.keyHandler = h; }
     constructor(options?: Record<string, unknown>) { xterm.instance = this; xterm.options = options ?? null; }
     loadAddon() {}
     open() {}
@@ -68,6 +71,41 @@ describe("terminal right-click", () => {
     expect(clipboard.writeText).toHaveBeenCalledWith("selected text");
     expect(xterm.instance!.clearSelection).toHaveBeenCalled();
     expect(xterm.instance!.paste).not.toHaveBeenCalled();
+  });
+});
+
+describe("terminal Ctrl+Shift+C / V", () => {
+  const clipboard = { readText: vi.fn(), writeText: vi.fn() };
+  beforeEach(() => {
+    clipboard.readText.mockReset().mockResolvedValue("echo pasted");
+    clipboard.writeText.mockReset().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: clipboard, configurable: true });
+    render(<TerminalPane sessionId="s3" shell="powershell" workingDirectory={null} active visible onFocus={() => {}} onExit={() => {}} />);
+  });
+  afterEach(cleanup);
+  const press = (key: string, init: KeyboardEventInit = {}) => {
+    const event = new KeyboardEvent("keydown", { key, ctrlKey: true, shiftKey: true, cancelable: true, ...init });
+    return { handled: xterm.instance!.keyHandler!(event) === false, event };
+  };
+
+  it("copies the selection, blocks ^C and the browser inspect shortcut", () => {
+    xterm.instance!.hasSelection.mockReturnValue(true);
+    xterm.instance!.getSelection.mockReturnValue("picked");
+    const { handled, event } = press("C");
+    expect(handled).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+    expect(clipboard.writeText).toHaveBeenCalledWith("picked");
+  });
+
+  it("pastes the clipboard", async () => {
+    const { handled, event } = press("V");
+    expect(handled).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => expect(xterm.instance!.paste).toHaveBeenCalledWith("echo pasted"));
+  });
+
+  it("leaves plain Ctrl+C for the shell", () => {
+    expect(press("c", { shiftKey: false }).handled).toBe(false);
   });
 });
 
