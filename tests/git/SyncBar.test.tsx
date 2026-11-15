@@ -1,0 +1,72 @@
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const tauri = vi.hoisted(() => ({ invoke: vi.fn(), isTauri: vi.fn(() => true) }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: tauri.invoke, isTauri: tauri.isTauri }));
+
+import { SyncBar } from "../../src/features/git/SyncBar";
+
+type State = { branch: string | null; upstream: string | null; ahead: number; behind: number; hasRemote: boolean };
+
+function setup(state: State | undefined, ops: Record<string, () => unknown> = {}) {
+  const onChanged = vi.fn();
+  const onError = vi.fn();
+  tauri.invoke.mockImplementation(async (command: string) => {
+    if (command === "git_remote_state") return state;
+    if (ops[command]) return ops[command]();
+    return undefined;
+  });
+  render(<SyncBar repoPath="C:/repo" refreshKey={0} onChanged={onChanged} onError={onError} />);
+  return { onChanged, onError };
+}
+
+describe("SyncBar", () => {
+  beforeEach(() => tauri.invoke.mockReset());
+  afterEach(cleanup);
+
+  it("renders nothing when the repository has no remote", async () => {
+    setup({ branch: "main", upstream: null, ahead: 0, behind: 0, hasRemote: false });
+    await waitFor(() => expect(tauri.invoke).toHaveBeenCalledWith("git_remote_state", { path: "C:/repo" }));
+    expect(screen.queryByRole("group", { name: "Remote sync" })).not.toBeInTheDocument();
+  });
+
+  it("shows how many commits are waiting to pull or push", async () => {
+    setup({ branch: "main", upstream: "origin/main", ahead: 2, behind: 3, hasRemote: true });
+    expect(await screen.findByLabelText("3 commits to pull")).toHaveTextContent("↓3");
+    expect(screen.getByLabelText("2 commits to push")).toHaveTextContent("↑2");
+    expect(screen.getByRole("button", { name: "Pull from remote" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Push to remote" })).toBeEnabled();
+  });
+
+  it("offers to publish an unpublished branch and disables pull until then", async () => {
+    const user = userEvent.setup();
+    const { onChanged, onError } = setup({ branch: "feature", upstream: null, ahead: 0, behind: 0, hasRemote: true }, { git_push: () => "Published feature to origin" });
+    const publish = await screen.findByRole("button", { name: "Publish branch" });
+    expect(screen.getByRole("button", { name: "Pull from remote" })).toBeDisabled();
+    await user.click(publish);
+    expect(tauri.invoke).toHaveBeenCalledWith("git_push", { path: "C:/repo" });
+    await waitFor(() => expect(onError).toHaveBeenCalledWith("Publish: Published feature to origin"));
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it("disables push when there is nothing to push, and fetch/pull report their result", async () => {
+    const user = userEvent.setup();
+    const { onError } = setup({ branch: "main", upstream: "origin/main", ahead: 0, behind: 1, hasRemote: true }, { git_fetch: () => "Already up to date", git_pull: () => "Fast-forward" });
+    expect(await screen.findByRole("button", { name: "Push to remote" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Fetch from remote" }));
+    await waitFor(() => expect(onError).toHaveBeenCalledWith("Fetch: Already up to date"));
+    await user.click(screen.getByRole("button", { name: "Pull from remote" }));
+    await waitFor(() => expect(onError).toHaveBeenCalledWith("Pull: Fast-forward"));
+  });
+
+  it("surfaces a failed operation and still refreshes", async () => {
+    const user = userEvent.setup();
+    const { onChanged, onError } = setup({ branch: "main", upstream: "origin/main", ahead: 0, behind: 1, hasRemote: true }, {
+      git_pull: () => { throw "Your local changes would be overwritten by merge"; },
+    });
+    await user.click(await screen.findByRole("button", { name: "Pull from remote" }));
+    await waitFor(() => expect(onError).toHaveBeenCalledWith(expect.stringContaining("Pull failed: Your local changes")));
+    expect(onChanged).toHaveBeenCalled();
+  });
+});

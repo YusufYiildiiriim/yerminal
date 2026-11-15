@@ -7,6 +7,8 @@ import { confirm, open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { GitGraphBranches } from "./features/git/GitGraphBranches";
 import { BranchPicker } from "./features/git/BranchPicker";
+import { SyncBar } from "./features/git/SyncBar";
+import { baseName, buildChangeTree, type ChangeTreeNode } from "./features/git/changeTree";
 import { MergeConflicts } from "./features/git/MergeConflicts";
 import { joinRepoPath } from "./features/git/gitPaths";
 import type { CommitFileChange, CommitInfo } from "./features/git/gitTypes";
@@ -2082,13 +2084,18 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenD
   const [discardTarget, setDiscardTarget] = useState<string | null>(null);
   const [isCommitting, setIsCommitting] = useState(false);
   const [expanded, setExpanded] = useState(true);
+  const [syncNonce, setSyncNonce] = useState(0);
+  const [changeView, setChangeView] = useState<"list" | "tree">(() => {
+    try { return localStorage.getItem("yerminal.git-change-view") === "tree" ? "tree" : "list"; } catch { return "list"; }
+  });
+  const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(() => new Set());
   const stagedChanges = changes.filter((change) => change.staged);
   const unstagedChanges = changes.filter((change) => change.unstaged);
   const conflictedPaths = changes.filter((change) => change.kind === "conflicted").map((change) => change.path);
 
   const refresh = useCallback(async () => {
     if (!repoPath || !repoInfo || !isTauri()) return;
-    try { setChanges(await invoke<FileChange[]>("git_status", { path: repoPath })); }
+    try { setChanges(await invoke<FileChange[]>("git_status", { path: repoPath })); setSyncNonce((value) => value + 1); }
     catch (reason) { onError(String(reason)); }
   }, [onError, repoInfo, repoPath]);
 
@@ -2105,6 +2112,30 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenD
       setFileAction(null);
     }
   };
+
+  const runFolderAction = async (action: "stage" | "unstage", filePaths: string[]) => {
+    if (!repoPath || !repoInfo || fileAction || filePaths.length === 0) return;
+    const command = action === "stage" ? "git_stage_file" : "git_unstage_file";
+    setFileAction({ path: "*", action });
+    try {
+      for (const filePath of filePaths) await invoke<void>(command, { path: repoPath, filePath });
+    } catch (reason) {
+      onError(String(reason));
+    } finally {
+      setFileAction(null);
+      await refresh();
+    }
+  };
+
+  const chooseChangeView = (view: "list" | "tree") => {
+    setChangeView(view);
+    try { localStorage.setItem("yerminal.git-change-view", view); } catch { /* preference only */ }
+  };
+  const toggleDir = (key: string) => setCollapsedDirs((current) => {
+    const next = new Set(current);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
 
   const commitStaged = async () => {
     if (!repoPath || !repoInfo || stagedChanges.length === 0 || !commitMessage.trim() || isCommitting) return;
@@ -2124,10 +2155,10 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenD
   useEffect(() => { void refresh(); }, [refresh, refreshNonce]);
   useEffect(() => { setCommitMessage(""); setDiscardTarget(null); }, [repoPath]);
 
-  const renderChangeRow = (change: FileChange, staged: boolean) => <div className="change-row" key={`${staged ? "staged" : "unstaged"}:${change.path}`}>
-    <button className="change-main-row" onClick={() => onOpenDiff(repoInfo.root, change, staged)} type="button" title={change.path}>
+  const renderChangeRow = (change: FileChange, staged: boolean, depth = -1) => <div className="change-row" key={`${staged ? "staged" : "unstaged"}:${change.path}`}>
+    <button className="change-main-row" onClick={() => onOpenDiff(repoInfo.root, change, staged)} type="button" title={change.path} style={depth >= 0 ? { paddingLeft: 13 + depth * 12 } : undefined}>
       <span className={`change-kind ${change.kind}`}>{change.kind === "modified" ? "M" : change.kind === "deleted" ? "D" : change.kind === "untracked" ? "?" : change.kind === "renamed" ? "R" : "A"}</span>
-      <span className="change-path">{change.path}</span>
+      <span className="change-path">{depth >= 0 ? baseName(change.path) : change.path}</span>
       {staged && <span className="change-badge">S</span>}
       {!staged && <span className="change-badge unstaged">U</span>}
     </button>
@@ -2138,6 +2169,27 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenD
       {!staged && <button className="change-action discard" aria-label={`Discard working tree changes to ${change.path}`} title="Discard working tree changes" disabled={Boolean(fileAction)} onClick={() => setDiscardTarget(change.path)} type="button"><span aria-hidden="true">↶</span></button>}
     </div>
   </div>;
+
+  const renderTree = (nodes: ChangeTreeNode<FileChange>[], staged: boolean, depth: number): React.ReactNode => nodes.map((node) => {
+    if (node.kind === "file") return renderChangeRow(node.change, staged, depth);
+    const key = `${staged ? "s" : "u"}:${node.path}`;
+    const open = !collapsedDirs.has(key);
+    const verb = staged ? "Unstage" : "Stage";
+    return <div className="change-dir" key={key}>
+      <div className="change-dir-row" style={{ paddingLeft: 8 + depth * 12 }}>
+        <button className="change-dir-toggle" type="button" aria-expanded={open} aria-label={`${open ? "Collapse" : "Expand"} folder ${node.path}`} title={node.path} onClick={() => toggleDir(key)}>
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+          <span className="change-dir-name">{node.name}</span>
+          <span className="change-dir-count">{node.files.length}</span>
+        </button>
+        <div className="change-dir-actions">
+          <button className={`change-action ${staged ? "unstage" : "stage"}`} type="button" aria-label={`${verb} all changes in ${node.path}`} title={`${verb} all changes in this folder`} disabled={Boolean(fileAction)} onClick={() => void runFolderAction(staged ? "unstage" : "stage", node.files.map((file) => file.path))}><span aria-hidden="true">{staged ? "−" : "+"}</span></button>
+        </div>
+      </div>
+      {open && renderTree(node.children, staged, depth + 1)}
+    </div>;
+  });
+  const renderChangeGroup = (items: FileChange[], staged: boolean) => changeView === "tree" ? renderTree(buildChangeTree(items), staged, 0) : items.map((change) => renderChangeRow(change, staged));
 
   const repoName = repoInfo.root.split(/[\\/]/).filter(Boolean).pop() ?? repoInfo.root;
   const toggleExpanded = () => setExpanded((current) => !current);
@@ -2154,20 +2206,25 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenD
     </header>
     <div className="git-repository-body" hidden={!expanded}>
       <div className="git-repository-branch-row"><BranchPicker repoPath={repoPath} currentBranch={repoInfo.branch} onChanged={onBranchChanged} onError={onError} /></div>
+      <SyncBar repoPath={repoPath} refreshKey={syncNonce + refreshNonce} onChanged={onBranchChanged} onError={onError} />
       <MergeConflicts repoPath={repoPath} merging={repoInfo.state === "merge in progress"} conflicts={conflictedPaths} onChanged={onBranchChanged} onError={onError} onOpenFile={(relativePath) => onOpenFile(repoInfo.root, relativePath)} />
       {changes.length > 0 && <section className="git-commit-box" aria-label="Commit staged changes">
         <textarea aria-label="Commit message" placeholder="Message (required)" rows={2} maxLength={65536} value={commitMessage} onChange={(event) => setCommitMessage(event.currentTarget.value)} />
         <button className="git-commit-button" onClick={() => void commitStaged()} disabled={isCommitting || Boolean(fileAction) || stagedChanges.length === 0 || !commitMessage.trim()} type="button"><span aria-hidden="true">✓</span><span>{isCommitting ? "Committing…" : "Commit staged"}</span><small>{stagedChanges.length}</small></button>
       </section>}
+      {changes.length > 0 && <div className="change-view-bar"><div className="change-view-toggle" role="group" aria-label="Changes view">
+        <button type="button" aria-pressed={changeView === "list"} title="Show changed files as a flat list" onClick={() => chooseChangeView("list")}>List</button>
+        <button type="button" aria-pressed={changeView === "tree"} title="Group changed files by folder" onClick={() => chooseChangeView("tree")}>Tree</button>
+      </div></div>}
       <div className="change-list" aria-label="Repository changes">
         {changes.length === 0 ? <div className="change-empty">Working tree clean</div> : <>
           {stagedChanges.length > 0 && <section className="change-group" aria-label="Staged changes">
             <header className="change-group-heading"><span>Staged Changes</span><span>{stagedChanges.length}</span></header>
-            {stagedChanges.map((change) => renderChangeRow(change, true))}
+            {renderChangeGroup(stagedChanges, true)}
           </section>}
           {unstagedChanges.length > 0 && <section className="change-group" aria-label="Changes">
             <header className="change-group-heading"><span>Changes</span><span>{unstagedChanges.length}</span></header>
-            {unstagedChanges.map((change) => renderChangeRow(change, false))}
+            {renderChangeGroup(unstagedChanges, false)}
           </section>}
         </>}
       </div>

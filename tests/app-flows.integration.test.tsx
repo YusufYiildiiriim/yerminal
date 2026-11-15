@@ -260,6 +260,37 @@ describe("App user flows", () => {
 
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("read_workspace_text_file", expect.objectContaining({ path: `${rootPath.replace(/[\/]+$/, "")}/src/a.txt` })));
   });
+
+  it("groups Git Changes by folder in tree view, remembers the choice, and stages a whole folder", async () => {
+    const user = userEvent.setup();
+    localStorage.removeItem("yerminal.git-change-view");
+    seedWorkspace();
+    invokeMock.mockImplementation(async (command: string, args?: InvokeArgs) => {
+      if (command === "git_status") return [
+        { path: "src/ui/a.tsx", kind: "modified", staged: false, unstaged: true },
+        { path: "src/ui/b.tsx", kind: "modified", staged: false, unstaged: true },
+        { path: "README.md", kind: "modified", staged: false, unstaged: true },
+      ];
+      return defaultInvokeResult(command, args);
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Git" }));
+    expect(await screen.findByText("src/ui/a.tsx")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Tree" }));
+    expect(screen.queryByText("src/ui/a.tsx")).not.toBeInTheDocument();
+    const folder = screen.getByRole("button", { name: "Collapse folder src/ui" });
+    expect(screen.getByText("a.tsx")).toBeInTheDocument();
+    expect(localStorage.getItem("yerminal.git-change-view")).toBe("tree");
+
+    await user.click(screen.getByRole("button", { name: "Stage all changes in src/ui" }));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("git_stage_file", expect.objectContaining({ filePath: "src/ui/b.tsx" })));
+    expect(invokeMock).toHaveBeenCalledWith("git_stage_file", expect.objectContaining({ filePath: "src/ui/a.tsx" }));
+
+    await user.click(folder);
+    expect(screen.queryByText("a.tsx")).not.toBeInTheDocument();
+    localStorage.removeItem("yerminal.git-change-view");
+  });
 });
 
 describe("Auto-save", () => {
