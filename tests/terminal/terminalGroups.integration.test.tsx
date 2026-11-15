@@ -403,4 +403,25 @@ describe("remembered terminal view per group", () => {
     expect(second).toHaveAttribute("aria-pressed", "true");
     expect(first).toHaveAttribute("aria-pressed", "false");
   });
+  it("deletes a group with its terminals only after confirmation, from a button at the right of the group row", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<App />);
+    await screen.findByTestId("mock-terminal");
+    expect(screen.queryByRole("button", { name: /Delete terminal group/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "New terminal group" }));
+    await user.click(screen.getByRole("button", { name: "Add terminal to group" }));
+    await waitFor(() => expect(screen.getAllByTestId("mock-terminal")).toHaveLength(2));
+    const groups = within(screen.getByRole("region", { name: "Terminal groups" }));
+
+    await user.click(groups.getByRole("button", { name: "Delete terminal group Terminal 2" }));
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('Delete terminal group "Terminal 2"'));
+    expect(groups.getAllByRole("button", { name: /^Select terminal group/ })).toHaveLength(2);
+
+    confirmSpy.mockReturnValue(true);
+    await user.click(groups.getByRole("button", { name: "Delete terminal group Terminal 2" }));
+    await waitFor(() => expect(groups.getAllByRole("button", { name: /^Select terminal group/ })).toHaveLength(1));
+    expect(invoke).toHaveBeenCalledWith("close_terminal", expect.anything());
+    expect(screen.queryByRole("button", { name: /Delete terminal group/ })).not.toBeInTheDocument();
+  });
 });

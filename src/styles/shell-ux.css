@@ -266,3 +266,4 @@
 .app-shell[data-theme] .tool-primary-switch-item .tool-sidebar-icon { display: inline-flex; width: 14px; height: 14px; }
 .app-shell[data-theme] .tool-primary-switch-item .tool-sidebar-icon svg { width: 14px; height: 14px; }
 .app-shell[data-theme] .tool-primary-switch-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell[data-theme] .workspace-terminal-group-acts .workspace-terminal-group-delete:hover { color: #f0a0ac; background: color-mix(in srgb, #c4586a 18%, transparent); }
