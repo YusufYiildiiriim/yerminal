@@ -147,11 +147,16 @@ export function BranchPicker({ repoPath, currentBranch, onChanged, onError }: Pr
   };
 
   return <div className="branch-picker" ref={rootRef}>
+    <div className="bp-bar">
     <button type="button" className="bp-trigger" aria-haspopup="dialog" aria-expanded={open} aria-label={`Switch branch, current ${label}`} title="Switch branch" onClick={() => (open ? close() : setOpen(true))}>
       <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="7" r="2" /><path d="M6 7v10M18 9c0 3.5-3 6-8 6" /></svg>
       <span className="bp-label">{label}</span>
       <svg className="bp-chevron" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
     </button>
+    <button type="button" className="bp-add" aria-label="Create new branch" title={`New branch from ${label}`} onClick={() => { setOpen(true); setCreating(""); }}>
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+    </button>
+    </div>
     {open && <div className="bp-popover" role="dialog" aria-label="Branches">
       <input className="bp-input" aria-label="Search branches" placeholder="Search branches" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} />
       {creating === null

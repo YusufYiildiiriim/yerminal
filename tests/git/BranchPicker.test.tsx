@@ -69,6 +69,13 @@ describe("BranchPicker", () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
+  it("opens straight into branch creation from the always-visible + button", async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole("button", { name: "Create new branch" }));
+    expect(await screen.findByRole("textbox", { name: "New branch name" })).toBeInTheDocument();
+  });
+
   it("shows the backend error (for example a dirty working tree) without closing the picker", async () => {
     const user = userEvent.setup();
     const { onError, onChanged } = setup({
