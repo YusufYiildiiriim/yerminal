@@ -3,7 +3,7 @@ pub mod terminal;
 pub mod workspace_fs;
 pub mod workspace_watch;
 
-use git::{BranchInfo, CommitFileChange, CommitFileContent, CommitInfo, FileChange, RepositoryInfo};
+use git::{BranchInfo, MergeOutcome, CommitFileChange, CommitFileContent, CommitInfo, FileChange, RepositoryInfo};
 use std::sync::Mutex;
 use tauri::{Manager, State};
 use terminal::{
@@ -213,6 +213,30 @@ async fn git_rename_branch(path: String, old_name: String, new_name: String) -> 
         .await
         .map_err(|error| error.to_string())?
 }
+
+#[tauri::command]
+async fn git_merge_branch(path: String, name: String) -> Result<MergeOutcome, String> {
+    tauri::async_runtime::spawn_blocking(move || git::merge_branch(&path, &name))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn git_merge_abort(path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || git::merge_abort(&path))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn git_merge_message(path: String) -> Result<String, String> {
+    git::merge_message(&path)
+}
+
+#[tauri::command]
+fn git_resolve_conflict(path: String, file_path: String, side: String) -> Result<(), String> {
+    git::resolve_conflict(&path, &file_path, &side)
+}
 #[tauri::command]
 fn list_workspace_directory(root: String, path: String) -> Result<Vec<WorkspaceEntry>, String> {
     workspace_fs::list_directory(&root, &path)
@@ -287,6 +311,10 @@ pub fn run() {
             git_create_branch,
             git_delete_branch,
             git_rename_branch,
+            git_merge_branch,
+            git_merge_abort,
+            git_merge_message,
+            git_resolve_conflict,
             git_commit_files,
             git_commit_file_diff,
             git_commit_file_content,

@@ -157,7 +157,10 @@ pub fn status(path: &str) -> Result<Vec<FileChange>, String> {
                 | Status::WT_RENAMED
                 | Status::WT_TYPECHANGE,
         );
-        let kind = if status.contains(Status::WT_NEW) && !staged {
+        let conflicted = status.contains(Status::CONFLICTED);
+        let kind = if conflicted {
+            "conflicted"
+        } else if status.contains(Status::WT_NEW) && !staged {
             "untracked"
         } else if status.intersects(Status::INDEX_DELETED | Status::WT_DELETED) {
             "deleted"
@@ -178,8 +181,8 @@ pub fn status(path: &str) -> Result<Vec<FileChange>, String> {
         changes.push(FileChange {
             path: path.to_owned(),
             kind: kind.to_owned(),
-            staged,
-            unstaged,
+            staged: staged && !conflicted,
+            unstaged: unstaged && !conflicted,
         });
     }
     changes.sort_by(|left, right| left.path.cmp(&right.path));
@@ -440,11 +443,21 @@ pub fn commit_staged(path: &str, message: &str) -> Result<String, String> {
     if message.is_empty() || message.len() > 64 * 1024 {
         return Err("Enter a commit message of at most 64 KiB".to_owned());
     }
-    let repo = open_repository(path)?;
-    if repo.state() != RepositoryState::Clean {
+    let mut repo = open_repository(path)?;
+    // A merge in progress is concluded by a commit with the merged branch as an extra parent.
+    let merging = repo.state() == RepositoryState::Merge;
+    let mut merge_heads = Vec::new();
+    if merging {
+        repo.mergehead_foreach(|oid| {
+            merge_heads.push(*oid);
+            true
+        })
+        .map_err(|error| format!("Could not read merge heads: {error}"))?;
+    }
+    if repo.state() != RepositoryState::Clean && !merging {
         return Err("Finish the current Git operation before committing".to_owned());
     }
-    if !status(path)?.iter().any(|change| change.staged) {
+    if !merging && !status(path)?.iter().any(|change| change.staged) {
         return Err("There are no staged changes to commit".to_owned());
     }
 
@@ -473,17 +486,25 @@ pub fn commit_staged(path: &str, message: &str) -> Result<String, String> {
         }
         Err(error) => return Err(format!("Could not read HEAD: {error}")),
     };
-    if parent
-        .as_ref()
-        .and_then(|commit| commit.tree().ok())
-        .is_some_and(|parent_tree| parent_tree.id() == tree_id)
+    if !merging
+        && parent
+            .as_ref()
+            .and_then(|commit| commit.tree().ok())
+            .is_some_and(|parent_tree| parent_tree.id() == tree_id)
     {
         return Err("There are no staged changes to commit".to_owned());
     }
     let signature = repo.signature().map_err(|error| {
         format!("Configure user.name and user.email before committing: {error}")
     })?;
-    let parents: Vec<_> = parent.iter().collect();
+    let mut parents: Vec<_> = parent.iter().cloned().collect();
+    for oid in merge_heads {
+        parents.push(
+            repo.find_commit(oid)
+                .map_err(|error| format!("Could not read merged commit: {error}"))?,
+        );
+    }
+    let parents: Vec<&git2::Commit<'_>> = parents.iter().collect();
     let oid = repo
         .commit(
             Some("HEAD"),
@@ -494,6 +515,10 @@ pub fn commit_staged(path: &str, message: &str) -> Result<String, String> {
             &parents,
         )
         .map_err(|error| format!("Could not create commit: {error}"))?;
+    if merging {
+        repo.cleanup_state()
+            .map_err(|error| format!("Could not finish the merge: {error}"))?;
+    }
     Ok(oid.to_string())
 }
 
@@ -916,6 +941,238 @@ pub fn rename_branch(path: &str, old_name: &str, new_name: &str) -> Result<(), S
         .rename(new_name, false)
         .map(|_| ())
         .map_err(|error| format!("Could not rename '{old_name}': {error}"))
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeOutcome {
+    /// "upToDate", "fastForward", "merged" or "conflicts".
+    pub result: String,
+    pub conflicts: Vec<String>,
+}
+
+fn conflicted_paths(repo: &Repository) -> Result<Vec<String>, String> {
+    let index = repo
+        .index()
+        .map_err(|error| format!("Could not open Git index: {error}"))?;
+    let mut paths = Vec::new();
+    let conflicts = index
+        .conflicts()
+        .map_err(|error| format!("Could not read conflicts: {error}"))?;
+    for conflict in conflicts {
+        let conflict = conflict.map_err(|error| format!("Could not read conflict: {error}"))?;
+        let entry = conflict.our.or(conflict.their).or(conflict.ancestor);
+        if let Some(entry) = entry {
+            paths.push(String::from_utf8_lossy(&entry.path).replace('\\', "/"));
+        }
+    }
+    paths.sort();
+    paths.dedup();
+    Ok(paths)
+}
+
+fn finish_merge_commit(repo: &mut Repository, fallback_message: &str) -> Result<(), String> {
+    let mut merge_heads = Vec::new();
+    repo.mergehead_foreach(|oid| {
+        merge_heads.push(*oid);
+        true
+    })
+    .map_err(|error| format!("Could not read merge heads: {error}"))?;
+    let message = repo
+        .message()
+        .ok()
+        .map(|message| message.trim().to_owned())
+        .filter(|message| !message.is_empty())
+        .unwrap_or_else(|| fallback_message.to_owned());
+    let mut index = repo
+        .index()
+        .map_err(|error| format!("Could not open Git index: {error}"))?;
+    let tree_id = index
+        .write_tree()
+        .map_err(|error| format!("Could not write merged tree: {error}"))?;
+    let tree = repo
+        .find_tree(tree_id)
+        .map_err(|error| format!("Could not read merged tree: {error}"))?;
+    let signature = repo.signature().map_err(|error| {
+        format!("Configure user.name and user.email before merging: {error}")
+    })?;
+    let head = repo
+        .head()
+        .and_then(|head| head.peel_to_commit())
+        .map_err(|error| format!("Could not read HEAD commit: {error}"))?;
+    let mut parents = vec![head];
+    for oid in merge_heads {
+        parents.push(
+            repo.find_commit(oid)
+                .map_err(|error| format!("Could not read merged commit: {error}"))?,
+        );
+    }
+    let parents: Vec<&git2::Commit<'_>> = parents.iter().collect();
+    repo.commit(Some("HEAD"), &signature, &signature, &message, &tree, &parents)
+        .map_err(|error| format!("Could not create merge commit: {error}"))?;
+    repo.cleanup_state()
+        .map_err(|error| format!("Could not finish the merge: {error}"))
+}
+
+/// Merges a local or remote-tracking branch into the checked-out branch. Fast-forwards when possible,
+/// otherwise creates a merge commit. On conflicts the repository is left in the merge state so the
+/// conflicts can be resolved (or the merge aborted).
+pub fn merge_branch(path: &str, name: &str) -> Result<MergeOutcome, String> {
+    let mut repo = open_repository(path)?;
+    require_clean_state(&repo, "merging")?;
+    if repo.head_detached().unwrap_or(false) {
+        return Err("Switch to a branch before merging".to_owned());
+    }
+    if status(path)?.iter().any(|change| change.staged) {
+        return Err("Commit or unstage your staged changes before merging".to_owned());
+    }
+    let branch = repo
+        .find_branch(name, BranchType::Local)
+        .or_else(|_| repo.find_branch(name, BranchType::Remote))
+        .map_err(|_| format!("Branch '{name}' was not found"))?;
+    let their_commit = branch
+        .get()
+        .peel_to_commit()
+        .map_err(|error| format!("Could not read '{name}': {error}"))?;
+    let annotated = repo
+        .reference_to_annotated_commit(branch.get())
+        .map_err(|error| format!("Could not prepare merge: {error}"))?;
+    let (analysis, _) = repo
+        .merge_analysis(&[&annotated])
+        .map_err(|error| format!("Could not analyse merge: {error}"))?;
+
+    if analysis.is_up_to_date() {
+        return Ok(MergeOutcome { result: "upToDate".to_owned(), conflicts: Vec::new() });
+    }
+    if analysis.is_fast_forward() {
+        checkout_commit_tree(&repo, &their_commit)?;
+        repo.head()
+            .and_then(|mut head| head.set_target(their_commit.id(), &format!("merge {name}: fast-forward")))
+            .map_err(|error| format!("Could not fast-forward: {error}"))?;
+        return Ok(MergeOutcome { result: "fastForward".to_owned(), conflicts: Vec::new() });
+    }
+    if !analysis.is_normal() {
+        return Err(format!("Cannot merge '{name}' into this branch"));
+    }
+
+    let mut checkout = git2::build::CheckoutBuilder::new();
+    checkout.safe().allow_conflicts(true).conflict_style_merge(true);
+    repo.merge(&[&annotated], None, Some(&mut checkout)).map_err(|error| {
+        if error.code() == git2::ErrorCode::Conflict {
+            "Your local changes would be overwritten. Commit or stash them first".to_owned()
+        } else {
+            format!("Could not merge '{name}': {error}")
+        }
+    })?;
+    let conflicts = conflicted_paths(&repo)?;
+    if !conflicts.is_empty() {
+        return Ok(MergeOutcome { result: "conflicts".to_owned(), conflicts });
+    }
+    drop(annotated);
+    drop(their_commit);
+    drop(branch);
+    finish_merge_commit(&mut repo, &format!("Merge branch '{name}'"))?;
+    Ok(MergeOutcome { result: "merged".to_owned(), conflicts: Vec::new() })
+}
+
+/// Cancels a merge in progress and restores the checked-out branch to its pre-merge state.
+pub fn merge_abort(path: &str) -> Result<(), String> {
+    let repo = open_repository(path)?;
+    if repo.state() != RepositoryState::Merge {
+        return Err("There is no merge in progress".to_owned());
+    }
+    let head = repo
+        .head()
+        .and_then(|head| head.peel_to_commit())
+        .map_err(|error| format!("Could not read HEAD commit: {error}"))?;
+    repo.reset(head.as_object(), git2::ResetType::Hard, None)
+        .map_err(|error| format!("Could not restore the branch: {error}"))?;
+    repo.cleanup_state()
+        .map_err(|error| format!("Could not clear the merge state: {error}"))
+}
+
+/// The prepared merge message (`MERGE_MSG`) while a merge is in progress, otherwise empty.
+pub fn merge_message(path: &str) -> Result<String, String> {
+    let repo = open_repository(path)?;
+    if repo.state() != RepositoryState::Merge {
+        return Ok(String::new());
+    }
+    Ok(repo.message().unwrap_or_default().trim().to_owned())
+}
+
+/// Resolves one conflicted file. `ours` and `theirs` take that side's version (or its deletion);
+/// `merged` accepts the file as edited and refuses while conflict markers remain.
+pub fn resolve_conflict(path: &str, file_path: &str, side: &str) -> Result<(), String> {
+    let repo = open_repository(path)?;
+    let relative = validated_worktree_path(&repo, file_path)?;
+    let mut index = repo
+        .index()
+        .map_err(|error| format!("Could not open Git index: {error}"))?;
+    let wanted = relative.to_string_lossy().replace('\\', "/");
+    let conflict = index
+        .conflicts()
+        .map_err(|error| format!("Could not read conflicts: {error}"))?
+        .filter_map(Result::ok)
+        .find(|conflict| {
+            [&conflict.our, &conflict.their, &conflict.ancestor]
+                .into_iter()
+                .flatten()
+                .any(|entry| String::from_utf8_lossy(&entry.path).replace('\\', "/") == wanted)
+        })
+        .ok_or_else(|| "This file has no merge conflict".to_owned())?;
+    let worktree_file = repo
+        .workdir()
+        .ok_or_else(|| "Git worktree is unavailable".to_owned())?
+        .join(&relative);
+
+    match side {
+        "ours" | "theirs" => {
+            let entry = if side == "ours" { conflict.our } else { conflict.their };
+            match entry {
+                Some(entry) => {
+                    let blob = repo
+                        .find_blob(entry.id)
+                        .map_err(|error| format!("Could not read the {side} version: {error}"))?;
+                    fs::write(&worktree_file, blob.content())
+                        .map_err(|error| format!("Could not write the file: {error}"))?;
+                    index
+                        .add_path(&relative)
+                        .map_err(|error| format!("Could not stage the file: {error}"))?;
+                }
+                None => {
+                    // That side deleted the file.
+                    if worktree_file.exists() {
+                        fs::remove_file(&worktree_file)
+                            .map_err(|error| format!("Could not remove the file: {error}"))?;
+                    }
+                    index
+                        .remove_path(&relative)
+                        .map_err(|error| format!("Could not stage the deletion: {error}"))?;
+                }
+            }
+        }
+        "merged" => {
+            if worktree_file.exists() {
+                let text = fs::read(&worktree_file)
+                    .map_err(|error| format!("Could not read the file: {error}"))?;
+                let text = String::from_utf8_lossy(&text);
+                if text.lines().any(|line| line.starts_with("<<<<<<< ") || line == "=======" || line.starts_with(">>>>>>> ")) {
+                    return Err("Conflict markers are still in the file".to_owned());
+                }
+                index
+                    .add_path(&relative)
+                    .map_err(|error| format!("Could not stage the file: {error}"))?;
+            } else {
+                index
+                    .remove_path(&relative)
+                    .map_err(|error| format!("Could not stage the deletion: {error}"))?;
+            }
+        }
+        other => return Err(format!("Unknown conflict resolution '{other}'")),
+    }
+    index
+        .write()
+        .map_err(|error| format!("Could not write Git index: {error}"))
 }
 #[cfg(test)]
 mod tests {
@@ -1477,18 +1734,18 @@ mod tests {
     }
 
     #[test]
-    fn commit_staged_rejects_commits_during_a_merge() {
+    fn commit_staged_rejects_commits_during_other_operations() {
         let (dir, path) = init_repo();
         add_file(dir.path(), "file.txt", "one\n");
         let base = stage_and_commit(&path, "file.txt", "base");
         add_file(dir.path(), "file.txt", "two\n");
         stage_file(&path, "file.txt").expect("stage change");
-        fs::write(dir.path().join(".git/MERGE_HEAD"), format!("{base}\n"))
-            .expect("simulate merge in progress");
+        fs::write(dir.path().join(".git/CHERRY_PICK_HEAD"), format!("{base}\n"))
+            .expect("simulate cherry-pick in progress");
 
         assert_eq!(
             repository_info(&path).unwrap().state,
-            "merge in progress"
+            "cherry-pick in progress"
         );
         let error = commit_staged(&path, "during merge").unwrap_err();
         assert!(error.contains("Finish the current Git operation"), "{error}");
@@ -2170,5 +2427,140 @@ mod tests {
         rename_branch(&root, "old", "renamed").expect("rename");
         assert_eq!(head_branch(&root), "renamed");
         assert!(rename_branch(&root, "old", "x").unwrap_err().contains("not found"));
+    }
+
+    fn parent_count(root: &str) -> usize {
+        let repo = git2::Repository::open(root).unwrap();
+        let count = repo.head().unwrap().peel_to_commit().unwrap().parent_count();
+        count
+    }
+
+    /// base has a.txt; `other` and base each change it differently, leaving the repo on base.
+    fn conflicting_branches() -> (tempfile::TempDir, String, String) {
+        let (dir, root) = init_repo();
+        add_file(dir.path(), "a.txt", "line\n");
+        stage_and_commit(&root, "a.txt", "first");
+        let base = head_branch(&root);
+        create_branch(&root, "other", None, true).unwrap();
+        add_file(dir.path(), "a.txt", "from other\n");
+        stage_and_commit(&root, "a.txt", "other change");
+        checkout_branch(&root, &base).unwrap();
+        add_file(dir.path(), "a.txt", "from base\n");
+        stage_and_commit(&root, "a.txt", "base change");
+        (dir, root, base)
+    }
+
+    #[test]
+    fn merge_fast_forwards_and_reports_up_to_date() {
+        let (dir, root) = init_repo();
+        add_file(dir.path(), "a.txt", "one\n");
+        stage_and_commit(&root, "a.txt", "first");
+        let base = head_branch(&root);
+        create_branch(&root, "feature", None, true).unwrap();
+        add_file(dir.path(), "b.txt", "new\n");
+        stage_and_commit(&root, "b.txt", "feature work");
+        checkout_branch(&root, &base).unwrap();
+
+        let outcome = merge_branch(&root, "feature").expect("merge");
+        assert_eq!(outcome.result, "fastForward");
+        assert!(dir.path().join("b.txt").exists());
+        assert_eq!(parent_count(&root), 1);
+        assert_eq!(merge_branch(&root, "feature").unwrap().result, "upToDate");
+    }
+
+    #[test]
+    fn merge_of_independent_changes_creates_a_two_parent_commit() {
+        let (dir, root) = init_repo();
+        add_file(dir.path(), "a.txt", "one\n");
+        stage_and_commit(&root, "a.txt", "first");
+        let base = head_branch(&root);
+        create_branch(&root, "feature", None, true).unwrap();
+        add_file(dir.path(), "feature.txt", "f\n");
+        stage_and_commit(&root, "feature.txt", "feature work");
+        checkout_branch(&root, &base).unwrap();
+        add_file(dir.path(), "base.txt", "b\n");
+        stage_and_commit(&root, "base.txt", "base work");
+
+        let outcome = merge_branch(&root, "feature").expect("merge");
+        assert_eq!(outcome.result, "merged");
+        assert_eq!(parent_count(&root), 2);
+        assert!(dir.path().join("feature.txt").exists() && dir.path().join("base.txt").exists());
+        assert_eq!(repository_info(&root).unwrap().state, "clean");
+        assert!(status(&root).unwrap().is_empty());
+    }
+
+    #[test]
+    fn conflicting_merge_stops_in_the_merge_state_and_lists_the_conflicts() {
+        let (dir, root, _base) = conflicting_branches();
+        let outcome = merge_branch(&root, "other").expect("merge");
+        assert_eq!(outcome.result, "conflicts");
+        assert_eq!(outcome.conflicts, vec!["a.txt".to_owned()]);
+        assert_ne!(repository_info(&root).unwrap().state, "clean");
+        let changes = status(&root).unwrap();
+        let conflicted = find_change(&changes, "a.txt");
+        assert_eq!(conflicted.kind, "conflicted");
+        assert!(!conflicted.staged && !conflicted.unstaged);
+        let content = fs::read_to_string(dir.path().join("a.txt")).unwrap();
+        assert!(content.contains("<<<<<<<") && content.contains(">>>>>>>"), "{content}");
+        assert!(merge_message(&root).unwrap().contains("other"));
+        assert!(commit_staged(&root, "too early").unwrap_err().contains("conflicts"));
+    }
+
+    #[test]
+    fn resolving_with_ours_then_committing_concludes_the_merge() {
+        let (dir, root, _base) = conflicting_branches();
+        merge_branch(&root, "other").unwrap();
+        resolve_conflict(&root, "a.txt", "ours").expect("take ours");
+        assert_eq!(fs::read_to_string(dir.path().join("a.txt")).unwrap(), "from base\n");
+        assert!(status(&root).unwrap().iter().all(|change| change.kind != "conflicted"), "conflict marker is gone once resolved");
+        assert_eq!(repository_info(&root).unwrap().state, "merge in progress");
+
+        commit_staged(&root, "Merge branch 'other'").expect("merge commit");
+        assert_eq!(parent_count(&root), 2);
+        assert_eq!(repository_info(&root).unwrap().state, "clean");
+        assert!(status(&root).unwrap().is_empty());
+    }
+
+    #[test]
+    fn resolving_with_theirs_takes_the_other_side() {
+        let (dir, root, _base) = conflicting_branches();
+        merge_branch(&root, "other").unwrap();
+        resolve_conflict(&root, "a.txt", "theirs").expect("take theirs");
+        assert_eq!(fs::read_to_string(dir.path().join("a.txt")).unwrap(), "from other\n");
+    }
+
+    #[test]
+    fn marking_a_file_resolved_refuses_while_conflict_markers_remain() {
+        let (dir, root, _base) = conflicting_branches();
+        merge_branch(&root, "other").unwrap();
+        assert!(resolve_conflict(&root, "a.txt", "merged").unwrap_err().contains("markers"));
+        add_file(dir.path(), "a.txt", "hand merged\n");
+        resolve_conflict(&root, "a.txt", "merged").expect("accept edited file");
+        commit_staged(&root, "Merge branch 'other'").expect("merge commit");
+        assert_eq!(parent_count(&root), 2);
+        assert!(resolve_conflict(&root, "a.txt", "ours").unwrap_err().contains("no merge conflict"));
+    }
+
+    #[test]
+    fn merge_abort_restores_the_branch_before_the_merge() {
+        let (dir, root, _base) = conflicting_branches();
+        merge_branch(&root, "other").unwrap();
+        merge_abort(&root).expect("abort");
+        assert_eq!(repository_info(&root).unwrap().state, "clean");
+        assert_eq!(fs::read_to_string(dir.path().join("a.txt")).unwrap(), "from base\n");
+        assert!(status(&root).unwrap().is_empty());
+        assert!(merge_abort(&root).unwrap_err().contains("no merge"));
+    }
+
+    #[test]
+    fn merge_refuses_with_staged_changes_or_an_unknown_branch() {
+        let (dir, root) = init_repo();
+        add_file(dir.path(), "a.txt", "one\n");
+        stage_and_commit(&root, "a.txt", "first");
+        add_file(dir.path(), "b.txt", "staged\n");
+        stage_file(&root, "b.txt").unwrap();
+        assert!(merge_branch(&root, "main").unwrap_err().contains("staged"));
+        unstage_file(&root, "b.txt").unwrap();
+        assert!(merge_branch(&root, "missing").unwrap_err().contains("not found"));
     }
 }
