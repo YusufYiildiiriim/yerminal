@@ -90,7 +90,7 @@ function installGitMock(options: GitMockOptions = {}) {
 
 async function openGitGraph(user: ReturnType<typeof userEvent.setup>) {
   const rail = screen.getByRole("navigation", { name: "Workspace tools" });
-  await user.click(within(rail).getByRole("button", { name: "Git Graph" }));
+  await user.keyboard("{Control>}{Shift>}b{/Shift}{/Control}");
   return rail;
 }
 
@@ -112,7 +112,7 @@ describe("Git Graph lives in the side panel: branches, commits, and commit detai
     const user = userEvent.setup();
     render(<App />);
     const rail = await openGitGraph(user);
-    expect(within(rail).getByRole("button", { name: "Git Graph" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("tab", { name: "Git Graph" })).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByRole("region", { name: "Commit graph" })).not.toBeInTheDocument();
     await waitFor(() => expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent(/^Editor/));
 
@@ -222,7 +222,7 @@ describe("Git Graph lives in the side panel: branches, commits, and commit detai
     render(<App />);
     await user.keyboard("{Control>}{Shift>}b{/Shift}{/Control}");
     const rail = screen.getByRole("navigation", { name: "Workspace tools" });
-    expect(within(rail).getByRole("button", { name: "Git Graph" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("tab", { name: "Git Graph" })).toHaveAttribute("aria-selected", "true");
     const panel = document.querySelector(".tools-panel") as HTMLElement;
     expect(await within(panel).findByText("Branches")).toBeInTheDocument();
   });

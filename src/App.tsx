@@ -266,6 +266,12 @@ const tools: { id: ToolId; label: string; icon: ReactElement }[] = [
   { id: "graph", label: "Git Graph", icon: <svg {...toolIconProps}><circle cx="5" cy="6" r="2" /><circle cx="5" cy="18" r="2" /><circle cx="19" cy="12" r="2" /><path d="M5 8v8M7 12h10" /></svg> },
 ];
 
+type ToolGroupId = "workspace" | "git";
+const TOOL_GROUPS: { id: ToolGroupId; label: string; toolIds: ToolId[] }[] = [
+  { id: "workspace", label: "Editor / Terminal", toolIds: ["terminal", "explorer"] },
+  { id: "git", label: "Git", toolIds: ["changes", "graph"] },
+];
+
 const SETTINGS_KEY = "yerminal.app-settings.v1";
 const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13, quickOpenScope: "active", collapseOtherFolders: false, autoSave: false };
 function readAppSettings(): AppSettings {
@@ -295,6 +301,7 @@ function App() {
   const toolsPanelRef = useRef<ImperativePanelHandle>(null);
   const [toolsPanelCollapsed, setToolsPanelCollapsed] = useState(false);
   const toolClickRef = useRef<{ toolId: ToolId; initiallyCollapsed: boolean } | null>(null);
+  const lastToolByGroupRef = useRef<Record<ToolGroupId, ToolId>>({ workspace: "terminal", git: "changes" });
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   useEffect(() => {
     const onResize = () => setViewportWidth(window.innerWidth);
@@ -374,8 +381,11 @@ function App() {
   const layout = activeTerminalWorkspace?.layout ?? null;
   const activeEditorWorkspace = editorWorkspaces[activeTerminalWorkspace?.id ?? ""] ?? createEmptyEditorWorkspaceState();
 
-  const primaryToolSwitch = <div className="tool-primary-switch" role="tablist" aria-label="Workspace view">
-    {tools.map((tool) => <button key={tool.id} role="tab" className={`tool-primary-switch-item${activeTool === tool.id ? " selected" : ""}`} type="button" aria-selected={activeTool === tool.id} title={`${tool.label} · Double-click to toggle panel`} onClick={(event) => handleToolClick(tool.id, event.detail)}>
+  const activeToolGroup = TOOL_GROUPS.find((group) => group.toolIds.includes(activeTool)) ?? TOOL_GROUPS[0];
+  lastToolByGroupRef.current[activeToolGroup.id] = activeTool;
+
+  const primaryToolSwitch = <div className="tool-primary-switch" role="tablist" aria-label={activeToolGroup.label}>
+    {tools.filter((tool) => activeToolGroup.toolIds.includes(tool.id)).map((tool) => <button key={tool.id} role="tab" className={`tool-primary-switch-item${activeTool === tool.id ? " selected" : ""}`} type="button" aria-selected={activeTool === tool.id} title={`${tool.label} · Double-click to toggle panel`} onClick={(event) => handleToolClick(tool.id, event.detail)}>
       <span className="tool-sidebar-icon" aria-hidden="true">{tool.icon}</span>
       <span className="tool-primary-switch-label">{tool.label}</span>
     </button>)}
@@ -1468,11 +1478,11 @@ function App() {
         }}>
           <div className="workspace-tool-layout">
             <nav className="tool-sidebar" aria-label="Workspace tools">
-              {tools.map((tool) => <Fragment key={tool.id}>
-                {tool.id === "changes" && <div className="tool-sidebar-separator" aria-hidden="true" />}
-                <button className={`tool-sidebar-item${tool.id === "terminal" || tool.id === "explorer" ? " main-btn" : ""} ${activeTool === tool.id ? "selected" : ""}`} onClick={(event) => handleToolClick(tool.id, event.detail)} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={`${tool.label} · Double-click to toggle panel`}>
-                  <span className="tool-sidebar-icon" aria-hidden="true">{tool.icon}</span>
-                  {(tool.id === "terminal" || tool.id === "explorer") && <span className="tool-sidebar-label">{tool.label}</span>}
+              {TOOL_GROUPS.map((group) => <Fragment key={group.id}>
+                {group.id === "git" && <div className="tool-sidebar-separator" aria-hidden="true" />}
+                <button className={`tool-sidebar-item main-btn ${activeToolGroup.id === group.id ? "selected" : ""}`} onClick={(event) => handleToolClick(lastToolByGroupRef.current[group.id], event.detail)} type="button" aria-label={group.label} aria-pressed={activeToolGroup.id === group.id} title={`${group.label} · Double-click to toggle panel`}>
+                  <span className="tool-sidebar-icon" aria-hidden="true">{tools.find((tool) => tool.id === group.toolIds[0])?.icon}</span>
+                  <span className="tool-sidebar-label">{group.label}</span>
                 </button>
               </Fragment>)}
               <button className="tool-sidebar-settings" type="button" aria-label="Help & Settings" title="Help & Settings" aria-haspopup="dialog" onClick={() => setSettingsOpen(true)}>

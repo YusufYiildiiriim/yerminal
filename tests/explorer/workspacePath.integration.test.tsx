@@ -58,7 +58,7 @@ describe("Explorer workspace path joining", () => {
     vi.spyOn(window, "prompt").mockReturnValue(name);
     const user = userEvent.setup();
     const { container } = render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Editor" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
 
     const rootRow = container.querySelector(".workspace-root-row");
     expect(rootRow).not.toBeNull();

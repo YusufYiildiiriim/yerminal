@@ -5,7 +5,7 @@ import App from "../src/App";
 import { chooseGroupAction, chooseWorkspaceAction } from "./shellMenus";
 
 function openEditorTool() {
-  fireEvent.click(screen.getByRole("button", { name: "Editor" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
 }
 
 const tauriMocks = vi.hoisted(() => ({
@@ -201,7 +201,7 @@ describe("App user flows", () => {
     expect(document.documentElement).toHaveAttribute("data-theme", "foundry");
 
     await user.click(screen.getByRole("button", { name: "Close settings" }));
-    await user.click(screen.getByRole("button", { name: "Git Changes" }));
+    await user.click(screen.getByRole("button", { name: "Git" }));
     await waitFor(() => expect(invokeMock.mock.calls.some(([command]) => command === "git_status")).toBe(true));
     await user.click(await screen.findByRole("button", { name: /M.*notes.*U/ }));
     const diffRegion = await screen.findByRole("region", { name: "File diff" });
@@ -512,7 +512,7 @@ describe("Workspace controls placement", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "Editor" }));
+    await user.click(screen.getByRole("tab", { name: "Editor" }));
     const explorer = document.querySelector(".tools-panel") as HTMLElement;
     const picker = within(explorer).getByRole("combobox", { name: "Active terminal workspace" });
     expect(within(explorer).getByRole("button", { name: "Workspace actions" })).toBeInTheDocument();

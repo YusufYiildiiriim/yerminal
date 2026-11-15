@@ -261,18 +261,18 @@ describe("terminal groups", () => {
     await waitFor(() => expect(screen.getAllByTestId("mock-terminal")).toHaveLength(3));
 
     const rail = screen.getByRole("navigation", { name: "Workspace tools" });
-    await user.click(screen.getByRole("button", { name: "Editor" }));
+    await user.click(screen.getByRole("tab", { name: "Editor" }));
     expect(screen.queryByRole("region", { name: "Terminal groups" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Terminal" }));
+    await user.click(screen.getByRole("tab", { name: "Terminal" }));
     await user.click(within(screen.getByRole("region", { name: "Terminal groups" })).getByRole("button", { name: "Select terminal group Terminal 1" }));
-    expect(screen.getByRole("button", { name: "Terminal" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
     expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent("Terminal · Terminal 1");
 
-    await user.click(screen.getByRole("button", { name: "Editor" }));
-    await user.click(screen.getByRole("button", { name: "Terminal" }));
+    await user.click(screen.getByRole("tab", { name: "Editor" }));
+    await user.click(screen.getByRole("tab", { name: "Terminal" }));
     await user.click(within(screen.getByRole("region", { name: "Terminal groups" })).getByRole("button", { name: "Select terminal Terminal 2" }));
-    expect(screen.getByRole("button", { name: "Terminal" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
     expect(document.querySelector(".terminal-pane-frame[data-active=\"true\"] .terminal-pane-title")).toHaveTextContent("Terminal 2");
   });
 });

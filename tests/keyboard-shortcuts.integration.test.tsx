@@ -81,7 +81,7 @@ describe("global keyboard shortcuts", () => {
 
     fireEvent.keyDown(terminalInput, { key: "g", ctrlKey: true, shiftKey: true });
 
-    expect(screen.getByRole("button", { name: "Git Changes" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("tab", { name: "Git Changes" })).toHaveAttribute("aria-selected", "true");
     expect(mocks.terminalKeyEvents).not.toContain("g");
   });
 
@@ -89,7 +89,7 @@ describe("global keyboard shortcuts", () => {
     render(<App />);
     await screen.findByRole("textbox", { name: "Mock terminal input" });
     await waitFor(() => expect(terminalCount()).toBe(1));
-    fireEvent.click(screen.getByRole("button", { name: "Editor" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
     await screen.findByRole("button", { name: /notes\.txt/ });
     fireEvent.click(screen.getByRole("button", { name: /notes\.txt/ }));
     const editor = await screen.findByRole("textbox", { name: "Edit notes.txt" });
@@ -97,7 +97,7 @@ describe("global keyboard shortcuts", () => {
 
     fireEvent.keyDown(editor, { key: "g", ctrlKey: true, shiftKey: true });
 
-    expect(screen.getByRole("button", { name: "Git Changes" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("tab", { name: "Git Changes" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("keeps Quick Open and terminal rename inputs usable without running terminal shortcuts", async () => {
@@ -110,7 +110,7 @@ describe("global keyboard shortcuts", () => {
     fireEvent.change(quickOpen, { target: { value: "notes" } });
     expect(quickOpen).toHaveValue("notes");
     expect(terminalCount()).toBe(1);
-    expect(screen.getByRole("button", { name: "Git Changes" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("tab", { name: "Git Changes", selected: true })).not.toBeInTheDocument();
 
     fireEvent.keyDown(quickOpen, { key: "Escape" });
     fireEvent.click(screen.getByRole("button", { name: /^More actions for/ }));
@@ -126,7 +126,7 @@ describe("global keyboard shortcuts", () => {
 
     expect(renameInput).toHaveValue("terminal draft");
     expect(terminalCount()).toBe(1);
-    expect(screen.getByRole("button", { name: "Git Changes" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("tab", { name: "Git Changes", selected: true })).not.toBeInTheDocument();
   });
 
   it("ignores repeated keydown events so holding the shortcut does not create more terminals", async () => {
@@ -151,6 +151,6 @@ describe("global keyboard shortcuts", () => {
     fireEvent.keyDown(terminalInput, { key: "c", ctrlKey: true });
 
     expect(mocks.terminalKeyEvents).toContain("c");
-    expect(screen.getByRole("button", { name: "Git Changes" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("tab", { name: "Git Changes", selected: true })).not.toBeInTheDocument();
   });
 });
