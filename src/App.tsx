@@ -730,7 +730,7 @@ function App() {
             : unsavedMessage
               ? `${unsavedMessage} and close Yerminal?`
               : `${terminalMessage[0].toLocaleUpperCase()}${terminalMessage.slice(1)} and close Yerminal?`;
-          if (window.confirm(prompt)) await appWindow.destroy();
+          if (await window.confirm(prompt)) await appWindow.destroy();
         });
         if (cancelled) stop();
         else unlisten = stop;
@@ -831,7 +831,7 @@ function App() {
     });
   }, [activeTerminalWorkspace?.id]);
 
-  const closeEditorTab = useCallback((tabId: string) => {
+  const closeEditorTab = useCallback(async (tabId: string) => {
     const workspaceId = activeTerminalWorkspace?.id;
     if (!workspaceId) return;
     const tab = editorWorkspaces[workspaceId]?.tabs.find((item) => item.id === tabId);
@@ -840,7 +840,7 @@ function App() {
     const prompt = tab?.isSaving
       ? `${name} is still saving. Close it anyway? The save will finish in the background.`
       : tab && isEditorTabUnsaved(tab) ? `Discard unsaved changes to ${name}?` : null;
-    if (prompt && !window.confirm(prompt)) return;
+    if (prompt && !(await window.confirm(prompt))) return;
     editorOperationIdsRef.current.delete(editorOperationKey(workspaceId, tabId));
     setEditorWorkspaces((current) => {
       const workspace = current[workspaceId];
@@ -1093,7 +1093,7 @@ function App() {
     if (!workspace || !group || workspace.groups.length <= 1) return;
     const count = group.terminalIds.length;
     const detail = count === 0 ? "" : ` and close its ${count} terminal${count === 1 ? "" : "s"}. Running processes may be interrupted`;
-    if (!window.confirm(`Delete terminal group "${group.name}"${detail}?`)) return;
+    if (!(await window.confirm(`Delete terminal group "${group.name}"${detail}?`))) return;
     for (const id of group.terminalIds) await closeTerminal(id, true);
     closeTerminalGroup(groupId);
   }, [activeTerminalWorkspace, closeTerminal, closeTerminalGroup]);
@@ -1267,7 +1267,7 @@ function App() {
     const unsavedWarning = unsavedTabs.length > 0
       ? ` Unsaved changes in ${unsavedTabs.map((tab) => tab.name).join(", ")} will be discarded.`
       : "";
-    if (!window.confirm(`Delete workspace "${target.name}" and close its terminals?${unsavedWarning}`)) return;
+    if (!(await window.confirm(`Delete workspace "${target.name}" and close its terminals?${unsavedWarning}`))) return;
     for (const key of [...editorOperationIdsRef.current.keys()]) {
       if ((JSON.parse(key) as [string, string])[0] === target.id) editorOperationIdsRef.current.delete(key);
     }

@@ -405,7 +405,8 @@ describe("remembered terminal view per group", () => {
   });
   it("deletes a group with its terminals only after confirmation, from a button at the right of the group row", async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    // Inside Tauri the dialog plugin makes window.confirm async (it resolves to a Promise), so mimic that.
+    const confirmSpy = vi.spyOn(window, "confirm").mockImplementation((async () => false) as unknown as typeof window.confirm);
     render(<App />);
     await screen.findByTestId("mock-terminal");
     expect(screen.queryByRole("button", { name: /Delete terminal group/ })).not.toBeInTheDocument();
@@ -416,9 +417,11 @@ describe("remembered terminal view per group", () => {
 
     await user.click(groups.getByRole("button", { name: "Delete terminal group Terminal 2" }));
     expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('Delete terminal group "Terminal 2"'));
+    await new Promise((resolve) => setTimeout(resolve, 20));
     expect(groups.getAllByRole("button", { name: /^Select terminal group/ })).toHaveLength(2);
+    expect(invoke).not.toHaveBeenCalledWith("close_terminal", expect.anything());
 
-    confirmSpy.mockReturnValue(true);
+    confirmSpy.mockImplementation((async () => true) as unknown as typeof window.confirm);
     await user.click(groups.getByRole("button", { name: "Delete terminal group Terminal 2" }));
     await waitFor(() => expect(groups.getAllByRole("button", { name: /^Select terminal group/ })).toHaveLength(1));
     expect(invoke).toHaveBeenCalledWith("close_terminal", expect.anything());
