@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import type { CommitFileChange, CommitInfo } from "./gitTypes";
+import type { BranchInfo, CommitFileChange, CommitInfo } from "./gitTypes";
 import { changeKindLetter, formatFullDate, formatRelativeTime } from "./gitGraphFormat";
 import "./git-graph.css";
 
-export type BranchInfo = { name: string; isRemote: boolean; isHead: boolean; ahead: number | null; behind: number | null };
+export type { BranchInfo };
 
 type Props = {
   repoPath: string;
   currentBranch?: string;
+  reloadKey?: number;
   onError: (message: string) => void;
   onOpenFile: (commit: CommitInfo, file: CommitFileChange) => void;
 };
@@ -22,7 +23,7 @@ const BRANCH_PAGE_SIZE = 30;
  * Git Graph side panel: branches expand to their commits; a commit expands in place to show its
  * message, author, date and changed files; a file opens in the editor.
  */
-export function GitGraphBranches({ repoPath, currentBranch = "", onError, onOpenFile }: Props) {
+export function GitGraphBranches({ repoPath, currentBranch = "", reloadKey = 0, onError, onOpenFile }: Props) {
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [expanded, setExpanded] = useState<Record<string, BranchCommits>>({});
   const [openCommit, setOpenCommit] = useState<{ branch: string; id: string } | null>(null);
@@ -53,7 +54,7 @@ export function GitGraphBranches({ repoPath, currentBranch = "", onError, onOpen
     return () => {
       cancelled = true;
     };
-  }, [repoPath]);
+  }, [repoPath, reloadKey]);
 
   const loadBranch = async (name: string, append: boolean) => {
     const requestedPath = repoPathRef.current;

@@ -6,6 +6,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { GitGraphBranches } from "./features/git/GitGraphBranches";
+import { BranchPicker } from "./features/git/BranchPicker";
 import type { CommitFileChange, CommitInfo } from "./features/git/gitTypes";
 import { TerminalResourceGraph } from "./features/terminal/TerminalResourceGraph";
 import { PaneRenameInput, TerminalPaneMenu } from "./features/terminal/TerminalPaneMenu";
@@ -2020,7 +2021,8 @@ function repoLabel(info: RepositoryInfo): string {
 }
 
 function GitGraphPanel({ repoPaths, onOpenRepository, onError, onOpenFile }: { repoPaths: string[]; onOpenRepository: () => void; onError: (message: string) => void; onOpenFile: (commit: CommitInfo, file: CommitFileChange, root: string) => void }) {
-  const repositories = useRepositories(repoPaths);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const repositories = useRepositories(repoPaths, refreshNonce);
   const [selectedRoot, setSelectedRoot] = useState("");
   const selected = repositories.find((info) => info.root === selectedRoot) ?? repositories[0] ?? null;
   if (!selected) {
@@ -2036,7 +2038,8 @@ function GitGraphPanel({ repoPaths, onOpenRepository, onError, onOpenFile }: { r
         {repositories.map((info) => <option key={info.root} value={info.root}>{repoLabel(info)}{info.branch ? ` · ${info.branch}` : ""}</option>)}
       </select>
     </label>}
-    <GitGraphBranches key={selected.root} repoPath={selected.root} currentBranch={selected.branch ?? ""} onError={onError} onOpenFile={(commit, file) => onOpenFile(commit, file, selected.root)} />
+    <div className="gg-branch-switch"><BranchPicker key={selected.root} repoPath={selected.root} currentBranch={selected.branch ?? ""} onChanged={() => setRefreshNonce((value) => value + 1)} onError={onError} /></div>
+    <GitGraphBranches key={selected.root} repoPath={selected.root} reloadKey={refreshNonce} currentBranch={selected.branch ?? ""} onError={onError} onOpenFile={(commit, file) => onOpenFile(commit, file, selected.root)} />
   </div>;
 }
 
@@ -2047,13 +2050,13 @@ function GitChanges({ repoPaths, onOpenRepository, onOpenDiff, onError }: { repo
   return <div className="tool-view git-changes-view">
     <header className="tool-header"><div><h1>Git Changes</h1><p>{repositories.length > 0 ? `${repositories.length} ${repositories.length === 1 ? "repository" : "repositories"}` : repoPaths.length ? "Searching opened folders for Git repositories" : "Review your working trees"}</p></div><button className="icon-button refresh-button" aria-label="Refresh repositories and changes" onClick={() => setRefreshNonce((value) => value + 1)} type="button">↻</button></header>
     {repositories.length === 0 ? <div className="empty-repository"><div className="empty-icon">⌂</div><h2>{repoPaths.length ? "No Git repository found" : "No repository opened"}</h2><p>{repoPaths.length ? "Add a folder that belongs to a Git repository to view its changes." : "Open a folder to view its changes."}</p><button className="primary-button" onClick={onOpenRepository} type="button">Open Folder</button></div> : <div className="git-repository-list" aria-label="Git repositories">
-      {repositories.map((repoInfo) => <GitRepositoryChanges key={repoInfo.root.replaceAll("\\", "/").replace(/\/+$/, "").toLocaleLowerCase()} repoInfo={repoInfo} refreshNonce={refreshNonce} onOpenDiff={onOpenDiff} onError={onError} />)}
+      {repositories.map((repoInfo) => <GitRepositoryChanges key={repoInfo.root.replaceAll("\\", "/").replace(/\/+$/, "").toLocaleLowerCase()} repoInfo={repoInfo} refreshNonce={refreshNonce} onBranchChanged={() => setRefreshNonce((value) => value + 1)} onOpenDiff={onOpenDiff} onError={onError} />)}
     </div>}
     <div className="panel-footnote"><span className="read-only-mark">◇</span> Stage, unstage, discard, and commit changes</div>
   </div>;
 }
 
-function GitRepositoryChanges({ repoInfo, refreshNonce, onOpenDiff, onError }: { repoInfo: RepositoryInfo; refreshNonce: number; onOpenDiff: (root: string, change: FileChange, staged: boolean) => void; onError: (message: string) => void }) {
+function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenDiff, onError }: { repoInfo: RepositoryInfo; refreshNonce: number; onBranchChanged: () => void; onOpenDiff: (root: string, change: FileChange, staged: boolean) => void; onError: (message: string) => void }) {
   const repoPath = repoInfo.root;
   const [changes, setChanges] = useState<FileChange[]>([]);
   const [commitMessage, setCommitMessage] = useState("");
@@ -2131,6 +2134,7 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onOpenDiff, onError }: {
       <button className="icon-button refresh-button git-repository-refresh" aria-label={`Refresh ${repoName} changes`} title="Refresh repository" onClick={() => void refresh()} type="button">↻</button>
     </header>
     <div className="git-repository-body" hidden={!expanded}>
+      <div className="git-repository-branch-row"><BranchPicker repoPath={repoPath} currentBranch={repoInfo.branch} onChanged={onBranchChanged} onError={onError} /></div>
       {changes.length > 0 && <section className="git-commit-box" aria-label="Commit staged changes">
         <textarea aria-label="Commit message" placeholder="Message (required)" rows={2} maxLength={65536} value={commitMessage} onChange={(event) => setCommitMessage(event.currentTarget.value)} />
         <button className="git-commit-button" onClick={() => void commitStaged()} disabled={isCommitting || Boolean(fileAction) || stagedChanges.length === 0 || !commitMessage.trim()} type="button"><span aria-hidden="true">✓</span><span>{isCommitting ? "Committing…" : "Commit staged"}</span><small>{stagedChanges.length}</small></button>

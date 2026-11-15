@@ -252,3 +252,30 @@ describe("Git Graph repository picker", () => {
     await waitFor(() => expect(branchCalls).toContain(otherPath));
   });
 });
+
+describe("Git Graph branch switcher", () => {
+  it("switches branch from the panel header and reloads the repository and its branch list", async () => {
+    let current = "develop";
+    let branchLoads = 0;
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+      if (command === "terminal_output_snapshot") return { events: [] };
+      if (command === "git_repository_info") return { root: rootPath, branch: current, state: "clean" };
+      if (command === "git_branches") { branchLoads += 1; return branches.map((branch) => ({ ...branch, isHead: branch.name === current })); }
+      if (command === "git_history") return commits;
+      if (command === "git_checkout_branch") { current = String(args?.name); return { root: rootPath, branch: current, state: "clean" }; }
+      return undefined;
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await openGitGraph(user);
+    const panel = document.querySelector(".tools-panel") as HTMLElement;
+    await user.click(await within(panel).findByRole("button", { name: "Switch branch, current develop" }));
+    const loadsBefore = branchLoads;
+    const target = branches.find((branch) => !branch.isRemote && branch.name !== "develop")!;
+    await user.click(await within(panel).findByRole("button", { name: `Checkout ${target.name}` }));
+
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("git_checkout_branch", { path: rootPath, name: target.name }));
+    await waitFor(() => expect(within(panel).getByRole("button", { name: `Switch branch, current ${target.name}` })).toBeInTheDocument());
+    expect(branchLoads).toBeGreaterThan(loadsBefore);
+  });
+});
