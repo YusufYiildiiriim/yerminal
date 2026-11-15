@@ -220,6 +220,27 @@ describe("App user flows", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("This diff exceeds the 1 MiB preview limit.");
   });
+
+  it("opens a change from the second repository with that repository's root, not the active workspace root", async () => {
+    const user = userEvent.setup();
+    const otherRoot = "C:\Projects\other-repo";
+    localStorage.setItem("yerminal.terminal-workspaces", JSON.stringify({
+      workspaces: [{ id: "workspace-1", name: "Workspace 1", rootPath, folderPaths: [rootPath, otherRoot] }],
+      activeId: "workspace-1",
+    }));
+    localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({}));
+    invokeMock.mockImplementation(async (command: string, args?: InvokeArgs) => {
+      if (command === "git_status") return args?.path === otherRoot ? [{ path: "journal.md", kind: "modified", staged: false, unstaged: true }] : [];
+      return defaultInvokeResult(command, args);
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Git" }));
+    await user.click(await screen.findByRole("button", { name: /M.*journal.*U/ }));
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("git_diff", expect.objectContaining({ path: otherRoot })));
+    expect(invokeMock).not.toHaveBeenCalledWith("git_diff", expect.objectContaining({ path: rootPath, filePath: "journal.md" }));
+  });
 });
 
 describe("Auto-save", () => {
