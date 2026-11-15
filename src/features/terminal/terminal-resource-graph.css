@@ -428,3 +428,32 @@
   .terminal-resource-list { padding-right: 7px; padding-left: 7px; }
   .app-shell[data-theme] .terminal-resource-panel .terminal-resource-card { min-width: 180px; flex-basis: 180px; }
 }
+
+/* Final compact strip: one flat 40px row that follows the theme (name left, RAM · CPU right, thin CPU bar). */
+.app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel {
+  flex: 0 0 40px; min-height: 40px; max-height: 40px; height: 40px; margin: 0; z-index: 2;
+  border: 0; border-top: 1px solid var(--theme-border); border-radius: 0; background: var(--theme-surface);
+}
+.app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel .terminal-resource-list {
+  display: flex; gap: 0; padding: 0; align-items: stretch; height: 100%; overflow-x: auto; overflow-y: hidden;
+}
+.app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel .terminal-resource-card {
+  position: relative; flex: 1 1 0; min-width: 150px; max-width: 280px; min-height: 0; height: 100%;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 1fr 3px; align-items: center; column-gap: 12px; row-gap: 0;
+  padding: 0 12px; border: 0; border-right: 1px solid var(--theme-border); border-radius: 0; background: transparent; box-shadow: none;
+}
+.app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel .terminal-resource-card:hover { background: var(--shell-hover, color-mix(in srgb, var(--theme-text) 6%, transparent)); border-color: var(--theme-border); }
+.app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel .terminal-resource-card.active {
+  background: color-mix(in srgb, var(--theme-accent) 9%, var(--theme-surface)); border-color: var(--theme-border); box-shadow: inset 0 2px var(--theme-accent);
+}
+.app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel .terminal-resource-terminal-name {
+  grid-column: 1; grid-row: 1; font-size: 13px; font-weight: 500; line-height: 1.2; color: var(--theme-text);
+}
+.app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel .terminal-resource-card.active .terminal-resource-terminal-name { color: var(--theme-text); font-weight: 600; }
+.app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel .terminal-resource-value {
+  grid-column: 2; grid-row: 1; font-family: "Cascadia Code", Consolas, monospace; font-size: 11px; color: var(--theme-muted); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel .terminal-resource-meter {
+  grid-column: 1 / -1; grid-row: 2; align-self: end; height: 3px; margin: 0 -12px; border-radius: 0; background: transparent;
+}
+.app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel .terminal-resource-meter > span { display: block; height: 100%; background: color-mix(in srgb, var(--theme-accent) 70%, transparent); }
