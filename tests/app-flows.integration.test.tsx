@@ -241,6 +241,25 @@ describe("App user flows", () => {
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("git_diff", expect.objectContaining({ path: otherRoot })));
     expect(invokeMock).not.toHaveBeenCalledWith("git_diff", expect.objectContaining({ path: rootPath, filePath: "journal.md" }));
   });
+
+  it("shows the merge banner and conflicted files in Git Changes and opens a conflicted file in the editor", async () => {
+    const user = userEvent.setup();
+    seedWorkspace();
+    invokeMock.mockImplementation(async (command: string, args?: InvokeArgs) => {
+      if (command === "git_repository_info") return { root: args?.path ?? rootPath, branch: "main", state: "merge in progress" };
+      if (command === "git_status") return [{ path: "src/a.txt", kind: "conflicted", staged: false, unstaged: false }];
+      return defaultInvokeResult(command, args);
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Git" }));
+    const banner = await screen.findByRole("region", { name: "Merge in progress" });
+    expect(within(banner).getByText("1 conflict to resolve")).toBeInTheDocument();
+    expect(within(banner).getByRole("button", { name: "Commit merge" })).toBeDisabled();
+    await user.click(within(banner).getByRole("button", { name: "Open src/a.txt" }));
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("read_workspace_text_file", expect.objectContaining({ path: `${rootPath.replace(/[\/]+$/, "")}/src/a.txt` })));
+  });
 });
 
 describe("Auto-save", () => {

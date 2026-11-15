@@ -3,6 +3,17 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { BranchInfo } from "./gitTypes";
 import "./branch-picker.css";
 
+type MergeOutcome = { result: "upToDate" | "fastForward" | "merged" | "conflicts"; conflicts: string[] };
+
+function describeMerge(outcome: MergeOutcome, name: string): string {
+  switch (outcome.result) {
+    case "upToDate": return `Already up to date with ${name}`;
+    case "fastForward": return `Fast-forwarded to ${name}`;
+    case "merged": return `Merged ${name}`;
+    default: return `Merge conflicts in ${outcome.conflicts.length} ${outcome.conflicts.length === 1 ? "file" : "files"}. Resolve them in Git Changes`;
+  }
+}
+
 type Props = {
   repoPath: string;
   currentBranch: string;
@@ -75,6 +86,10 @@ export function BranchPicker({ repoPath, currentBranch, onChanged, onError }: Pr
     }
   };
 
+  const merge = (name: string) => run(async () => {
+    const outcome = await invoke<MergeOutcome>("git_merge_branch", { path: repoPath, name });
+    onErrorRef.current(describeMerge(outcome, name));
+  });
   const checkout = (name: string) => run(() => invoke("git_checkout_branch", { path: repoPath, name }));
   const create = (name: string) => run(() => invoke("git_create_branch", { path: repoPath, name, from: null, checkout: true }));
   const rename = (oldName: string, newName: string) => run(async () => {
@@ -118,9 +133,10 @@ export function BranchPicker({ repoPath, currentBranch, onChanged, onError }: Pr
         <span className="bp-name">{branch.name}</span>
         {!branch.isRemote && (branch.ahead || branch.behind) ? <span className="bp-meta">{branch.ahead ? `↑${branch.ahead}` : ""}{branch.behind ? ` ↓${branch.behind}` : ""}</span> : null}
       </button>
-      {!branch.isRemote && <span className="bp-actions">
-        <button type="button" className="bp-icon" aria-label={`Rename ${branch.name}`} title="Rename branch" disabled={busy} onClick={() => setRenaming({ name: branch.name, value: branch.name })}>✎</button>
-        {!branch.isHead && <button type="button" className="bp-icon" aria-label={`Delete ${branch.name}`} title="Delete branch" disabled={busy} onClick={() => void remove(branch.name, false)}>✕</button>}
+      {(!branch.isHead || !branch.isRemote) && <span className="bp-actions">
+        {!branch.isHead && currentBranch && <button type="button" className="bp-icon" aria-label={`Merge ${branch.name} into ${currentBranch}`} title={`Merge into ${currentBranch}`} disabled={busy} onClick={() => void merge(branch.name)}>⤵</button>}
+        {!branch.isRemote && <button type="button" className="bp-icon" aria-label={`Rename ${branch.name}`} title="Rename branch" disabled={busy} onClick={() => setRenaming({ name: branch.name, value: branch.name })}>✎</button>}
+        {!branch.isRemote && !branch.isHead && <button type="button" className="bp-icon" aria-label={`Delete ${branch.name}`} title="Delete branch" disabled={busy} onClick={() => void remove(branch.name, false)}>✕</button>}
       </span>}
       {confirmForce === branch.name && <div className="bp-confirm" role="alert">
         <span>Not fully merged. Delete anyway?</span>

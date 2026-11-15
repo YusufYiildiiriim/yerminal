@@ -116,3 +116,25 @@ describe("BranchPicker", () => {
     await waitFor(() => expect(tauri.invoke).toHaveBeenCalledWith("git_rename_branch", { path: "C:/repo", oldName: "feature/login", newName: "feature/signin" }));
   });
 });
+
+describe("BranchPicker merge", () => {
+  beforeEach(() => tauri.invoke.mockReset());
+  afterEach(cleanup);
+
+  it.each([
+    [{ result: "merged", conflicts: [] }, "Merged feature/login"],
+    [{ result: "fastForward", conflicts: [] }, "Fast-forwarded to feature/login"],
+    [{ result: "upToDate", conflicts: [] }, "Already up to date with feature/login"],
+    [{ result: "conflicts", conflicts: ["a.txt", "b.txt"] }, "Merge conflicts in 2 files. Resolve them in Git Changes"],
+  ])("merges a branch into the current one and reports %j", async (outcome, message) => {
+    const user = userEvent.setup();
+    const { onChanged, onError } = setup({ git_merge_branch: () => outcome });
+    const dialog = await openPicker(user);
+    expect(within(dialog).queryByRole("button", { name: "Merge main into main" })).not.toBeInTheDocument();
+    await user.click(await within(dialog).findByRole("button", { name: "Merge feature/login into main" }));
+
+    expect(tauri.invoke).toHaveBeenCalledWith("git_merge_branch", { path: "C:/repo", name: "feature/login" });
+    await waitFor(() => expect(onError).toHaveBeenCalledWith(message));
+    expect(onChanged).toHaveBeenCalled();
+  });
+});
