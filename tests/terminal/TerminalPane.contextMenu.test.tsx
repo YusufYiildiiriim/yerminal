@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const xterm = vi.hoisted(() => ({
+  options: null as Record<string, unknown> | null,
   instance: null as null | {
     hasSelection: ReturnType<typeof vi.fn>;
     getSelection: ReturnType<typeof vi.fn>;
@@ -19,7 +20,7 @@ vi.mock("@xterm/xterm", () => ({
     getSelection = vi.fn(() => "");
     clearSelection = vi.fn();
     paste = vi.fn();
-    constructor() { xterm.instance = this; }
+    constructor(options?: Record<string, unknown>) { xterm.instance = this; xterm.options = options ?? null; }
     loadAddon() {}
     open() {}
     writeln() {}
@@ -67,5 +68,14 @@ describe("terminal right-click", () => {
     expect(clipboard.writeText).toHaveBeenCalledWith("selected text");
     expect(xterm.instance!.clearSelection).toHaveBeenCalled();
     expect(xterm.instance!.paste).not.toHaveBeenCalled();
+  });
+});
+
+describe("terminal on Windows", () => {
+  afterEach(cleanup);
+  it("tells xterm the PTY is ConPTY so resizes do not garble or erase lines", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+    render(<TerminalPane sessionId="s2" shell="powershell" workingDirectory={null} active visible onFocus={() => {}} onExit={() => {}} />);
+    expect(xterm.options?.windowsPty).toMatchObject({ backend: "conpty" });
   });
 });

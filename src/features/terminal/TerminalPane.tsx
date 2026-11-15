@@ -37,6 +37,8 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
       fontFamily: '"Cascadia Code", Consolas, monospace',
       fontSize: 13,
       scrollback: 10000,
+      // ConPTY re-emits lines itself on resize; tell xterm so it does not also reflow them (garbled or erased lines).
+      ...(/Windows/i.test(navigator.userAgent) ? { windowsPty: { backend: "conpty" as const, buildNumber: 22621 } } : {}),
       allowProposedApi: false,
       theme: {
         background: "#101114",
