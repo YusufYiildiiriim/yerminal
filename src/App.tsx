@@ -266,6 +266,8 @@ const tools: { id: ToolId; label: string; icon: ReactElement }[] = [
   { id: "graph", label: "Git Graph", icon: <svg {...toolIconProps}><circle cx="5" cy="6" r="2" /><circle cx="5" cy="18" r="2" /><circle cx="19" cy="12" r="2" /><path d="M5 8v8M7 12h10" /></svg> },
 ];
 
+const PRIMARY_TOOL_IDS: ToolId[] = ["terminal", "explorer"];
+
 const SETTINGS_KEY = "yerminal.app-settings.v1";
 const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13, quickOpenScope: "active", collapseOtherFolders: false, autoSave: false };
 function readAppSettings(): AppSettings {
@@ -373,6 +375,13 @@ function App() {
   const activeTerminalId = activeTerminalWorkspace?.activeTerminalId ?? null;
   const layout = activeTerminalWorkspace?.layout ?? null;
   const activeEditorWorkspace = editorWorkspaces[activeTerminalWorkspace?.id ?? ""] ?? createEmptyEditorWorkspaceState();
+
+  const primaryToolSwitch = <div className="tool-primary-switch" role="group" aria-label="Primary tool">
+    {tools.filter((tool) => PRIMARY_TOOL_IDS.includes(tool.id)).map((tool) => <button key={tool.id} className={`tool-primary-switch-item${activeTool === tool.id ? " selected" : ""}`} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={`${tool.label} · Double-click to toggle panel`} onClick={(event) => handleToolClick(tool.id, event.detail)}>
+      <span className="tool-sidebar-icon" aria-hidden="true">{tool.icon}</span>
+      <span className="tool-primary-switch-label">{tool.label}</span>
+    </button>)}
+  </div>;
 
   const handleToolClick = (toolId: ToolId, clickCount: number) => {
     setActiveTool(toolId);
@@ -1461,11 +1470,9 @@ function App() {
         }}>
           <div className="workspace-tool-layout">
             <nav className="tool-sidebar" aria-label="Workspace tools">
-              {tools.map((tool) => <Fragment key={tool.id}>
-                {tool.id === "changes" && <div className="tool-sidebar-separator" aria-hidden="true" />}
-                <button className={`tool-sidebar-item${tool.id === "terminal" || tool.id === "explorer" ? " main-btn" : ""} ${activeTool === tool.id ? "selected" : ""}`} onClick={(event) => handleToolClick(tool.id, event.detail)} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={`${tool.label} · Double-click to toggle panel`}>
+              {tools.filter((tool) => !PRIMARY_TOOL_IDS.includes(tool.id)).map((tool) => <Fragment key={tool.id}>
+                <button className={`tool-sidebar-item ${activeTool === tool.id ? "selected" : ""}`} onClick={(event) => handleToolClick(tool.id, event.detail)} type="button" aria-label={tool.label} aria-pressed={activeTool === tool.id} title={`${tool.label} · Double-click to toggle panel`}>
                   <span className="tool-sidebar-icon" aria-hidden="true">{tool.icon}</span>
-                  {(tool.id === "terminal" || tool.id === "explorer") && <span className="tool-sidebar-label">{tool.label}</span>}
                 </button>
               </Fragment>)}
               <button className="tool-sidebar-settings" type="button" aria-label="Help & Settings" title="Help & Settings" aria-haspopup="dialog" onClick={() => setSettingsOpen(true)}>
@@ -1477,7 +1484,7 @@ function App() {
             </nav>
             <div className="workspace-sidebar-content">
             <section className="tool-content" aria-label={tools.find((tool) => tool.id === activeTool)?.label}>
-              {activeTool === "terminal" || activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} mode={activeTool === "terminal" ? "terminal" : "files"} terminalLayoutMode={terminalLayoutMode} onChangeTerminalLayoutMode={changeTerminalLayoutMode} activeTerminalGroupName={activeTerminalGroup?.name ?? "Terminal"} editorLayoutMode={editorLayoutMode} onChangeEditorLayoutMode={changeEditorLayoutMode} onCreateEditorGroup={createEditorGroup} onGoToFile={() => { if (!settingsOpen) setQuickOpenOpen(true); }} workspaces={terminalWorkspaceState.workspaces} activeWorkspaceId={activeTerminalWorkspace?.id ?? ""} onActivateWorkspace={activateWorkspace} onCreateWorkspace={createWorkspace} onRenameWorkspace={renameWorkspace} onDeleteWorkspace={() => void deleteWorkspace()} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} onFolderContextAction={handleFolderContextAction} refreshRequest={workspaceFolderRefresh} terminalGroups={activeTerminalWorkspace?.groups ?? []} activeTerminalGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} activeTerminalId={activeTerminalId ?? ""} terminals={activeWorkspaceTerminals} onCreateTerminalGroup={addTerminalGroup} onCloseTerminalGroup={closeTerminalGroup} onRenameTerminalGroup={renameTerminalGroup} onSelectTerminalGroup={(groupId) => { chooseTerminalGroup(groupId); setActiveMainView("terminals"); }} onSelectTerminal={selectTerminalFromSidebar} onAddTerminal={() => { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToWorkspace(); }} terminalUsageOpen={terminalUsageOpen} onToggleTerminalUsage={() => { setActiveMainView("terminals"); setTerminalUsageOpen((open) => !open); }} onRenameTerminal={(groupId, terminal) => { selectTerminalFromSidebar(groupId, terminal.id); beginRenameTerminal(terminal); }} onMoveTerminal={moveTerminalToGroup} onCloseTerminal={(terminalId) => void closeTerminal(terminalId)} /> : activeTool === "changes" ? <GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenDiff={(change, staged) => void openEditorFile({ id: `gitdiff:${repoPath}:${staged ? "index" : "worktree"}:${change.path}`, root: repoPath, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onError={showToast} /> : <GitGraphPanel key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} onOpenFile={openCommitFileInEditor} />}
+              {activeTool === "terminal" || activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} toolSwitch={primaryToolSwitch} mode={activeTool === "terminal" ? "terminal" : "files"}terminalLayoutMode={terminalLayoutMode} onChangeTerminalLayoutMode={changeTerminalLayoutMode} activeTerminalGroupName={activeTerminalGroup?.name ?? "Terminal"} editorLayoutMode={editorLayoutMode} onChangeEditorLayoutMode={changeEditorLayoutMode} onGoToFile={() => { if (!settingsOpen) setQuickOpenOpen(true); }} onCreateEditorGroup={createEditorGroup} workspaces={terminalWorkspaceState.workspaces} activeWorkspaceId={activeTerminalWorkspace?.id ?? ""} onActivateWorkspace={activateWorkspace} onCreateWorkspace={createWorkspace} onRenameWorkspace={renameWorkspace} onDeleteWorkspace={() => void deleteWorkspace()} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} onFolderContextAction={handleFolderContextAction} refreshRequest={workspaceFolderRefresh} terminalGroups={activeTerminalWorkspace?.groups ?? []} activeTerminalGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} activeTerminalId={activeTerminalId ?? ""} terminals={activeWorkspaceTerminals} onCreateTerminalGroup={addTerminalGroup} onCloseTerminalGroup={closeTerminalGroup} onRenameTerminalGroup={renameTerminalGroup} onSelectTerminalGroup={(groupId) => { chooseTerminalGroup(groupId); setActiveMainView("terminals"); }} onSelectTerminal={selectTerminalFromSidebar} onAddTerminal={() => { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToWorkspace(); }} terminalUsageOpen={terminalUsageOpen} onToggleTerminalUsage={() => { setActiveMainView("terminals"); setTerminalUsageOpen((open) => !open); }} onRenameTerminal={(groupId, terminal) => { selectTerminalFromSidebar(groupId, terminal.id); beginRenameTerminal(terminal); }} onMoveTerminal={moveTerminalToGroup} onCloseTerminal={(terminalId) => void closeTerminal(terminalId)} /> : activeTool === "changes" ? <>{primaryToolSwitch}<GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenDiff={(change, staged) => void openEditorFile({ id: `gitdiff:${repoPath}:${staged ? "index" : "worktree"}:${change.path}`, root: repoPath, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onError={showToast} /></> : <>{primaryToolSwitch}<GitGraphPanel key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} onOpenFile={openCommitFileInEditor} /></>}
             </section>
             </div>
           </div>
@@ -1552,7 +1559,7 @@ function isWorkspaceItemMissing(reason: unknown): boolean {
   return String(reason).includes(WORKSPACE_ITEM_MISSING_MARKER);
 }
 
-function WorkspacePanel({ mode, terminalLayoutMode, onChangeTerminalLayoutMode, activeTerminalGroupName, editorLayoutMode, onChangeEditorLayoutMode, onCreateEditorGroup, onGoToFile, workspaces, activeWorkspaceId, onActivateWorkspace, onCreateWorkspace, onRenameWorkspace, onDeleteWorkspace, folders, activePath, onAdd, onActivate, onRemove, onOpenFile, onFolderContextAction, refreshRequest, collapseOtherFolders, terminalGroups, activeTerminalGroupId, activeTerminalId, terminals, onCreateTerminalGroup, onCloseTerminalGroup, onRenameTerminalGroup, onSelectTerminalGroup, onSelectTerminal, onAddTerminal, terminalUsageOpen, onToggleTerminalUsage, onRenameTerminal, onMoveTerminal, onCloseTerminal }: { mode: "terminal" | "files"; terminalLayoutMode: TerminalLayoutMode; onChangeTerminalLayoutMode: (mode: TerminalLayoutMode) => void; activeTerminalGroupName: string; editorLayoutMode: EditorLayoutMode; onChangeEditorLayoutMode: (mode: EditorLayoutMode) => void; onCreateEditorGroup: () => void; onGoToFile: () => void; workspaces: TerminalWorkspace[]; activeWorkspaceId: string; onActivateWorkspace: (id: string) => void; onCreateWorkspace: () => void; onRenameWorkspace: () => void; onDeleteWorkspace: () => void; folders: string[]; activePath: string; onAdd: () => void; onActivate: (path: string) => void; onRemove: (path: string) => void; onOpenFile: (root: string, entry: WorkspaceEntry) => void; onFolderContextAction: (action: FolderContextMenuAction, target: { root: string; path: string; isWorkspaceRoot: boolean }) => void; refreshRequest: { root: string; path: string; nonce: number } | null; collapseOtherFolders: boolean; terminalGroups: TerminalGroup[]; activeTerminalGroupId: string; activeTerminalId: string; terminals: TerminalSession[]; onCreateTerminalGroup: () => void; onCloseTerminalGroup: (groupId: string) => void; onRenameTerminalGroup: (workspaceId: string, groupId: string, name: string) => void; onSelectTerminalGroup: (groupId: string) => void; onSelectTerminal: (groupId: string, terminalId: string) => void; onAddTerminal: () => void; terminalUsageOpen: boolean; onToggleTerminalUsage: () => void; onRenameTerminal: (groupId: string, terminal: TerminalSession) => void; onMoveTerminal: (terminalId: string, groupId: string) => void; onCloseTerminal: (terminalId: string) => void }) {
+function WorkspacePanel({ toolSwitch, mode, terminalLayoutMode, onChangeTerminalLayoutMode, activeTerminalGroupName, editorLayoutMode, onChangeEditorLayoutMode, onGoToFile, onCreateEditorGroup, workspaces, activeWorkspaceId, onActivateWorkspace, onCreateWorkspace, onRenameWorkspace, onDeleteWorkspace, folders, activePath, onAdd, onActivate, onRemove, onOpenFile, onFolderContextAction, refreshRequest, collapseOtherFolders, terminalGroups, activeTerminalGroupId, activeTerminalId, terminals, onCreateTerminalGroup, onCloseTerminalGroup, onRenameTerminalGroup, onSelectTerminalGroup, onSelectTerminal, onAddTerminal, terminalUsageOpen, onToggleTerminalUsage, onRenameTerminal, onMoveTerminal, onCloseTerminal }: { toolSwitch: ReactElement; mode: "terminal" | "files"; terminalLayoutMode: TerminalLayoutMode; onChangeTerminalLayoutMode: (mode: TerminalLayoutMode) => void; activeTerminalGroupName: string; editorLayoutMode: EditorLayoutMode; onChangeEditorLayoutMode: (mode: EditorLayoutMode) => void; onGoToFile: () => void; onCreateEditorGroup: () => void; workspaces: TerminalWorkspace[]; activeWorkspaceId: string; onActivateWorkspace: (id: string) => void; onCreateWorkspace: () => void; onRenameWorkspace: () => void; onDeleteWorkspace: () => void; folders: string[]; activePath: string; onAdd: () => void; onActivate: (path: string) => void; onRemove: (path: string) => void; onOpenFile: (root: string, entry: WorkspaceEntry) => void; onFolderContextAction: (action: FolderContextMenuAction, target: { root: string; path: string; isWorkspaceRoot: boolean }) => void; refreshRequest: { root: string; path: string; nonce: number } | null; collapseOtherFolders: boolean; terminalGroups: TerminalGroup[]; activeTerminalGroupId: string; activeTerminalId: string; terminals: TerminalSession[]; onCreateTerminalGroup: () => void; onCloseTerminalGroup: (groupId: string) => void; onRenameTerminalGroup: (workspaceId: string, groupId: string, name: string) => void; onSelectTerminalGroup: (groupId: string) => void; onSelectTerminal: (groupId: string, terminalId: string) => void; onAddTerminal: () => void; terminalUsageOpen: boolean; onToggleTerminalUsage: () => void; onRenameTerminal: (groupId: string, terminal: TerminalSession) => void; onMoveTerminal: (terminalId: string, groupId: string) => void; onCloseTerminal: (terminalId: string) => void }) {
   const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
   const [entriesByPath, setEntriesByPath] = useState<Record<string, WorkspaceEntry[]>>({});
   const [loadingPaths, setLoadingPaths] = useState<Record<string, boolean>>({});
@@ -1816,10 +1823,14 @@ function WorkspacePanel({ mode, terminalLayoutMode, onChangeTerminalLayoutMode, 
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></svg>
       </ActionMenu>
     </div>
+    {toolSwitch}
     {mode === "files" && <section className="workspace-explorer" aria-label="Explorer">
       <header className="workspace-section-header">
         <h2>Explorer</h2>
         <div className="sec-acts">
+          <button className="ib workspace-editor-group-create" type="button" aria-label="New group" title="New editor group" onClick={onCreateEditorGroup}>
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
+          </button>
           <button className="ib workspace-go-to-file" type="button" aria-label="Go to file" title="Go to file (Ctrl+P)" onClick={onGoToFile}>
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
           </button>
@@ -1856,6 +1867,9 @@ function WorkspacePanel({ mode, terminalLayoutMode, onChangeTerminalLayoutMode, 
             <div className="sec-acts">
               <button className={`ib workspace-terminal-resource-button${terminalUsageOpen ? " active" : ""}`} type="button" aria-label="Resource usage" aria-pressed={terminalUsageOpen} aria-controls="terminal-resource-panel" onClick={onToggleTerminalUsage} title="Toggle CPU and RAM monitor">
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 12h4l3-7 4 14 3-7h4" /></svg>
+              </button>
+              <button className="ib workspace-terminal-add-button" type="button" aria-label="Add terminal to group" title="Add terminal to group" onClick={onAddTerminal}>
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6l5 5-5 5M11 18h9" /></svg>
               </button>
               <button className="ib workspace-terminal-group-create" type="button" aria-label="New terminal group" title="New terminal group" onClick={onCreateTerminalGroup}>
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
@@ -1913,19 +1927,12 @@ function WorkspacePanel({ mode, terminalLayoutMode, onChangeTerminalLayoutMode, 
     </section>}
     {mode === "files" && <div className="panel-footnote workspace-explorer-footnote"><span className="read-only-mark">⌂</span> Right-click folders for actions</div>}
     <div className="workspace-layout-block" role="group" aria-label={mode === "terminal" ? `Layout · ${activeTerminalGroupName}` : "Layout · Editor"}>
-      <div className="workspace-layout-label" aria-hidden="true">Layout · <b>{mode === "terminal" ? activeTerminalGroupName : "Editor"}</b></div>
-      {mode === "terminal" ? <>
-        <FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={onChangeTerminalLayoutMode} />
-        <button className="workspace-terminal-add-button" type="button" aria-label="Add terminal to group" title="Add terminal to group" onClick={onAddTerminal}>
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>Add terminal
-        </button>
-      </> : <>
-        <div className="layout-mode-toggle editor-layout-mode-toggle floating-editor-mode-toggle" role="group" aria-label="Editor group layout mode">
+      {mode === "terminal"
+        ? <FloatingTerminalModeToggle mode={terminalLayoutMode} onChange={onChangeTerminalLayoutMode} />
+        : <div className="layout-mode-toggle editor-layout-mode-toggle floating-editor-mode-toggle" role="group" aria-label="Editor group layout mode">
           <button className={editorLayoutMode === "tiled" ? "selected" : ""} type="button" aria-pressed={editorLayoutMode === "tiled"} onClick={() => onChangeEditorLayoutMode("tiled")} title="Use the default split editor layout">Split</button>
           <button className={editorLayoutMode === "free" ? "selected" : ""} type="button" aria-pressed={editorLayoutMode === "free"} onClick={() => onChangeEditorLayoutMode("free")} title="Move editor groups freely around the canvas">Free</button>
-        </div>
-        <button className="editor-create-group" type="button" onClick={onCreateEditorGroup}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>New group</button>
-      </>}
+        </div>}
     </div>
     <FolderContextMenu
       target={contextTarget}

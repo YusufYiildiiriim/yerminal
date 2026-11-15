@@ -89,7 +89,7 @@ describe("global keyboard shortcuts", () => {
     render(<App />);
     await screen.findByRole("textbox", { name: "Mock terminal input" });
     await waitFor(() => expect(terminalCount()).toBe(1));
-    fireEvent.click(within(screen.getByRole("navigation", { name: "Workspace tools" })).getByRole("button", { name: "Editor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Editor" }));
     await screen.findByRole("button", { name: /notes\.txt/ });
     fireEvent.click(screen.getByRole("button", { name: /notes\.txt/ }));
     const editor = await screen.findByRole("textbox", { name: "Edit notes.txt" });

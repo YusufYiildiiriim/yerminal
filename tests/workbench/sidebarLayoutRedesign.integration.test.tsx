@@ -46,7 +46,7 @@ describe("Sidebar and header layout redesign", () => {
     });
   });
 
-  it("orders the rail as Terminal, Editor, separator, Git Changes, Git Graph and switches panels on click", async () => {
+  it("puts Terminal and Editor in the switch under the workspace picker, keeps Git tools in the rail and switches panels on click", async () => {
     const user = userEvent.setup();
     render(<App />);
     const titlebar = document.querySelector(".titlebar") as HTMLElement;
@@ -58,8 +58,9 @@ describe("Sidebar and header layout redesign", () => {
 
     const rail = screen.getByRole("navigation", { name: "Workspace tools" });
     const railLabels = within(rail).getAllByRole("button").map((button) => button.getAttribute("aria-label"));
-    expect(railLabels.slice(0, 4)).toEqual(["Terminal", "Editor", "Git Changes", "Git Graph"]);
-    expect(rail.querySelector(".tool-sidebar-separator")).toBeInTheDocument();
+    expect(railLabels.slice(0, 2)).toEqual(["Git Changes", "Git Graph"]);
+    const primary = screen.getByRole("group", { name: "Primary tool" });
+    expect(within(primary).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["Terminal", "Editor"]);
 
     await user.click(within(rail).getByRole("button", { name: "Git Changes" }));
     expect(within(rail).getByRole("button", { name: "Git Changes" })).toHaveAttribute("aria-pressed", "true");
@@ -89,7 +90,6 @@ describe("Sidebar and header layout redesign", () => {
     expect(within(panel).queryByRole("region", { name: "Explorer" })).not.toBeInTheDocument();
     const terminalGroups = within(panel).getByRole("region", { name: "Terminal groups" });
     expect(within(terminalGroups).getByRole("button", { name: "Resource usage" })).toBeInTheDocument();
-    expect(within(panel).getByRole("group", { name: "Layout · Terminal 1" })).toBeInTheDocument();
     const layout = within(panel).getByRole("group", { name: "Terminal layout mode" });
     expect(within(layout).getByRole("button", { name: "Split" })).toBeInTheDocument();
     expect(within(layout).getByRole("button", { name: "Free" })).toBeInTheDocument();
@@ -100,7 +100,7 @@ describe("Sidebar and header layout redesign", () => {
     const user = userEvent.setup();
     render(<App />);
     const rail = screen.getByRole("navigation", { name: "Workspace tools" });
-    await user.click(within(rail).getByRole("button", { name: "Editor" }));
+    await user.click(screen.getByRole("button", { name: "Editor" }));
 
     const panel = document.querySelector(".tools-panel") as HTMLElement;
     const explorer = within(panel).getByRole("region", { name: "Explorer" });
@@ -108,7 +108,6 @@ describe("Sidebar and header layout redesign", () => {
     expect(within(explorer).getByRole("button", { name: "Go to file" })).toHaveAttribute("title", "Go to file (Ctrl+P)");
     expect(within(panel).queryByRole("region", { name: "Terminal groups" })).not.toBeInTheDocument();
     expect(within(panel).queryByRole("button", { name: "Add terminal to group" })).not.toBeInTheDocument();
-    expect(within(panel).getByRole("group", { name: "Layout · Editor" })).toBeInTheDocument();
     expect(within(panel).getByRole("group", { name: "Editor group layout mode" })).toBeInTheDocument();
     expect(within(panel).getByRole("button", { name: "New group" })).toBeInTheDocument();
   });
@@ -117,7 +116,7 @@ describe("Sidebar and header layout redesign", () => {
     const user = userEvent.setup();
     render(<App />);
     const rail = screen.getByRole("navigation", { name: "Workspace tools" });
-    await user.click(within(rail).getByRole("button", { name: "Editor" }));
+    await user.click(screen.getByRole("button", { name: "Editor" }));
     await user.click(screen.getByRole("button", { name: "Go to file" }));
     expect(screen.getByRole("dialog", { name: /quick open/i })).toBeInTheDocument();
   });
@@ -126,9 +125,9 @@ describe("Sidebar and header layout redesign", () => {
     const user = userEvent.setup();
     render(<App />);
     const rail = screen.getByRole("navigation", { name: "Workspace tools" });
-    await user.click(within(rail).getByRole("button", { name: "Editor" }));
+    await user.click(screen.getByRole("button", { name: "Editor" }));
     expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent(/^Editor$/);
-    await user.click(within(rail).getByRole("button", { name: "Terminal" }));
+    await user.click(screen.getByRole("button", { name: "Terminal" }));
     expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent("Terminal · Terminal 1");
   });
 
@@ -140,7 +139,7 @@ describe("Sidebar and header layout redesign", () => {
     await user.keyboard("{Control>}{Shift>}g{/Shift}{/Control}");
     expect(within(rail).getByRole("button", { name: "Git Changes" })).toHaveAttribute("aria-pressed", "true");
     expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent(/^Editor/);
-    await user.click(within(rail).getByRole("button", { name: "Terminal" }));
+    await user.click(screen.getByRole("button", { name: "Terminal" }));
     await user.keyboard("{Control>}{Shift>}b{/Shift}{/Control}");
     expect(within(rail).getByRole("button", { name: "Git Graph" })).toHaveAttribute("aria-pressed", "true");
     expect(document.querySelector(".titlebar-breadcrumb")).toHaveTextContent(/^Editor/);
@@ -148,7 +147,7 @@ describe("Sidebar and header layout redesign", () => {
 
   it("labels the side panel layout block as a group", () => {
     render(<App />);
-    expect(screen.getByRole("group", { name: "Layout · Terminal 1" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Terminal layout mode" })).toBeInTheDocument();
   });
 
   it("shows a breadcrumb in the titlebar instead of Workspace views tabs", () => {

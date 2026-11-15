@@ -5,7 +5,7 @@ import App from "../src/App";
 import { chooseGroupAction, chooseWorkspaceAction } from "./shellMenus";
 
 function openEditorTool() {
-  fireEvent.click(within(screen.getByRole("navigation", { name: "Workspace tools" })).getByRole("button", { name: "Editor" }));
+  fireEvent.click(screen.getByRole("button", { name: "Editor" }));
 }
 
 const tauriMocks = vi.hoisted(() => ({
@@ -512,7 +512,7 @@ describe("Workspace controls placement", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<App />);
 
-    await user.click(within(screen.getByRole("navigation", { name: "Workspace tools" })).getByRole("button", { name: "Editor" }));
+    await user.click(screen.getByRole("button", { name: "Editor" }));
     const explorer = document.querySelector(".tools-panel") as HTMLElement;
     const picker = within(explorer).getByRole("combobox", { name: "Active terminal workspace" });
     expect(within(explorer).getByRole("button", { name: "Workspace actions" })).toBeInTheDocument();

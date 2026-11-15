@@ -257,3 +257,12 @@
 }
 .app-shell[data-theme] ::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--theme-text) 28%, transparent); }
 .app-shell[data-theme] ::-webkit-scrollbar-thumb:active { background-color: color-mix(in srgb, var(--theme-accent) 45%, transparent); }
+
+/* Terminal / Editor switch, sits under the workspace picker row */
+.app-shell[data-theme] .tool-primary-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 8px; padding: 3px; border: 1px solid var(--theme-border); border-radius: 8px; background: var(--theme-surface); }
+.app-shell[data-theme] .tool-primary-switch-item { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--theme-muted); font: inherit; font-size: 12px; cursor: pointer; }
+.app-shell[data-theme] .tool-primary-switch-item:hover { background: var(--shell-hover); color: var(--theme-text); }
+.app-shell[data-theme] .tool-primary-switch-item.selected { background: color-mix(in srgb, var(--theme-accent) 16%, var(--theme-surface)); color: var(--theme-text); }
+.app-shell[data-theme] .tool-primary-switch-item .tool-sidebar-icon { display: inline-flex; width: 14px; height: 14px; }
+.app-shell[data-theme] .tool-primary-switch-item .tool-sidebar-icon svg { width: 14px; height: 14px; }
+.app-shell[data-theme] .tool-primary-switch-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
