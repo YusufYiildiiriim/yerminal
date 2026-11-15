@@ -100,6 +100,22 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
     });
     const handleFocus = () => onFocusRef.current(sessionId);
     hostRef.current.addEventListener("focusin", handleFocus);
+    // Windows-terminal style right-click: copy the selection (and clear it), otherwise paste the clipboard.
+    // No menu is shown inside the terminal body; the pane header keeps its own menu.
+    const handleContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (terminal.hasSelection()) {
+        const selection = terminal.getSelection();
+        terminal.clearSelection();
+        void navigator.clipboard?.writeText(selection).catch(() => {});
+        return;
+      }
+      void navigator.clipboard?.readText().then((text) => {
+        if (text && !disposed) terminal.paste(text);
+      }).catch(() => {});
+    };
+    hostRef.current.addEventListener("contextmenu", handleContextMenu);
 
     let disposed = false;
     let replayingOutput = true;
@@ -264,6 +280,7 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
       outputUnlisten?.();
       exitUnlisten?.();
       hostRef.current?.removeEventListener("focusin", handleFocus);
+      hostRef.current?.removeEventListener("contextmenu", handleContextMenu);
       terminal.dispose();
       terminalRef.current = null;
       fitRef.current = null;

@@ -1,0 +1,71 @@
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const xterm = vi.hoisted(() => ({
+  instance: null as null | {
+    hasSelection: ReturnType<typeof vi.fn>;
+    getSelection: ReturnType<typeof vi.fn>;
+    clearSelection: ReturnType<typeof vi.fn>;
+    paste: ReturnType<typeof vi.fn>;
+  },
+}));
+
+vi.mock("@xterm/xterm", () => ({
+  Terminal: class {
+    options: Record<string, unknown> = {};
+    cols = 80;
+    rows = 24;
+    hasSelection = vi.fn(() => false);
+    getSelection = vi.fn(() => "");
+    clearSelection = vi.fn();
+    paste = vi.fn();
+    constructor() { xterm.instance = this; }
+    loadAddon() {}
+    open() {}
+    writeln() {}
+    write() {}
+    focus() {}
+    onData() {}
+    dispose() {}
+  },
+}));
+vi.mock("@xterm/addon-fit", () => ({ FitAddon: class { fit() {} } }));
+vi.mock("@xterm/xterm/css/xterm.css", () => ({}));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), isTauri: () => false }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
+vi.mock("../../src/features/terminal/terminalLinks", () => ({ registerUrlLinks: () => ({ dispose: () => {} }) }));
+
+import { TerminalPane } from "../../src/features/terminal/TerminalPane";
+
+describe("terminal right-click", () => {
+  const clipboard = { readText: vi.fn(), writeText: vi.fn() };
+  beforeEach(() => {
+    clipboard.readText.mockReset().mockResolvedValue("echo pasted");
+    clipboard.writeText.mockReset().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: clipboard, configurable: true });
+  });
+  afterEach(cleanup);
+
+  function mount(onParentContextMenu = vi.fn()) {
+    const view = render(<div onContextMenu={onParentContextMenu}><TerminalPane sessionId="s1" shell="powershell" workingDirectory={null} active visible onFocus={() => {}} onExit={() => {}} /></div>);
+    return { host: view.container.querySelector(".terminal-fit") as HTMLElement, onParentContextMenu };
+  }
+
+  it("pastes the clipboard and does not bubble to the pane menu", async () => {
+    const { host, onParentContextMenu } = mount();
+    expect(fireEvent.contextMenu(host)).toBe(false);
+    await waitFor(() => expect(xterm.instance!.paste).toHaveBeenCalledWith("echo pasted"));
+    expect(onParentContextMenu).not.toHaveBeenCalled();
+  });
+
+  it("copies and clears an existing selection instead of pasting", async () => {
+    const { host } = mount();
+    xterm.instance!.hasSelection.mockReturnValue(true);
+    xterm.instance!.getSelection.mockReturnValue("selected text");
+    fireEvent.contextMenu(host);
+    expect(clipboard.writeText).toHaveBeenCalledWith("selected text");
+    expect(xterm.instance!.clearSelection).toHaveBeenCalled();
+    expect(xterm.instance!.paste).not.toHaveBeenCalled();
+  });
+});
