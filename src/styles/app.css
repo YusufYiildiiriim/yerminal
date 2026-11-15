@@ -381,3 +381,12 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .app-shell[data-theme] .workspace-navigation-controls { background: var(--theme-surface); border-color: var(--theme-border); padding: 12px; gap: 8px; }
 .app-shell[data-theme] .workspace-sidebar-content { background: var(--theme-surface); }
 .app-shell[data-theme] .tool-sidebar { background: var(--theme-chrome); border-color: var(--theme-border); }
+
+/* Toast variants: red = error (default above), green = done, amber = needs attention. */
+.app-toast::before { flex: 0 0 auto; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: #79434a; color: #f6d4d8; font-size: 11px; font-weight: 700; content: "!"; }
+.app-toast--success { border-color: #3d6a52; background: #1a2820; color: #bfe3cd; }
+.app-toast--success::before { background: #2f5a43; color: #d8f3e2; content: "✓"; }
+.app-toast--success button:hover, .app-toast--success button:focus-visible { outline-color: #6fb18a; background: #254033; }
+.app-toast--warning { border-color: #7a6531; background: #2a2518; color: #ecd9a0; }
+.app-toast--warning::before { background: #6b5727; color: #f6e8bd; content: "!"; }
+.app-toast--warning button:hover, .app-toast--warning button:focus-visible { outline-color: #c9a950; background: #3a3220; }

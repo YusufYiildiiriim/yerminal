@@ -8,6 +8,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { GitGraphBranches } from "./features/git/GitGraphBranches";
 import { BranchPicker } from "./features/git/BranchPicker";
 import { SyncBar } from "./features/git/SyncBar";
+import { classifyToast, type ToastKind } from "./toastKind";
 import { baseName, buildChangeTree, type ChangeTreeNode } from "./features/git/changeTree";
 import { MergeConflicts } from "./features/git/MergeConflicts";
 import { joinRepoPath } from "./features/git/gitPaths";
@@ -350,7 +351,7 @@ function App() {
   const terminalNameInputRef = useRef<HTMLInputElement>(null);
   const terminalDirectoryTargetsRef = useRef(new Map<string, string>());
   const terminalDirectoryWritesRef = useRef(new Map<string, Promise<void>>());
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const [workspaceFolderRefresh, setWorkspaceFolderRefresh] = useState<{ root: string; path: string; nonce: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
@@ -949,7 +950,7 @@ function App() {
 
   const showToast = useCallback((message: string) => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-    setToast(message);
+    setToast({ message, kind: classifyToast(message) });
     toastTimeoutRef.current = setTimeout(() => {
       toastTimeoutRef.current = null;
       setToast(null);
@@ -1562,7 +1563,7 @@ function App() {
         }}
       />}
       {settingsOpen && <SettingsDialog settings={settings} shortcuts={HELP_SHORTCUTS} onSettingsChange={setSettings} onClose={closeSettings} />}
-      {toast && <div className="app-toast" role="alert" aria-live="assertive" aria-atomic="true"><span>{toast}</span><button aria-label="Dismiss notification" onClick={dismissToast} type="button">×</button></div>}
+      {toast && <div className={`app-toast app-toast--${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"} aria-live={toast.kind === "error" ? "assertive" : "polite"} aria-atomic="true"><span>{toast.message}</span><button aria-label="Dismiss notification" onClick={dismissToast} type="button">×</button></div>}
     </main>
   );
 }
