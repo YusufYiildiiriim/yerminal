@@ -51,7 +51,7 @@ pub struct CommitFileContent {
     pub source_label: String,
 }
 
-fn open_repository(path: &str) -> Result<Repository, String> {
+pub(crate) fn open_repository(path: &str) -> Result<Repository, String> {
     let path = Path::new(path)
         .canonicalize()
         .map_err(|error| format!("Cannot open folder: {error}"))?;

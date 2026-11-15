@@ -1,8 +1,10 @@
 pub mod git;
+pub mod git_remote;
 pub mod terminal;
 pub mod workspace_fs;
 pub mod workspace_watch;
 
+use git_remote::RemoteState;
 use git::{BranchInfo, MergeOutcome, CommitFileChange, CommitFileContent, CommitInfo, FileChange, RepositoryInfo};
 use std::sync::Mutex;
 use tauri::{Manager, State};
@@ -182,6 +184,32 @@ fn git_commit_file_content(
 
 
 #[tauri::command]
+fn git_remote_state(path: String) -> Result<RemoteState, String> {
+    git_remote::remote_state(&path)
+}
+
+#[tauri::command]
+async fn git_fetch(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || git_remote::fetch(&path))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn git_pull(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || git_remote::pull(&path))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn git_push(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || git_remote::push(&path))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 async fn git_checkout_branch(path: String, name: String) -> Result<RepositoryInfo, String> {
     tauri::async_runtime::spawn_blocking(move || git::checkout_branch(&path, &name))
         .await
@@ -307,6 +335,10 @@ pub fn run() {
             git_diff,
             git_history,
             git_branches,
+            git_remote_state,
+            git_fetch,
+            git_pull,
+            git_push,
             git_checkout_branch,
             git_create_branch,
             git_delete_branch,
