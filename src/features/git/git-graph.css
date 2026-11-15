@@ -69,4 +69,5 @@
 .gg-panel > .gb-panel { flex: 1; }
 .gg-repo-picker { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--theme-border, rgba(255,255,255,.08)); }
 .gg-repo-picker span { color: var(--theme-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
-.gg-repo-picker select { width: 100%; height: 26px; padding: 0 6px; color: var(--theme-text); background: var(--theme-input-bg, transparent); border: 1px solid var(--theme-border, rgba(255,255,255,.14)); border-radius: 6px; font: inherit; font-size: 12px; }
+.gg-repo-picker select option { background: var(--theme-surface, #19191f); color: var(--theme-text); }
+.gg-repo-picker select { width: 100%; height: 26px; padding: 0 6px; color: var(--theme-text); background: var(--theme-surface, #19191f); border: 1px solid var(--theme-border, rgba(255,255,255,.14)); border-radius: 6px; font: inherit; font-size: 12px; }

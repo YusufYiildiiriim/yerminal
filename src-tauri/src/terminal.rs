@@ -90,7 +90,7 @@ impl TerminalOutputHistory {
         };
         self.retained_bytes = self.retained_bytes.saturating_add(event.data.len());
         self.events.push_back(event.clone());
-        while self.retained_bytes > 256 * 1024 && self.events.len() > 1 {
+        while self.retained_bytes > 2 * 1024 * 1024 && self.events.len() > 1 {
             if let Some(removed) = self.events.pop_front() {
                 self.retained_bytes = self.retained_bytes.saturating_sub(removed.data.len());
             }
@@ -940,27 +940,27 @@ mod tests {
     fn output_history_evicts_old_events_within_retention_limit() {
         let mut history = TerminalOutputHistory::default();
 
-        for index in 0..300 {
+        for index in 0..1500 {
             let data = format!("event-{index:04}-{}", "x".repeat(2000));
             history.append("session-a".to_owned(), data);
         }
 
         let snapshot = history.snapshot();
-        assert_eq!(snapshot.through_sequence, 300);
+        assert_eq!(snapshot.through_sequence, 1500);
         assert!(
-            snapshot.events.len() < 300,
+            snapshot.events.len() < 1500,
             "history should evict older events"
         );
 
         let retained_bytes: usize = snapshot.events.iter().map(|event| event.data.len()).sum();
         assert!(
-            retained_bytes <= 256 * 1024,
-            "retained {retained_bytes} bytes exceeds 256 KiB"
+            retained_bytes <= 2 * 1024 * 1024,
+            "retained {retained_bytes} bytes exceeds 2 MiB"
         );
 
         let newest = snapshot.events.last().expect("history keeps recent events");
-        assert_eq!(newest.sequence, 300);
-        assert!(newest.data.starts_with("event-0299-"));
+        assert_eq!(newest.sequence, 1500);
+        assert!(newest.data.starts_with("event-1499-"));
         assert!(newest.data.ends_with("xxxxxxxxxx"));
     }
 

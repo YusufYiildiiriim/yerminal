@@ -36,7 +36,7 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
       cursorBlink: true,
       fontFamily: '"Cascadia Code", Consolas, monospace',
       fontSize: 13,
-      scrollback: 3000,
+      scrollback: 10000,
       allowProposedApi: false,
       theme: {
         background: "#101114",
@@ -147,8 +147,13 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
       }
     };
 
+    const hostHasSize = () => {
+      const host = hostRef.current;
+      return Boolean(host && host.clientWidth > 0 && host.clientHeight > 0);
+    };
+
     const fitAndSchedulePtyResize = () => {
-      if (disposed) return;
+      if (disposed || !hostHasSize()) return;
       fit.fit();
       if (!visibleRef.current || !ptyReady || !isTauri()) return;
       const size = readTerminalSize();
@@ -237,7 +242,7 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
     });
 
     const resizeObserver = new ResizeObserver(() => {
-      if (!visibleRef.current || disposed) return;
+      if (!visibleRef.current || disposed || !hostHasSize()) return;
       fitAndSchedulePtyResize();
     });
     resizeObserver.observe(hostRef.current);
