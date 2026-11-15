@@ -457,3 +457,16 @@
   grid-column: 1 / -1; grid-row: 2; align-self: end; height: 3px; margin: 0 -12px; border-radius: 0; background: transparent;
 }
 .app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel .terminal-resource-meter > span { display: block; height: 100%; background: color-mix(in srgb, var(--theme-accent) 70%, transparent); }
+
+/* Names first: the name column sizes to its text, the value takes the rest. Rounded like the other panels. */
+.app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel {
+  margin: 0 8px 8px; border: 1px solid var(--theme-border); border-radius: 8px; overflow: hidden;
+}
+.app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel .terminal-resource-card {
+  flex: 0 0 auto; min-width: 210px; max-width: 320px; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px;
+}
+.app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel .terminal-resource-card:last-child { border-right: 0; }
+.app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel .terminal-resource-terminal-name { max-width: 140px; }
+.app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel .terminal-resource-value {
+  min-width: 0; justify-self: end; overflow: hidden; text-overflow: ellipsis; text-align: right;
+}
