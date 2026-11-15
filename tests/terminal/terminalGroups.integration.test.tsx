@@ -240,6 +240,8 @@ describe("terminal groups", () => {
     expect(within(explorerGroups).getByRole("button", { name: "Select terminal group Terminal 1" })).toHaveAttribute("aria-pressed", "true");
     await user.click(within(explorerGroups).getByRole("button", { name: "Select terminal Terminal 2" }));
     expect(document.querySelector(".terminal-pane-frame[data-active=\"true\"] .terminal-pane-title")).toHaveTextContent("Terminal 2");
+    expect(within(explorerGroups).getByRole("button", { name: "Select terminal Terminal 2" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(explorerGroups).getByRole("button", { name: "Select terminal Terminal 2" })).toHaveClass("selected");
 
     const collapse = within(explorerGroups).getByRole("button", { name: "Collapse terminal groups" });
     await user.click(collapse);
@@ -383,5 +385,22 @@ describe("remembered terminal view per group", () => {
     await waitFor(() => expect(visiblePanes()).toHaveLength(1));
     await user.click(groups.getByRole("button", { name: "Select terminal group Terminal 1" }));
     await waitFor(() => expect(visiblePanes()).toHaveLength(2));
+  });
+  it("moves the sidebar active-terminal marker when switching terminals inside the same group", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByTestId("mock-terminal");
+    await user.click(screen.getByRole("button", { name: "Add terminal to group" }));
+    await waitFor(() => expect(screen.getAllByTestId("mock-terminal")).toHaveLength(2));
+    const groups = within(screen.getByRole("region", { name: "Terminal groups" }));
+    const [first, second] = groups.getAllByRole("button", { name: /^Select terminal (?!group)/ });
+    expect(second).toHaveAttribute("aria-pressed", "true");
+    await user.click(first);
+    expect(first).toHaveAttribute("aria-pressed", "true");
+    expect(first).toHaveClass("selected");
+    expect(second).toHaveAttribute("aria-pressed", "false");
+    await user.click(second);
+    expect(second).toHaveAttribute("aria-pressed", "true");
+    expect(first).toHaveAttribute("aria-pressed", "false");
   });
 });

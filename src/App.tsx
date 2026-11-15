@@ -1096,10 +1096,11 @@ function App() {
     const key = terminalViewKey(workspace.id, groupId);
     if (groupId === workspace.activeGroupId) {
       setTerminalViews((current) => ({ ...current, [key]: terminalId }));
+      focusTerminal(terminalId);
       return;
     }
     chooseTerminalGroup(groupId);
-    if (terminalViews[key]) setTerminalViews((current) => ({ ...current, [key]: terminalId }));
+    if (terminalViews[key]) { setTerminalViews((current) => ({ ...current, [key]: terminalId })); focusTerminal(terminalId); }
     else focusTerminal(terminalId);
   };
 
