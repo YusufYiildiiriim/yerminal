@@ -1347,8 +1347,9 @@ mod tests {
 
         // Other tests may briefly spawn child processes (which resets CPU
         // readiness), so allow a few samples for a stable process set.
-        let cpu = (0..5)
+        let cpu = (0..60)
             .find_map(|_| {
+                std::thread::sleep(std::time::Duration::from_millis(25));
                 let sample = monitor.collect(vec![root("self", Some(pid), Some(start), true)]);
                 assert!(sample[0].available);
                 sample[0].cpu_percent
