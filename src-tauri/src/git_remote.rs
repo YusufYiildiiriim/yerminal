@@ -231,6 +231,9 @@ mod tests {
         fs::create_dir_all(&first).unwrap();
         git(&remote, &["init", "--bare", "-b", "main"]);
         git(&first, &["init", "-b", "main"]);
+        // `pull` runs plain `git`, which needs a committer identity for the merge commit (CI runners have none).
+        git(&first, &["config", "user.name", "Yerminal Test"]);
+        git(&first, &["config", "user.email", "test@yerminal.local"]);
         fs::write(first.join("a.txt"), "one\n").unwrap();
         git(&first, &["add", "."]);
         git(&first, &["commit", "-m", "first"]);
