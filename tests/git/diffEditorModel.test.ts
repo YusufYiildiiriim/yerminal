@@ -16,4 +16,8 @@ describe("planDiffEditor", () => {
     expect(planDiffEditor(null)).toEqual({ mode: "patch", reason: "unavailable" });
     expect(planDiffEditor(undefined)).toEqual({ mode: "patch", reason: "unavailable" });
   });
+
+  it("uses the patch view when both sides are identical, so an empty editor is never shown", () => {
+    expect(planDiffEditor({ original: "same\n", modified: "same\n", binary: false, tooLarge: false })).toEqual({ mode: "patch", reason: "unchanged" });
+  });
 });

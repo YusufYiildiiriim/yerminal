@@ -110,9 +110,9 @@ function pairDiffRows(rows: DiffRow[]): DisplayRow[] {
   return display;
 }
 
-type DiffViewProps = { diff: string; path: string; root: string; staged: boolean; loading?: boolean; emptyMessage?: string; sideLabel?: string; versions?: DiffVersions | null; enabledLanguages?: readonly EditorLanguageId[]; theme?: ThemeId };
+type DiffViewProps = { diff: string; path: string; root: string; staged: boolean; loading?: boolean; emptyMessage?: string; sideLabel?: string; versions?: DiffVersions | null; enabledLanguages?: readonly EditorLanguageId[]; theme?: ThemeId; fontFamily?: string; fontSize?: number };
 
-export function DiffView({ diff, path, root, staged, loading = false, emptyMessage = "No diff available.", sideLabel, versions, enabledLanguages = DEFAULT_LANGUAGES, theme = "obsidian" }: DiffViewProps) {
+export function DiffView({ diff, path, root, staged, loading = false, emptyMessage = "No diff available.", sideLabel, versions, enabledLanguages = DEFAULT_LANGUAGES, theme = "obsidian", fontFamily, fontSize }: DiffViewProps) {
   const rows = useMemo(() => parseDiffRows(diff), [diff]);
   // The Monaco view falls back to the patch rows for these versions if the editor cannot load.
   const [failedVersions, setFailedVersions] = useState<DiffVersions | null | undefined>(undefined);
@@ -132,7 +132,7 @@ export function DiffView({ diff, path, root, staged, loading = false, emptyMessa
       <span className="diff-view-repo" title={root}>{repoName}</span>
     </div>
     {headerRows.length > 0 && <details className="diff-view-details"><summary>Diff details</summary><pre>{headerRows.map((row) => row.content).join("\n")}</pre></details>}
-    {monacoDiff ? <MonacoDiffView original={monacoDiff.original} modified={monacoDiff.modified} path={path} enabledLanguages={enabledLanguages} theme={theme} onUnavailable={() => setFailedVersions(versions)} />
+    {monacoDiff ? <MonacoDiffView original={monacoDiff.original} modified={monacoDiff.modified} path={path} enabledLanguages={enabledLanguages} theme={theme} fontFamily={fontFamily} fontSize={fontSize} onUnavailable={() => setFailedVersions(versions)} />
     : displayRows.length === 0 ? <div className="diff-view-empty">{emptyMessage}</div> : <>
       <div className="diff-view-columns" aria-hidden="true"><span>Previous</span><span>Current</span></div>
       <div className="diff-view-lines" role="table" aria-label="Side-by-side file changes">
