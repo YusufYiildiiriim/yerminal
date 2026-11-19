@@ -174,6 +174,20 @@ fn git_commit_file_diff(
 }
 
 #[tauri::command]
+fn git_diff_versions(path: String, file_path: String, staged: bool) -> Result<git::DiffVersions, String> {
+    git::diff_versions(&path, &file_path, staged)
+}
+
+#[tauri::command]
+fn git_commit_file_versions(
+    path: String,
+    commit_id: String,
+    file_path: String,
+) -> Result<git::DiffVersions, String> {
+    git::commit_file_versions(&path, &commit_id, &file_path)
+}
+
+#[tauri::command]
 fn git_commit_file_content(
     path: String,
     commit_id: String,
@@ -350,6 +364,8 @@ pub fn run() {
             git_commit_files,
             git_commit_file_diff,
             git_commit_file_content,
+            git_diff_versions,
+            git_commit_file_versions,
             list_workspace_directory,
             search_workspace_files,
             read_workspace_text_file,

@@ -1174,6 +1174,151 @@ pub fn resolve_conflict(path: &str, file_path: &str, side: &str) -> Result<(), S
         .write()
         .map_err(|error| format!("Could not write Git index: {error}"))
 }
+/// Full text of both sides of one file's change, for the Monaco diff editor.
+/// An absent side (new or deleted file) is an empty string.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffVersions {
+    pub original: String,
+    pub modified: String,
+    pub binary: bool,
+    pub too_large: bool,
+}
+
+enum Side {
+    Absent,
+    Text(String),
+    Binary,
+    TooLarge,
+}
+
+fn classify_bytes(bytes: &[u8]) -> Side {
+    if bytes.len() as u64 > crate::workspace_fs::MAX_PREVIEW_BYTES {
+        return Side::TooLarge;
+    }
+    if bytes.contains(&0) {
+        return Side::Binary;
+    }
+    match std::str::from_utf8(bytes) {
+        Ok(text) => Side::Text(text.to_owned()),
+        Err(_) => Side::Binary,
+    }
+}
+
+fn blob_side(repo: &Repository, oid: Oid) -> Result<Side, String> {
+    let blob = repo
+        .find_blob(oid)
+        .map_err(|error| format!("Could not read file content: {error}"))?;
+    if blob.size() as u64 > crate::workspace_fs::MAX_PREVIEW_BYTES {
+        return Ok(Side::TooLarge);
+    }
+    Ok(classify_bytes(blob.content()))
+}
+
+fn tree_side(repo: &Repository, tree: Option<&git2::Tree>, file_path: &str) -> Result<Side, String> {
+    let Some(tree) = tree else {
+        return Ok(Side::Absent);
+    };
+    match tree.get_path(Path::new(file_path)) {
+        Ok(entry) if entry.kind() == Some(git2::ObjectType::Blob) => blob_side(repo, entry.id()),
+        Ok(_) => Ok(Side::Binary),
+        Err(_) => Ok(Side::Absent),
+    }
+}
+
+fn index_side(repo: &Repository, file_path: &str) -> Result<Side, String> {
+    let index = repo
+        .index()
+        .map_err(|error| format!("Could not read Git index: {error}"))?;
+    match index.get_path(Path::new(file_path), 0) {
+        Some(entry) => blob_side(repo, entry.id),
+        None => Ok(Side::Absent),
+    }
+}
+
+fn worktree_side(repo: &Repository, file_path: &str) -> Result<Side, String> {
+    let relative = validated_worktree_path(repo, file_path)?;
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| "Git worktree is unavailable".to_owned())?;
+    let full = workdir.join(relative);
+    let metadata = match fs::metadata(&full) {
+        Ok(metadata) => metadata,
+        Err(_) => return Ok(Side::Absent),
+    };
+    if !metadata.is_file() {
+        return Ok(Side::Binary);
+    }
+    if metadata.len() > crate::workspace_fs::MAX_PREVIEW_BYTES {
+        return Ok(Side::TooLarge);
+    }
+    let bytes = fs::read(&full).map_err(|error| format!("Could not read file: {error}"))?;
+    Ok(classify_bytes(&bytes))
+}
+
+fn versions_from_sides(original: Side, modified: Side) -> DiffVersions {
+    let binary = matches!(original, Side::Binary) || matches!(modified, Side::Binary);
+    let too_large = matches!(original, Side::TooLarge) || matches!(modified, Side::TooLarge);
+    let text = |side: Side| match side {
+        Side::Text(text) => text,
+        _ => String::new(),
+    };
+    DiffVersions {
+        original: text(original),
+        modified: text(modified),
+        binary,
+        too_large,
+    }
+}
+
+/// Unstaged compares the index with the worktree; staged compares HEAD with the index.
+pub fn diff_versions(path: &str, file_path: &str, staged: bool) -> Result<DiffVersions, String> {
+    if !is_repo_relative_path(file_path) {
+        return Err("Invalid repository-relative file path".to_owned());
+    }
+    let repo = open_repository(path)?;
+    let (original, modified) = if staged {
+        let head = repo.head().ok().and_then(|head| head.peel_to_tree().ok());
+        (
+            tree_side(&repo, head.as_ref(), file_path)?,
+            index_side(&repo, file_path)?,
+        )
+    } else {
+        (index_side(&repo, file_path)?, worktree_side(&repo, file_path)?)
+    };
+    Ok(versions_from_sides(original, modified))
+}
+
+/// A commit's file compared with its first parent (an empty side for a root commit).
+pub fn commit_file_versions(
+    path: &str,
+    commit_id: &str,
+    file_path: &str,
+) -> Result<DiffVersions, String> {
+    if !is_repo_relative_path(file_path) {
+        return Err("Invalid repository-relative file path".to_owned());
+    }
+    let repo = open_repository(path)?;
+    let commit = find_commit(&repo, commit_id)?;
+    let commit_tree = commit
+        .tree()
+        .map_err(|error| format!("Could not read commit tree: {error}"))?;
+    let parent_tree = if commit.parent_count() == 0 {
+        None
+    } else {
+        Some(
+            commit
+                .parent(0)
+                .and_then(|parent| parent.tree())
+                .map_err(|error| format!("Could not read parent commit tree: {error}"))?,
+        )
+    };
+    Ok(versions_from_sides(
+        tree_side(&repo, parent_tree.as_ref(), file_path)?,
+        tree_side(&repo, Some(&commit_tree), file_path)?,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2562,5 +2707,80 @@ mod tests {
         assert!(merge_branch(&root, "main").unwrap_err().contains("staged"));
         unstage_file(&root, "b.txt").unwrap();
         assert!(merge_branch(&root, "missing").unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn unstaged_versions_pair_index_with_worktree() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "code.txt", "one\ntwo\n");
+        stage_and_commit(&path, "code.txt", "base");
+        add_file(dir.path(), "code.txt", "one\nTWO\n");
+        stage_file(&path, "code.txt").unwrap();
+        add_file(dir.path(), "code.txt", "worktree only\n");
+
+        let versions = diff_versions(&path, "code.txt", false).expect("unstaged versions");
+        assert_eq!(versions.original, "one\nTWO\n");
+        assert_eq!(versions.modified, "worktree only\n");
+        assert!(!versions.binary && !versions.too_large);
+    }
+
+    #[test]
+    fn staged_versions_pair_head_with_index() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "code.txt", "one\ntwo\n");
+        stage_and_commit(&path, "code.txt", "base");
+        add_file(dir.path(), "code.txt", "one\nTWO\n");
+        stage_file(&path, "code.txt").unwrap();
+        add_file(dir.path(), "code.txt", "worktree only\n");
+
+        let versions = diff_versions(&path, "code.txt", true).expect("staged versions");
+        assert_eq!(versions.original, "one\ntwo\n");
+        assert_eq!(versions.modified, "one\nTWO\n");
+    }
+
+    #[test]
+    fn new_and_deleted_files_leave_the_missing_side_empty() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "gone.txt", "bye\n");
+        stage_and_commit(&path, "gone.txt", "base");
+        fs::remove_file(dir.path().join("gone.txt")).unwrap();
+        let deleted = diff_versions(&path, "gone.txt", false).expect("deleted versions");
+        assert_eq!(deleted.original, "bye\n");
+        assert_eq!(deleted.modified, "");
+
+        add_file(dir.path(), "fresh.txt", "new\n");
+        let added = diff_versions(&path, "fresh.txt", false).expect("added versions");
+        assert_eq!(added.original, "");
+        assert_eq!(added.modified, "new\n");
+    }
+
+    #[test]
+    fn commit_versions_compare_the_commit_with_its_parent() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "code.txt", "first\n");
+        let first = stage_and_commit(&path, "code.txt", "first");
+        add_file(dir.path(), "code.txt", "second\n");
+        let second = stage_and_commit(&path, "code.txt", "second");
+
+        let changed = commit_file_versions(&path, &second, "code.txt").expect("commit versions");
+        assert_eq!(changed.original, "first\n");
+        assert_eq!(changed.modified, "second\n");
+        let created = commit_file_versions(&path, &first, "code.txt").expect("root commit versions");
+        assert_eq!(created.original, "");
+        assert_eq!(created.modified, "first\n");
+    }
+
+    #[test]
+    fn binary_versions_are_flagged_and_invalid_paths_rejected() {
+        let (dir, path) = init_repo();
+        add_bytes(dir.path(), "data.bin", &[0, 1, 2, 3]);
+        stage_and_commit(&path, "data.bin", "binary");
+        add_bytes(dir.path(), "data.bin", &[0, 9, 9]);
+        let versions = diff_versions(&path, "data.bin", false).expect("binary versions");
+        assert!(versions.binary);
+        assert!(versions.original.is_empty() && versions.modified.is_empty());
+
+        assert!(diff_versions(&path, "../escape.txt", false).is_err());
+        assert!(commit_file_versions(&path, "zzz", "data.bin").is_err());
     }
 }
