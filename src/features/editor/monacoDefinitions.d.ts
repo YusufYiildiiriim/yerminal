@@ -7,3 +7,5 @@ declare module "monaco-editor/editor/common/languages/modesRegistry" {
   import type { languages, IDisposable } from "monaco-editor/editor";
   export const ModesRegistry: { registerLanguage(language: languages.ILanguageExtensionPoint): IDisposable };
 }
+
+declare module "monaco-editor/language/typescript/monaco.contribution";
