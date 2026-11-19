@@ -33,8 +33,8 @@ describe("SyncBar", () => {
 
   it("shows how many commits are waiting to pull or push", async () => {
     setup({ branch: "main", upstream: "origin/main", ahead: 2, behind: 3, hasRemote: true });
-    expect(await screen.findByLabelText("3 commits to pull")).toHaveTextContent("↓3");
-    expect(screen.getByLabelText("2 commits to push")).toHaveTextContent("↑2");
+    expect((await screen.findByLabelText("3 commits to pull")).textContent).toBe("3");
+    expect(screen.getByLabelText("2 commits to push").textContent).toBe("2");
     expect(screen.getByRole("button", { name: "Pull from remote" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Push to remote" })).toBeEnabled();
   });

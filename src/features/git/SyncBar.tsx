@@ -62,12 +62,12 @@ export function SyncBar({ repoPath, refreshKey, onChanged, onError }: Props) {
     <button type="button" className="sync-button" aria-label="Pull from remote" title={published ? `Pull from ${state.upstream}` : "Publish this branch first"} disabled={busy !== null || detached || !published} onClick={() => void run("pull")}>
       <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v13M6 12l6 6 6-6" /></svg>
       <span>{busy === "pull" ? "Pulling…" : "Pull"}</span>
-      {state.behind > 0 && <small className="sync-count" aria-label={`${state.behind} commits to pull`}>↓{state.behind}</small>}
+      {state.behind > 0 && <small className="sync-count" aria-label={`${state.behind} commits to pull`}>{state.behind}</small>}
     </button>
     <button type="button" className={`sync-button${published && state.ahead === 0 ? "" : " primary"}`} aria-label={published ? "Push to remote" : "Publish branch"} title={published ? `Push to ${state.upstream}` : "Publish this branch to the remote"} disabled={busy !== null || detached || (published && state.ahead === 0)} onClick={() => void run("push")}>
       <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20V7M6 12l6-6 6 6" /></svg>
-      <span>{busy === "push" ? (published ? "Pushing…" : "Publishing…") : published ? "Push" : "Publish branch"}</span>
-      {state.ahead > 0 && <small className="sync-count" aria-label={`${state.ahead} commits to push`}>↑{state.ahead}</small>}
+      <span>{busy === "push" ? (published ? "Pushing…" : "Publishing…") : published ? "Push" : "Publish"}</span>
+      {state.ahead > 0 && <small className="sync-count" aria-label={`${state.ahead} commits to push`}>{state.ahead}</small>}
     </button>
   </div>;
 }
