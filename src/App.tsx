@@ -28,6 +28,7 @@ import { ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle } from "rea
 import { clampFontSize, SettingsDialog, type AppSettings, type SectionId } from "./features/settings/SettingsDialog";
 import { WorkspaceViewLayout } from "./features/workspace/WorkspaceViewLayout";
 import { FolderContextMenu, type FolderContextMenuAction, type FolderContextMenuTarget } from "./features/explorer/FolderContextMenu";
+import { useTerminalGroupDrag } from "./features/terminal/useTerminalGroupDrag";
 import { appendTerminalToLayout, closeTerminalGroup as closeTerminalGroupState, createInitialTerminalGroups, createTerminalGroup, moveTerminalBetweenGroups, openFolderInNewTerminal, removeTerminalFromGroups, renameTerminalGroup as renameTerminalGroupState, selectTerminalGroup as selectTerminalGroupState, type TerminalGroup } from "./features/terminal/terminalWorkspaceActions";
 import { DEFAULT_LANGUAGES, normalizeEnabledLanguages } from "./features/editor/editorLanguages";
 import "./styles/app.css";
@@ -1610,6 +1611,7 @@ function WorkspacePanel({ toolSwitch, mode, terminalLayoutMode, onChangeTerminal
   const [contextTarget, setContextTarget] = useState<FolderContextMenuTarget | null>(null);
   const [terminalGroupsCollapsed, setTerminalGroupsCollapsed] = useState(false);
   const [terminalMenu, setTerminalMenu] = useState<PointerMenuTarget | null>(null);
+  const terminalGroupDrag = useTerminalGroupDrag(onMoveTerminal);
   const closeTerminalMenu = useCallback(() => setTerminalMenu(null), []);
   const [editingTerminalGroupId, setEditingTerminalGroupId] = useState<string | null>(null);
   const [terminalGroupNameDraft, setTerminalGroupNameDraft] = useState("");
@@ -1932,7 +1934,7 @@ function WorkspacePanel({ toolSwitch, mode, terminalLayoutMode, onChangeTerminal
                   { label: "Rename group", onSelect: () => beginRenameTerminalGroup(group) },
                 ];
                 if (terminalGroups.length > 1) groupMenuItems.push({ label: "Close group", onSelect: () => onCloseTerminalGroup(group.id) });
-                return <div className={"workspace-terminal-group" + (selected ? " selected" : "")} key={group.id}>
+                return <div className={"workspace-terminal-group" + (selected ? " selected" : "") + (terminalGroupDrag.dropTargetGroupId === group.id ? " drop-target" : "")} key={group.id} data-terminal-group-id={group.id}>
                   <div className="workspace-terminal-group-header">
                     {editingTerminalGroupId === group.id ? <form className="workspace-terminal-group-editor" aria-label={`Rename terminal group ${group.name}`} onSubmit={(event) => { event.preventDefault(); saveTerminalGroupName(group); }} onClick={(event) => event.stopPropagation()}>
                       <input ref={terminalGroupNameInputRef} aria-label={`New name for terminal group ${group.name}`} autoComplete="off" maxLength={60} value={terminalGroupNameDraft} onChange={(event) => setTerminalGroupNameDraft(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancelTerminalGroupRename(group.id); } }} />
@@ -1957,7 +1959,7 @@ function WorkspacePanel({ toolSwitch, mode, terminalLayoutMode, onChangeTerminal
                       </div>
                     </>}
                   </div>
-                  {groupTerminals.map((terminal) => <button className={"workspace-terminal-select" + (terminal.id === activeTerminalId ? " selected" : "")} type="button" key={terminal.id} aria-label={"Select terminal " + terminal.name} aria-pressed={terminal.id === activeTerminalId} title={terminal.name} onClick={() => onSelectTerminal(group.id, terminal.id)} onContextMenu={(event) => {
+                  {groupTerminals.map((terminal) => <button className={"workspace-terminal-select" + (terminal.id === activeTerminalId ? " selected" : "") + (terminalGroupDrag.dragTerminalId === terminal.id ? " dragging" : "")} type="button" key={terminal.id} aria-label={"Select terminal " + terminal.name} aria-pressed={terminal.id === activeTerminalId} title={terminal.name} {...terminalGroupDrag.rowProps(terminal.id, group.id)} onClick={() => { if (terminalGroupDrag.consumeSuppressedClick()) return; onSelectTerminal(group.id, terminal.id); }} onContextMenu={(event) => {
                     event.preventDefault();
                     setTerminalMenu({ x: event.clientX, y: event.clientY, label: `${terminal.name} actions`, items: terminalMenuItems(terminalGroups.filter((other) => other.id !== group.id), { onRename: () => onRenameTerminal(group.id, terminal), onMove: (groupId) => onMoveTerminal(terminal.id, groupId), onClose: () => onCloseTerminal(terminal.id) }) });
                   }}>
