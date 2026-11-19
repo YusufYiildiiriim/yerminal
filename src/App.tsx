@@ -23,10 +23,11 @@ import { PointerMenu, type PointerMenuItem, type PointerMenuTarget } from "./fea
 import { FloatingTerminalDockGuides, FloatingTerminalModeToggle } from "./features/terminal/FloatingTerminalLayoutControls";
 import { useFloatingTerminalLayout, type TerminalDockEdge, type TerminalLayoutMode } from "./features/terminal/floatingTerminalLayout";
 import { ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { clampFontSize, SettingsDialog, type AppSettings } from "./features/settings/SettingsDialog";
+import { clampFontSize, SettingsDialog, type AppSettings, type SectionId } from "./features/settings/SettingsDialog";
 import { WorkspaceViewLayout } from "./features/workspace/WorkspaceViewLayout";
 import { FolderContextMenu, type FolderContextMenuAction, type FolderContextMenuTarget } from "./features/explorer/FolderContextMenu";
 import { appendTerminalToLayout, closeTerminalGroup as closeTerminalGroupState, createInitialTerminalGroups, createTerminalGroup, moveTerminalBetweenGroups, openFolderInNewTerminal, removeTerminalFromGroups, renameTerminalGroup as renameTerminalGroupState, selectTerminalGroup as selectTerminalGroupState, type TerminalGroup } from "./features/terminal/terminalWorkspaceActions";
+import { DEFAULT_LANGUAGES, normalizeEnabledLanguages } from "./features/editor/editorLanguages";
 import "./styles/app.css";
 import "./styles/themes.css";
 import "./styles/workbench-ux.css";
@@ -279,7 +280,7 @@ const TOOL_GROUPS: { id: ToolGroupId; label: string; toolIds: ToolId[] }[] = [
 ];
 
 const SETTINGS_KEY = "yerminal.app-settings.v1";
-const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13, quickOpenScope: "active", collapseOtherFolders: false, autoSave: false };
+const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13, quickOpenScope: "active", collapseOtherFolders: false, autoSave: false, enabledLanguages: DEFAULT_LANGUAGES, languageSetupComplete: false };
 function readAppSettings(): AppSettings {
   try {
     const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}");
@@ -292,6 +293,8 @@ function readAppSettings(): AppSettings {
       quickOpenScope: raw.quickOpenScope === "all" ? "all" : "active",
       collapseOtherFolders: raw.collapseOtherFolders === true,
       autoSave: raw.autoSave === true,
+      enabledLanguages: normalizeEnabledLanguages(raw.enabledLanguages),
+      languageSetupComplete: raw.languageSetupComplete === true,
     };
   } catch { return DEFAULT_SETTINGS; }
 }
@@ -354,6 +357,7 @@ function App() {
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const [workspaceFolderRefresh, setWorkspaceFolderRefresh] = useState<{ root: string; path: string; nonce: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialSection, setSettingsInitialSection] = useState<SectionId>("appearance");
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [terminalUsageOpen, setTerminalUsageOpen] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
@@ -1420,7 +1424,7 @@ function App() {
       const key = event.key.toLowerCase();
       const target = event.target;
       const isTerminalInput = target instanceof HTMLElement && target.matches(".xterm-helper-textarea");
-      const isEditorInput = target instanceof HTMLElement && target.matches(".code-editor-input");
+      const isEditorInput = target instanceof HTMLElement && Boolean(target.closest(".monaco-code-editor"));
       const isTextEntry = target instanceof HTMLInputElement
         || target instanceof HTMLTextAreaElement
         || target instanceof HTMLSelectElement
@@ -1521,6 +1525,9 @@ function App() {
         <PanelResizeHandle className="resize-handle" aria-label="Resize developer tools" />
         <Panel minSize={35} className="terminal-panel">
           <WorkspaceViewLayout activeView={activeMainView} code={<CodeWorkspace
+            settings={settings}
+            onChooseLanguages={() => { setSettingsInitialSection("languages"); setSettingsOpen(true); }}
+            onConfirmLanguages={() => setSettings((current) => ({ ...current, languageSetupComplete: true }))}
             key={activeTerminalWorkspace?.id ?? ""}
             workspaceId={activeTerminalWorkspace?.id ?? ""}
             tabs={activeEditorWorkspace.tabs}
@@ -1562,7 +1569,7 @@ function App() {
           void openEditorFile({ id: `workspace:${file.root}:${file.path}`, root: file.root, path: file.path, name: file.name, size: file.size ?? undefined }, file.workspaceId);
         }}
       />}
-      {settingsOpen && <SettingsDialog settings={settings} shortcuts={HELP_SHORTCUTS} onSettingsChange={setSettings} onClose={closeSettings} />}
+      {settingsOpen && <SettingsDialog initialSection={settingsInitialSection} settings={settings} shortcuts={HELP_SHORTCUTS} onSettingsChange={setSettings} onClose={closeSettings} />}
       {toast && <div className={`app-toast app-toast--${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"} aria-live={toast.kind === "error" ? "assertive" : "polite"} aria-atomic="true"><span>{toast.message}</span><button aria-label="Dismiss notification" onClick={dismissToast} type="button">×</button></div>}
     </main>
   );

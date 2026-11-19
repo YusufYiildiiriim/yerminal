@@ -114,8 +114,6 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .code-editor-content::-webkit-scrollbar-thumb { border: 2px solid #15161a; border-radius: 9px; background: #45434f; }
 .code-editor-content::-webkit-scrollbar-thumb:hover { background: #625c72; }
 .code-editor-highlighted, .code-editor-plain { min-width: max-content; min-height: 100%; margin: 0; padding: 16px 20px; font: 12px/1.65 "Cascadia Code", Consolas, monospace; tab-size: 4; white-space: pre; }
-.code-editor-highlighted .shiki { min-height: 100%; margin: 0; padding: 0; background: transparent !important; font: inherit; }
-.code-editor-highlighted .shiki code { font: inherit; }
 .code-editor-editable-surface { position: relative; width: max-content; min-width: 100%; min-height: 100%; }
 .code-editor-editable-highlight { min-height: 100%; pointer-events: none; user-select: none; }
 .code-editor-editable-highlight .code-editor-highlighted, .code-editor-editable-highlight .code-editor-plain { width: max-content; min-width: 100%; min-height: 100%; margin: 0; padding: 16px 20px; }

@@ -1,7 +1,6 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../src/features/editor/highlighter", () => ({ highlightCode: vi.fn(async () => null), highlightCodeSync: vi.fn(() => null) }));
 
 import { CodeWorkspace, editorDisplayPath, type EditorFileTab } from "../../src/features/editor/CodeWorkspace";
 

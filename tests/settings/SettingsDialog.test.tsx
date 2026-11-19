@@ -56,7 +56,7 @@ describe("SettingsDialog layout", () => {
     const user = userEvent.setup();
     render(<SettingsDialog settings={settings} shortcuts={[{ keys: "Ctrl+P", label: "Quick Open" }]} onSettingsChange={vi.fn()} onClose={vi.fn()} />);
     const nav = screen.getByRole("navigation", { name: "Settings sections" });
-    expect(within(nav).getAllByRole("button").map((button) => button.textContent)).toEqual(["Appearance", "Editor", "Explorer", "Terminal", "Keyboard shortcuts"]);
+    expect(within(nav).getAllByRole("button").map((button) => button.textContent)).toEqual(["Appearance", "Editor", "Languages", "Explorer", "Terminal", "Keyboard shortcuts"]);
     expect(within(nav).getByRole("button", { name: "Appearance" })).toHaveAttribute("aria-current", "true");
 
     await user.click(within(nav).getByRole("button", { name: "Terminal" }));
@@ -83,4 +83,16 @@ describe("SettingsDialog layout", () => {
     expect(screen.getByRole("spinbutton", { name: "Editor font size" })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Auto Save" })).toBeInTheDocument();
   });
+});
+
+it("offers language toggles with defaults, plain-text fallback and persistent changes", () => {
+  const onSettingsChange = vi.fn();
+  render(<SettingsDialog settings={settings} shortcuts={[]} onSettingsChange={onSettingsChange} onClose={vi.fn()} />);
+  expect(screen.getByRole("button", { name: "Languages" })).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "Enable C#" })).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "Enable Python" })).not.toBeChecked();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Enable Python" }));
+  expect(onSettingsChange).toHaveBeenLastCalledWith(expect.objectContaining({ enabledLanguages: expect.arrayContaining(["python", "csharp"]) }));
+  expect(screen.getByText(/Disabled languages open as plain text/)).toBeInTheDocument();
+  cleanup();
 });

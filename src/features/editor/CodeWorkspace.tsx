@@ -1,6 +1,8 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { Fragment, useEffect, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { highlightCode, highlightCodeSync } from "./highlighter";
+import { MonacoCodeEditor } from "./MonacoCodeEditor";
+import { DEFAULT_LANGUAGES, detectEditorLanguage, type EditorLanguageId } from "./editorLanguages";
+import type { AppSettings } from "../settings/SettingsDialog";
 import { CommitSnapshotBanner } from "./CommitSnapshotBanner";
 import { DiffView } from "../git/DiffView";
 import { useFloatingEditorLayout, type EditorLayoutMode, type EditorResizeDirection } from "./floatingEditorLayout";
@@ -33,6 +35,9 @@ export type EditorGroupState = {
 
 type CodeWorkspaceProps = {
   workspaceId: string;
+  settings?: AppSettings;
+  onChooseLanguages?: () => void;
+  onConfirmLanguages?: () => void;
   tabs: EditorFileTab[];
   groups: EditorGroupState[];
   activeGroupId: string;
@@ -47,6 +52,10 @@ type CodeWorkspaceProps = {
 };
 
 type EditorGroupPaneProps = {
+  enabledLanguages: readonly EditorLanguageId[];
+  fontFamily: string;
+  fontSize: number;
+  theme: AppSettings["theme"];
   layoutMode: EditorLayoutMode;
   groupStyle: CSSProperties;
   dragging: boolean;
@@ -73,74 +82,17 @@ type EditorGroupPaneProps = {
   onCloseGroup: (groupId: string) => void;
 };
 
-const HIGHLIGHT_DEBOUNCE_MS = 150;
-const SYNC_HIGHLIGHT_MAX_CHARS = 150_000;
-
 function normalizeNewlines(content: string | null): string {
   return (content ?? "").replace(/\r\n/g, "\n");
 }
 
-const languageByExtension: Record<string, { id: string; label: string }> = {
-  bash: { id: "bash", label: "Bash" }, c: { id: "c", label: "C" }, cc: { id: "cpp", label: "C++" }, cpp: { id: "cpp", label: "C++" },
-  cs: { id: "csharp", label: "C#" }, css: { id: "css", label: "CSS" }, cts: { id: "typescript", label: "TypeScript" }, cxx: { id: "cpp", label: "C++" },
-  go: { id: "go", label: "Go" }, h: { id: "c", label: "C" }, hpp: { id: "cpp", label: "C++" }, htm: { id: "html", label: "HTML" }, html: { id: "html", label: "HTML" },
-  java: { id: "java", label: "Java" }, js: { id: "javascript", label: "JavaScript" }, jsx: { id: "jsx", label: "JavaScript React" }, json: { id: "json", label: "JSON" },
-  jsonc: { id: "jsonc", label: "JSON with Comments" }, kt: { id: "kotlin", label: "Kotlin" }, lua: { id: "lua", label: "Lua" }, md: { id: "markdown", label: "Markdown" },
-  mjs: { id: "javascript", label: "JavaScript" }, mts: { id: "typescript", label: "TypeScript" }, php: { id: "php", label: "PHP" }, ps1: { id: "powershell", label: "PowerShell" },
-  psm1: { id: "powershell", label: "PowerShell" }, py: { id: "python", label: "Python" }, rb: { id: "ruby", label: "Ruby" }, rs: { id: "rust", label: "Rust" },
-  scss: { id: "scss", label: "SCSS" }, sh: { id: "bash", label: "Shell" }, sql: { id: "sql", label: "SQL" }, swift: { id: "swift", label: "Swift" }, toml: { id: "toml", label: "TOML" },
-  ts: { id: "typescript", label: "TypeScript" }, tsx: { id: "tsx", label: "TypeScript React" }, txt: { id: "plaintext", label: "Plain Text" }, xml: { id: "xml", label: "XML" },
-  yaml: { id: "yaml", label: "YAML" }, yml: { id: "yaml", label: "YAML" },
-};
-
-function detectLanguage(path: string): { id: string | null; label: string } {
-  const fileName = path.split(/[\\/]/).filter(Boolean).pop()?.toLowerCase() ?? "";
-  if (fileName === "dockerfile" || fileName.startsWith("dockerfile.")) return { id: "dockerfile", label: "Dockerfile" };
-  if (fileName === "makefile" || fileName === "gnumakefile") return { id: "makefile", label: "Makefile" };
-  if (fileName === ".gitignore" || fileName === ".dockerignore") return { id: null, label: "Ignore" };
-  if (fileName === ".env" || fileName.startsWith(".env.")) return { id: "dotenv", label: "Environment" };
-  const extension = fileName.includes(".") ? fileName.split(".").pop() ?? "" : "";
-  return languageByExtension[extension] ?? { id: null, label: "Plain Text" };
-}
-
-function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDrag, onMoveDrag, onEndDrag, onCancelDrag, onStartResize, onMoveResize, onEndResize, onCancelResize, onNudgeResize, group, groups, tabs, isActive, onSelect, onActivateGroup, onClose, onChange, onSave, onMoveTab, onCloseGroup }: EditorGroupPaneProps) {
+function EditorGroupPane({ enabledLanguages, fontFamily, fontSize, theme, layoutMode, groupStyle, dragging, resizing, onStartDrag, onMoveDrag, onEndDrag, onCancelDrag, onStartResize, onMoveResize, onEndResize, onCancelResize, onNudgeResize, group, groups, tabs, isActive, onSelect, onActivateGroup, onClose, onChange, onSave, onMoveTab, onCloseGroup }: EditorGroupPaneProps) {
   const groupTabs = group.tabIds.map((id) => tabs.find((tab) => tab.id === id)).filter((tab): tab is EditorFileTab => Boolean(tab));
   const activeTab = groupTabs.find((tab) => tab.id === group.activeTabId) ?? null;
-  const language = useMemo(() => activeTab ? detectLanguage(activeTab.path) : null, [activeTab?.path]);
-  // The last highlight is kept (tagged with its tab, language and source text) until a newer one is ready,
-  // so edits never flash the editor back to plain text between keystrokes.
-  const [highlight, setHighlight] = useState<{ key: string; source: string; html: string } | null>(null);
-  const [highlighting, setHighlighting] = useState(false);
-  const highlightKey = activeTab && language?.id ? activeTab.id + "\u0000" + language.id : null;
-  const currentHighlight = highlight && highlight.key === highlightKey ? highlight : null;
-  const highlightedHtml = currentHighlight?.html ?? null;
-  // The editable overlay is the only visible text (the textarea is transparent), so it must match exactly.
-  // While the async pass is pending, recolor synchronously (engine already loaded) so typing never drops to plain text.
-  const exactHighlightHtml = currentHighlight && currentHighlight.source === activeTab?.content ? currentHighlight.html : null;
-  const syncHighlightHtml = useMemo(() => {
-    if (exactHighlightHtml || !activeTab || activeTab.content === null || activeTab.view === "diff" || !language?.id || language.id === "plaintext") return null;
-    if (activeTab.content.length > SYNC_HIGHLIGHT_MAX_CHARS) return null;
-    return highlightCodeSync(activeTab.content, language.id);
-  }, [exactHighlightHtml, activeTab?.content, activeTab?.view, language?.id]);
-  const editableHighlightedHtml = exactHighlightHtml ?? syncHighlightHtml;
-  // The tab/language last scheduled for highlighting, kept even when highlighting fails.
-  const lastHighlightKeyRef = useRef<string | null>(null);
-  const editorContentRef = useRef<HTMLDivElement>(null);
-  const [editorViewport, setEditorViewport] = useState({ top: 0, size: 1 });
+  const detected = activeTab ? detectEditorLanguage(activeTab.path) : null;
+  const language = detected && (detected.id === "plaintext" || enabledLanguages.includes(detected.id)) ? detected : { id: "plaintext", label: "Plain Text" };
   const isReadOnly = Boolean(activeTab?.sourceCommitId) || activeTab?.view === "diff";
   const isDirty = Boolean(activeTab && activeTab.content !== null && normalizeNewlines(activeTab.content) !== normalizeNewlines(activeTab.savedContent));
-  useEffect(() => {
-    const element = editorContentRef.current;
-    if (!element) return;
-    const updateViewport = () => setEditorViewport({
-      top: element.scrollTop / Math.max(1, element.scrollHeight),
-      size: Math.min(1, element.clientHeight / Math.max(1, element.scrollHeight)),
-    });
-    updateViewport();
-    const observer = new ResizeObserver(updateViewport);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [activeTab?.id, activeTab?.content, activeTab?.status]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     const resizeHandle = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>(".editor-group-resize-handle") : null;
@@ -157,32 +109,6 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
       onSave(activeTab.id);
     }
   };
-
-  useEffect(() => {
-    if (!activeTab || !highlightKey || activeTab.status !== "ready" || activeTab.content === null || activeTab.view === "diff" || !language?.id || language.id === "plaintext") {
-      setHighlighting(false);
-      return;
-    }
-    let current = true;
-    const source = activeTab.content;
-    const languageId = language.id;
-    const key = highlightKey;
-    setHighlighting(true);
-    // Only the first highlight of a freshly opened tab is immediate. Re-highlighting while editing is
-    // debounced, also after a failed highlight, so failures never retry on every keystroke.
-    const delay = lastHighlightKeyRef.current === key ? HIGHLIGHT_DEBOUNCE_MS : 0;
-    lastHighlightKeyRef.current = key;
-    const timer = window.setTimeout(() => {
-      void highlightCode(source, languageId)
-        .then((html) => { if (current) setHighlight({ key, source, html }); })
-        .catch(() => { if (current) setHighlight(null); })
-        .finally(() => { if (current) setHighlighting(false); });
-    }, delay);
-    return () => {
-      current = false;
-      window.clearTimeout(timer);
-    };
-  }, [activeTab?.content, activeTab?.id, activeTab?.status, activeTab?.view, highlightKey, language?.id]);
 
   return <section
     className={"editor-group-pane" + (isActive ? " active" : "") + (layoutMode === "free" ? " free" : "")}
@@ -255,29 +181,9 @@ function EditorGroupPane({ layoutMode, groupStyle, dragging, resizing, onStartDr
         </div>
       </header>
       <div className="code-editor-layout">
-      <div className={"code-editor-content" + (activeTab.view === "diff" ? " is-diff" : "")} key={activeTab.id} ref={editorContentRef} onScroll={(event) => {
-        const element = event.currentTarget;
-        setEditorViewport({ top: element.scrollTop / Math.max(1, element.scrollHeight), size: Math.min(1, element.clientHeight / Math.max(1, element.scrollHeight)) });
-      }}>
-        {activeTab.view === "diff" ? activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this diff</strong><span>{activeTab.error}</span></div> : <DiffView diff={activeTab.content ?? ""} path={activeTab.path} root={activeTab.root} staged={activeTab.diffStaged === true} sideLabel={activeTab.sourceCommitId ? activeTab.snapshot?.shortId ?? activeTab.sourceCommitId.slice(0, 8) : undefined} loading={activeTab.status === "loading"} emptyMessage="No diff available for this selection." /> : activeTab.status === "loading" ? <div className="code-editor-message" role="status"><span className="editor-loading-indicator" /><span>Loading file content…</span></div> : activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this file</strong><span>{activeTab.error}</span></div> : isReadOnly ? highlightedHtml ? <div className="code-editor-highlighted" dangerouslySetInnerHTML={{ __html: highlightedHtml }} /> : <pre className={"code-editor-plain" + (highlighting ? " is-highlighting" : "")} tabIndex={0} aria-label={"Contents of " + activeTab.name}><code>{activeTab.content}</code></pre> : <div className="code-editor-editable-surface">
-          <div className="code-editor-editable-highlight" aria-hidden="true">{editableHighlightedHtml ? <div className="code-editor-highlighted" dangerouslySetInnerHTML={{ __html: editableHighlightedHtml }} /> : <pre className="code-editor-plain"><code>{activeTab.content}</code></pre>}</div>
-          <textarea className="code-editor-input" aria-label={"Edit " + activeTab.name} autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false} value={activeTab.content ?? ""} onChange={(event) => onChange(activeTab.id, event.currentTarget.value)} onKeyDown={(event) => {
-            if (event.key !== "Tab") return;
-            event.preventDefault();
-            const input = event.currentTarget;
-            const start = input.selectionStart;
-            const end = input.selectionEnd;
-            const nextContent = input.value.slice(0, start) + "    " + input.value.slice(end);
-            onChange(activeTab.id, nextContent);
-            requestAnimationFrame(() => input.setSelectionRange(start + 4, start + 4));
-          }} />
-        </div>}
+      <div className={"code-editor-content" + (activeTab.view === "diff" ? " is-diff" : " is-monaco")}>
+        {activeTab.view === "diff" ? activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this diff</strong><span>{activeTab.error}</span></div> : <DiffView diff={activeTab.content ?? ""} path={activeTab.path} root={activeTab.root} staged={activeTab.diffStaged === true} sideLabel={activeTab.sourceCommitId ? activeTab.snapshot?.shortId ?? activeTab.sourceCommitId.slice(0, 8) : undefined} loading={activeTab.status === "loading"} emptyMessage="No diff available for this selection." /> : activeTab.status === "loading" ? <div className="code-editor-message" role="status"><span className="editor-loading-indicator" /><span>Loading file content…</span></div> : activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this file</strong><span>{activeTab.error}</span></div> : <MonacoCodeEditor key={activeTab.id} id={activeTab.id} path={activeTab.path} name={activeTab.name} value={activeTab.content ?? ""} readOnly={isReadOnly} enabledLanguages={enabledLanguages} fontFamily={fontFamily} fontSize={fontSize} theme={theme} onChange={(content) => onChange(activeTab.id, content)} onSave={() => onSave(activeTab.id)} />}
       </div>
-      {activeTab.status === "ready" && activeTab.content !== null && activeTab.view !== "diff" && <EditorMinimap content={activeTab.content} highlightedHtml={highlightedHtml} viewport={editorViewport} onNavigate={(position) => {
-        const element = editorContentRef.current;
-        if (!element) return;
-        element.scrollTop = position * element.scrollHeight;
-      }} />}
       </div>
       <footer className="code-editor-statusbar" aria-live="polite">
         <span className={activeTab.saveError ? "code-editor-save-error" : ""}>{activeTab.saveError ?? (activeTab.isSaving ? "Saving changes…" : isDirty ? "Unsaved changes" : isReadOnly ? activeTab.view === "diff" ? "Read-only diff" : "Read-only commit snapshot" : activeTab.status === "ready" ? "All changes saved" : activeTab.status === "loading" ? "Loading" : "Unavailable")}</span>
@@ -302,69 +208,7 @@ export function editorDisplayPath(root: string, path: string): { label: string; 
   return { label: folder + " › " + relative, full };
 }
 
-function EditorMinimap({ content, highlightedHtml, viewport, onNavigate }: { content: string; highlightedHtml: string | null; viewport: { top: number; size: number }; onNavigate: (position: number) => void }) {
-  const renderHighlightedPreview = Boolean(highlightedHtml && content.length <= 120_000);
-  const minimapRef = useRef<HTMLElement>(null);
-  const draggingPointerRef = useRef<number | null>(null);
-  const [previewMetrics, setPreviewMetrics] = useState({ fontSize: 2, lineHeight: 2.5, height: 0 });
-  let lineCount = 1;
-  for (let index = 0; index < content.length; index += 1) {
-    if (content.charCodeAt(index) === 10) lineCount += 1;
-  }
-
-  useEffect(() => {
-    const minimap = minimapRef.current;
-    if (!minimap) return;
-    const updatePreviewMetrics = () => {
-      const bounds = minimap.getBoundingClientRect();
-      if (!bounds.width || !bounds.height) return;
-      const height = Math.min(bounds.height, lineCount * 2.5);
-      const lineHeight = height / lineCount;
-      setPreviewMetrics({ fontSize: Math.min(2, lineHeight * 0.78), lineHeight, height });
-    };
-    updatePreviewMetrics();
-    const observer = new ResizeObserver(updatePreviewMetrics);
-    observer.observe(minimap);
-    return () => observer.disconnect();
-  }, [content, lineCount]);
-
-  const navigateAt = (clientY: number) => {
-    const bounds = minimapRef.current?.getBoundingClientRect();
-    if (!bounds || !previewMetrics.height) return;
-    const documentPosition = Math.min(1, Math.max(0, (clientY - bounds.top) / previewMetrics.height));
-    const top = documentPosition - viewport.size / 2;
-    onNavigate(Math.max(0, Math.min(1 - viewport.size, top)));
-  };
-
-  return <aside
-    ref={minimapRef}
-    className="code-editor-minimap"
-    aria-label="Editor minimap"
-    onPointerDown={(event) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      draggingPointerRef.current = event.pointerId;
-      event.currentTarget.setPointerCapture(event.pointerId);
-      navigateAt(event.clientY);
-    }}
-    onPointerMove={(event) => { if (draggingPointerRef.current === event.pointerId) navigateAt(event.clientY); }}
-    onPointerUp={(event) => {
-      if (draggingPointerRef.current !== event.pointerId) return;
-      draggingPointerRef.current = null;
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    }}
-    onPointerCancel={(event) => { if (draggingPointerRef.current === event.pointerId) draggingPointerRef.current = null; }}
-  >
-    <div className="code-editor-minimap-code" style={{ fontSize: `${previewMetrics.fontSize}px`, lineHeight: `${previewMetrics.lineHeight}px` }} aria-hidden="true">
-      {renderHighlightedPreview && highlightedHtml
-        ? <div className="code-editor-minimap-highlighted" dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
-        : <pre className="code-editor-minimap-plain"><code>{content}</code></pre>}
-    </div>
-    <span className="code-editor-minimap-window" style={{ top: `${viewport.top * previewMetrics.height}px`, height: `${Math.max(1, viewport.size * previewMetrics.height)}px` }} />
-  </aside>;
-}
-
-export function CodeWorkspace({ workspaceId, tabs, groups, activeGroupId, onSelect, onActivateGroup, onClose, onChange, onSave, onMoveTab, onCloseGroup, onModeState }: CodeWorkspaceProps) {
+export function CodeWorkspace({ workspaceId, settings, onChooseLanguages, onConfirmLanguages, tabs, groups, activeGroupId, onSelect, onActivateGroup, onClose, onChange, onSave, onMoveTab, onCloseGroup, onModeState }: CodeWorkspaceProps) {
   const layout = useFloatingEditorLayout(workspaceId, groups.map((group) => group.id));
   const [surfaceWidth, setSurfaceWidth] = useState(0);
   useEffect(() => onModeState(layout.mode, layout.setMode), [workspaceId, layout.mode, layout.setMode, onModeState]);
@@ -379,6 +223,10 @@ export function CodeWorkspace({ workspaceId, tabs, groups, activeGroupId, onSele
   const minPanelSize = 100 * minGroupWidth / Math.max(surfaceWidth, groups.length * minGroupWidth, 1);
   const groupViews = groups.map((group, index) => {
     const pane = <EditorGroupPane
+        enabledLanguages={settings?.enabledLanguages ?? DEFAULT_LANGUAGES}
+        fontFamily={settings?.editorFontFamily ?? '"Cascadia Code", Consolas, monospace'}
+        fontSize={settings?.editorFontSize ?? 13}
+        theme={settings?.theme ?? "obsidian"}
         layoutMode={layout.mode}
         groupStyle={layout.getWindowStyle(group.id)}
         dragging={layout.draggingGroupId === group.id}
@@ -410,6 +258,7 @@ export function CodeWorkspace({ workspaceId, tabs, groups, activeGroupId, onSele
     </Fragment> : <Fragment key={group.id}>{pane}</Fragment>;
   });
   return <section className="code-workspace" aria-label="Code editor">
+    {settings && !settings.languageSetupComplete && tabs.length > 0 && <div className="editor-language-welcome"><span>Choose the languages you use. You can change them later in Settings.</span><button type="button" onClick={onChooseLanguages}>Choose languages</button><button type="button" onClick={onConfirmLanguages}>Use defaults</button></div>}
     <div
       ref={layout.surfaceRef}
       className={"editor-groups-layout" + (layout.mode === "free" ? " free" : "")}

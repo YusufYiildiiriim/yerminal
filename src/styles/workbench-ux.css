@@ -237,20 +237,6 @@
   width: max-content;
   pointer-events: none;
 }
-.app-shell[data-theme] .code-editor-minimap-code :is(pre, .shiki) {
-  width: max-content;
-  min-width: max-content;
-  min-height: 0;
-  margin: 0;
-  padding: 0;
-  font-family: var(--editor-font-family, "Cascadia Code", Consolas, monospace);
-  font-size: inherit !important;
-  line-height: inherit !important;
-  letter-spacing: normal;
-  tab-size: 4;
-  white-space: pre;
-}
-.app-shell[data-theme] .code-editor-minimap-code .shiki { background: transparent !important; }
 .app-shell[data-theme] .code-editor-minimap-window { cursor: grab; }
 .app-shell[data-theme] .code-editor-minimap:active .code-editor-minimap-window { cursor: grabbing; }
 @media (max-width: 900px) {

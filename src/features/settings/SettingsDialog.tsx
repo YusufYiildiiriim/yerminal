@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./settings.css";
+import { DEFAULT_LANGUAGES, EDITOR_LANGUAGES, type EditorLanguageId } from "../editor/editorLanguages";
 
 export type ThemeId = "obsidian" | "nordic" | "foundry";
-export type AppSettings = { theme: ThemeId; editorFontFamily: string; editorFontSize: number; terminalFontFamily: string; terminalFontSize: number; quickOpenScope: "active" | "all"; collapseOtherFolders: boolean; autoSave: boolean };
+export type AppSettings = { theme: ThemeId; editorFontFamily: string; editorFontSize: number; terminalFontFamily: string; terminalFontSize: number; quickOpenScope: "active" | "all"; collapseOtherFolders: boolean; autoSave: boolean; enabledLanguages?: readonly EditorLanguageId[]; languageSetupComplete?: boolean };
 /** Supported font sizes (px) for the editor and terminal; also used when loading stored settings. */
 export const MIN_FONT_SIZE = 8;
 export const MAX_FONT_SIZE = 32;
@@ -10,13 +11,14 @@ export function clampFontSize(value: number): number {
   return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, value));
 }
 type Shortcut = { keys: string; label: string };
-type SectionId = "appearance" | "editor" | "explorer" | "terminal" | "shortcuts";
-type Props = { settings: AppSettings; shortcuts: readonly Shortcut[]; onSettingsChange: (value: AppSettings) => void; onClose: () => void };
+export type SectionId = "languages" | "appearance" | "editor" | "explorer" | "terminal" | "shortcuts";
+type Props = { initialSection?: SectionId; settings: AppSettings; shortcuts: readonly Shortcut[]; onSettingsChange: (value: AppSettings) => void; onClose: () => void };
 type SettingRow = { id: string; section: SectionId; label: string; description?: string; control: ReactNode };
 
 const sections: { id: SectionId; label: string }[] = [
   { id: "appearance", label: "Appearance" },
   { id: "editor", label: "Editor" },
+  { id: "languages", label: "Languages" },
   { id: "explorer", label: "Explorer" },
   { id: "terminal", label: "Terminal" },
   { id: "shortcuts", label: "Keyboard shortcuts" },
@@ -27,8 +29,8 @@ const themes: { id: ThemeId; label: string; short: string }[] = [
   { id: "foundry", label: "Foundry", short: "Foundry" },
 ];
 
-export function SettingsDialog({ settings, shortcuts, onSettingsChange, onClose }: Props) {
-  const [section, setSection] = useState<SectionId>("appearance");
+export function SettingsDialog({ settings, shortcuts, onSettingsChange, onClose, initialSection = "appearance" }: Props) {
+  const [section, setSection] = useState<SectionId>(initialSection);
   const [query, setQuery] = useState("");
   const closeRef = useRef<HTMLButtonElement>(null);
   const mainRef = useRef<HTMLDivElement>(null);
@@ -40,7 +42,9 @@ export function SettingsDialog({ settings, shortcuts, onSettingsChange, onClose 
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [onClose]);
 
+  const enabledLanguages = settings.enabledLanguages ?? DEFAULT_LANGUAGES;
   const rows: SettingRow[] = [
+    ...EDITOR_LANGUAGES.map((language): SettingRow => ({ id: "language-" + language.id, section: "languages", label: language.label, control: <input className="settings-toggle" type="checkbox" aria-label={"Enable " + language.label} checked={enabledLanguages.includes(language.id)} onChange={(event) => onSettingsChange({ ...settings, languageSetupComplete: true, enabledLanguages: event.currentTarget.checked ? [...enabledLanguages, language.id] : enabledLanguages.filter((id) => id !== language.id) })} /> })),
     { id: "theme", section: "appearance", label: "Theme", description: "Colors for the whole window.", control: <div className="settings-seg" role="group" aria-label="Theme">{themes.map((theme) => <button key={theme.id} type="button" aria-label={theme.label} aria-pressed={settings.theme === theme.id} onClick={() => onSettingsChange({ ...settings, theme: theme.id })}>{theme.short}</button>)}</div> },
     { id: "editor-font-family", section: "editor", label: "Font family", description: "Used by the code editor.", control: <input className="settings-text" type="text" aria-label="Editor font family" value={settings.editorFontFamily} maxLength={250} onChange={(event) => onSettingsChange({ ...settings, editorFontFamily: event.currentTarget.value })} /> },
     { id: "editor-font-size", section: "editor", label: "Font size", description: "Editor text size in pixels.", control: <span className="settings-number"><input type="number" aria-label="Editor font size" min={MIN_FONT_SIZE} max={MAX_FONT_SIZE} value={settings.editorFontSize} onChange={(event) => { const value = event.currentTarget.valueAsNumber; if (Number.isFinite(value)) onSettingsChange({ ...settings, editorFontSize: clampFontSize(value) }); }} />px</span> },
@@ -63,6 +67,8 @@ export function SettingsDialog({ settings, shortcuts, onSettingsChange, onClose 
     if (main && target) main.scrollTop = Math.max(0, target.offsetTop - 8);
   };
 
+  useEffect(() => { selectSection(initialSection); }, [initialSection]);
+
   return <div className="settings-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-heading">
       <header className="settings-head">
@@ -82,6 +88,7 @@ export function SettingsDialog({ settings, shortcuts, onSettingsChange, onClose 
             if (list.length === 0) return null;
             return <section key={item.id} className="settings-section" aria-labelledby={"settings-section-" + item.id} ref={(element) => { if (element) sectionRefs.current.set(item.id, element); else sectionRefs.current.delete(item.id); }}>
               <h3 id={"settings-section-" + item.id}>{item.label}</h3>
+              {item.id === "languages" && <p>Languages load locally when a file is opened. Disabled languages open as plain text. Completion uses words from the current file.</p>}
               {list.map((row) => <div className="settings-row" key={row.id}>
                 <div className="settings-row-text"><b>{row.label}</b>{row.description && <span>{row.description}</span>}</div>
                 <div className="settings-row-control">{row.control}</div>
