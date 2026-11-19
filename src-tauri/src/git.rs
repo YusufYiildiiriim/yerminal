@@ -1242,6 +1242,14 @@ fn worktree_side(repo: &Repository, file_path: &str) -> Result<Side, String> {
         .workdir()
         .ok_or_else(|| "Git worktree is unavailable".to_owned())?;
     let full = workdir.join(relative);
+    // A symlink inside the worktree may point at any file on disk; never read through it.
+    match fs::symlink_metadata(&full) {
+        Ok(link) if link.file_type().is_symlink() => {
+            return Err("Symbolic links cannot be previewed in Git Changes".to_owned());
+        }
+        Ok(_) => {}
+        Err(_) => return Ok(Side::Absent),
+    }
     let metadata = match fs::metadata(&full) {
         Ok(metadata) => metadata,
         Err(_) => return Ok(Side::Absent),
@@ -2782,5 +2790,35 @@ mod tests {
 
         assert!(diff_versions(&path, "../escape.txt", false).is_err());
         assert!(commit_file_versions(&path, "zzz", "data.bin").is_err());
+    }
+
+    fn make_file_symlink(target: &std::path::Path, link: &std::path::Path) -> std::io::Result<()> {
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(target, link)
+        }
+        #[cfg(windows)]
+        {
+            std::os::windows::fs::symlink_file(target, link)
+        }
+    }
+
+    #[test]
+    fn unstaged_versions_refuse_symlinks_that_point_outside_the_repository() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "link.txt", "placeholder\n");
+        stage_and_commit(&path, "link.txt", "base");
+        fs::remove_file(dir.path().join("link.txt")).unwrap();
+        let outside = tempfile::tempdir().expect("outside directory");
+        let secret = outside.path().join("secret.txt");
+        fs::write(&secret, "outside secret\n").unwrap();
+        if let Err(error) = make_file_symlink(&secret, &dir.path().join("link.txt")) {
+            eprintln!("symlink test skipped: cannot create symlink here ({error})");
+            return;
+        }
+
+        let error = diff_versions(&path, "link.txt", false).unwrap_err();
+        assert!(error.contains("symbolic link"), "{error}");
+        assert!(!error.contains("outside secret"));
     }
 }
