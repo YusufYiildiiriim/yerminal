@@ -6,3 +6,7 @@
 .editor-language-welcome { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--theme-border); }
 .editor-language-welcome span { flex: 1; }
 .editor-language-welcome button { color: var(--theme-text); background: var(--theme-raised); border: 1px solid var(--theme-border); border-radius: 4px; padding: 4px 8px; cursor: pointer; }
+
+/* Diff editor sits in the flex column of DiffView, not in the code editor container. */
+.diff-monaco-shell { position: relative; flex: 1; min-height: 0; }
+.diff-monaco { position: absolute; inset: 0; }

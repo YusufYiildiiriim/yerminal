@@ -1,4 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { DEFAULT_LANGUAGES, type EditorLanguageId } from "../editor/editorLanguages";
+import type { ThemeId } from "../settings/SettingsDialog";
+import { MonacoDiffView } from "./MonacoDiffView";
+import { planDiffEditor, type DiffVersions } from "./diffEditorModel";
 
 type DiffLineKind = "added" | "removed" | "hunk" | "meta" | "context";
 type DiffRow = { kind: DiffLineKind; oldNumber: number | null; newNumber: number | null; content: string; notes?: string[] };
@@ -106,10 +110,14 @@ function pairDiffRows(rows: DiffRow[]): DisplayRow[] {
   return display;
 }
 
-type DiffViewProps = { diff: string; path: string; root: string; staged: boolean; loading?: boolean; emptyMessage?: string; sideLabel?: string };
+type DiffViewProps = { diff: string; path: string; root: string; staged: boolean; loading?: boolean; emptyMessage?: string; sideLabel?: string; versions?: DiffVersions | null; enabledLanguages?: readonly EditorLanguageId[]; theme?: ThemeId };
 
-export function DiffView({ diff, path, root, staged, loading = false, emptyMessage = "No diff available.", sideLabel }: DiffViewProps) {
+export function DiffView({ diff, path, root, staged, loading = false, emptyMessage = "No diff available.", sideLabel, versions, enabledLanguages = DEFAULT_LANGUAGES, theme = "obsidian" }: DiffViewProps) {
   const rows = useMemo(() => parseDiffRows(diff), [diff]);
+  // The Monaco view falls back to the patch rows for these versions if the editor cannot load.
+  const [failedVersions, setFailedVersions] = useState<DiffVersions | null | undefined>(undefined);
+  const monacoPlan = planDiffEditor(versions);
+  const monacoDiff = monacoPlan.mode === "monaco" && failedVersions !== versions ? monacoPlan : null;
   const headerRows = rows.filter((row) => row.kind === "meta" && /^(diff --git |index |--- |\+\+\+ )/.test(row.content));
   const displayRows = pairDiffRows(rows.filter((row) => !headerRows.includes(row)));
   const fileName = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
@@ -124,7 +132,8 @@ export function DiffView({ diff, path, root, staged, loading = false, emptyMessa
       <span className="diff-view-repo" title={root}>{repoName}</span>
     </div>
     {headerRows.length > 0 && <details className="diff-view-details"><summary>Diff details</summary><pre>{headerRows.map((row) => row.content).join("\n")}</pre></details>}
-    {displayRows.length === 0 ? <div className="diff-view-empty">{emptyMessage}</div> : <>
+    {monacoDiff ? <MonacoDiffView original={monacoDiff.original} modified={monacoDiff.modified} path={path} enabledLanguages={enabledLanguages} theme={theme} onUnavailable={() => setFailedVersions(versions)} />
+    : displayRows.length === 0 ? <div className="diff-view-empty">{emptyMessage}</div> : <>
       <div className="diff-view-columns" aria-hidden="true"><span>Previous</span><span>Current</span></div>
       <div className="diff-view-lines" role="table" aria-label="Side-by-side file changes">
         {displayRows.map((row, index) => row.kind === "code"

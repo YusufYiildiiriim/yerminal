@@ -6,6 +6,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { GitGraphBranches } from "./features/git/GitGraphBranches";
+import type { DiffVersions } from "./features/git/diffEditorModel";
 import { BranchPicker } from "./features/git/BranchPicker";
 import { SyncBar } from "./features/git/SyncBar";
 import { classifyToast, type ToastKind } from "./toastKind";
@@ -508,17 +509,22 @@ function App() {
 
     if (request.view === "diff") {
       try {
-        const diff = request.sourceCommitId
-          ? await invoke<string>("git_commit_file_diff", { path: request.root, commitId: request.sourceCommitId, filePath: request.path })
-          : await invoke<string>("git_diff", { path: request.root, filePath: request.path, staged: request.diffStaged });
+        const patchRequest = request.sourceCommitId
+          ? invoke<string>("git_commit_file_diff", { path: request.root, commitId: request.sourceCommitId, filePath: request.path })
+          : invoke<string>("git_diff", { path: request.root, filePath: request.path, staged: request.diffStaged });
+        // Full texts feed the Monaco diff; if they cannot be read the tab keeps the patch view.
+        const versionsRequest = request.sourceCommitId
+          ? invoke<DiffVersions>("git_commit_file_versions", { path: request.root, commitId: request.sourceCommitId, filePath: request.path })
+          : invoke<DiffVersions>("git_diff_versions", { path: request.root, filePath: request.path, staged: request.diffStaged === true });
+        const [diff, versions] = await Promise.all([patchRequest, versionsRequest.catch((): null => null)]);
         if (!isCurrentOperation()) return;
         if (diff.length > WORKSPACE_FILE_PREVIEW_LIMIT) {
           updateTab((tab) => ({ ...tab, status: "error", error: "This diff exceeds the 1 MiB preview limit." }));
           return;
         }
         updateTab((tab) => request.sourceCommitId
-          ? ({ ...tab, status: "ready", content: diff, savedContent: diff, sourceLabel: request.sourceLabel ?? "Commit changes", sourceCommitId: request.sourceCommitId, snapshot: request.snapshot ?? null, saveError: null })
-          : ({ ...tab, status: "ready", content: diff, savedContent: diff, sourceLabel: request.diffStaged ? "Index snapshot" : "Working tree snapshot", sourceCommitId: null, snapshot: null, saveError: null }));
+          ? ({ ...tab, status: "ready", content: diff, savedContent: diff, diffVersions: versions, sourceLabel: request.sourceLabel ?? "Commit changes", sourceCommitId: request.sourceCommitId, snapshot: request.snapshot ?? null, saveError: null })
+          : ({ ...tab, status: "ready", content: diff, savedContent: diff, diffVersions: versions, sourceLabel: request.diffStaged ? "Index snapshot" : "Working tree snapshot", sourceCommitId: null, snapshot: null, saveError: null }));
       } catch (reason) {
         updateTab((tab) => ({ ...tab, status: "error", error: String(reason) }));
       }

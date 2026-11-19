@@ -3,6 +3,7 @@ import type { editor } from "monaco-editor/editor";
 import type { EditorLanguageId } from "./editorLanguages";
 import { loadMonaco, type MonacoRuntime } from "./monacoRuntime";
 import type { ThemeId } from "../settings/SettingsDialog";
+import { applyYerminalTheme } from "./monacoTheme";
 import "./monaco-editor.css";
 
 export type MonacoCodeEditorProps = {
@@ -57,11 +58,7 @@ export function MonacoCodeEditor(props: MonacoCodeEditorProps) {
   useEffect(() => {
     if (!mounted) return;
     mounted.editor.updateOptions({ fontFamily: props.fontFamily, fontSize: props.fontSize, readOnly: props.readOnly, ariaLabel: (props.readOnly ? "Contents of " : "Edit ") + props.name });
-    const style = host.current ? getComputedStyle(host.current) : null;
-    const color = (name: string, fallback: string) => style?.getPropertyValue(name).trim() || fallback;
-    const theme = "yerminal-" + props.theme;
-    mounted.runtime.monaco.editor.defineTheme(theme, { base: "vs-dark", inherit: true, rules: [], colors: { "editor.background": color("--theme-editor", "#141418"), "editor.foreground": color("--theme-text", "#d4d4d8"), "editorLineNumber.foreground": color("--theme-muted", "#85848e"), "editorCursor.foreground": color("--theme-accent", "#f59e0b") } });
-    mounted.runtime.monaco.editor.setTheme(theme);
+    applyYerminalTheme(mounted.runtime.monaco, host.current, props.theme);
   }, [mounted, props.fontFamily, props.fontSize, props.readOnly, props.name, props.theme]);
 
   useEffect(() => {

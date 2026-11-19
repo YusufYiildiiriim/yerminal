@@ -5,6 +5,7 @@ import { DEFAULT_LANGUAGES, detectEditorLanguage, type EditorLanguageId } from "
 import type { AppSettings } from "../settings/SettingsDialog";
 import { CommitSnapshotBanner } from "./CommitSnapshotBanner";
 import { DiffView } from "../git/DiffView";
+import type { DiffVersions } from "../git/diffEditorModel";
 import { useFloatingEditorLayout, type EditorLayoutMode, type EditorResizeDirection } from "./floatingEditorLayout";
 import "./floating-editor-layout.css";
 
@@ -21,6 +22,7 @@ export type EditorFileTab = {
   sourceCommitId: string | null;
   view?: "text" | "diff";
   diffStaged?: boolean | null;
+  diffVersions?: DiffVersions | null;
   snapshot: { shortId: string; message: string; changeKind: string; author: string; timestamp: number } | null;
   isSaving: boolean;
   saveError: string | null;
@@ -182,7 +184,7 @@ function EditorGroupPane({ enabledLanguages, fontFamily, fontSize, theme, layout
       </header>
       <div className="code-editor-layout">
       <div className={"code-editor-content" + (activeTab.view === "diff" ? " is-diff" : " is-monaco")}>
-        {activeTab.view === "diff" ? activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this diff</strong><span>{activeTab.error}</span></div> : <DiffView diff={activeTab.content ?? ""} path={activeTab.path} root={activeTab.root} staged={activeTab.diffStaged === true} sideLabel={activeTab.sourceCommitId ? activeTab.snapshot?.shortId ?? activeTab.sourceCommitId.slice(0, 8) : undefined} loading={activeTab.status === "loading"} emptyMessage="No diff available for this selection." /> : activeTab.status === "loading" ? <div className="code-editor-message" role="status"><span className="editor-loading-indicator" /><span>Loading file content…</span></div> : activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this file</strong><span>{activeTab.error}</span></div> : <MonacoCodeEditor key={activeTab.id} id={activeTab.id} path={activeTab.path} name={activeTab.name} value={activeTab.content ?? ""} readOnly={isReadOnly} enabledLanguages={enabledLanguages} fontFamily={fontFamily} fontSize={fontSize} theme={theme} onChange={(content) => onChange(activeTab.id, content)} onSave={() => onSave(activeTab.id)} />}
+        {activeTab.view === "diff" ? activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this diff</strong><span>{activeTab.error}</span></div> : <DiffView diff={activeTab.content ?? ""} path={activeTab.path} root={activeTab.root} staged={activeTab.diffStaged === true} sideLabel={activeTab.sourceCommitId ? activeTab.snapshot?.shortId ?? activeTab.sourceCommitId.slice(0, 8) : undefined} loading={activeTab.status === "loading"} emptyMessage="No diff available for this selection." versions={activeTab.diffVersions ?? null} enabledLanguages={enabledLanguages} theme={theme} /> : activeTab.status === "loading" ? <div className="code-editor-message" role="status"><span className="editor-loading-indicator" /><span>Loading file content…</span></div> : activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this file</strong><span>{activeTab.error}</span></div> : <MonacoCodeEditor key={activeTab.id} id={activeTab.id} path={activeTab.path} name={activeTab.name} value={activeTab.content ?? ""} readOnly={isReadOnly} enabledLanguages={enabledLanguages} fontFamily={fontFamily} fontSize={fontSize} theme={theme} onChange={(content) => onChange(activeTab.id, content)} onSave={() => onSave(activeTab.id)} />}
       </div>
       </div>
       <footer className="code-editor-statusbar" aria-live="polite">
