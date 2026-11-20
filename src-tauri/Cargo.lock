@@ -5113,6 +5113,7 @@ dependencies = [
 name = "yerminal"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "git2",
  "notify",
  "portable-pty",

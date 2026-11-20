@@ -1,3 +1,4 @@
+pub mod agent_usage;
 pub mod git;
 pub mod git_remote;
 pub mod terminal;
@@ -6,7 +7,7 @@ pub mod workspace_watch;
 
 use git_remote::RemoteState;
 use git::{BranchInfo, MergeOutcome, CommitFileChange, CommitFileContent, CommitInfo, FileChange, RepositoryInfo};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{Manager, State};
 use terminal::{
     AgentProfileInfo, SessionManager, ShellKind, TerminalInfo, TerminalOutputSnapshot,
@@ -28,6 +29,27 @@ fn terminal_resource_usage(
         .lock()
         .map_err(|_| "Terminal resource monitor is unavailable".to_owned())
         .map(|mut monitor| monitor.collect(roots))
+}
+
+/// Local agent usage summary. `enabled` comes from the app setting and is checked
+/// in the backend too: when it is false no log file is touched.
+#[tauri::command]
+async fn agent_usage_snapshot(
+    app: tauri::AppHandle,
+    cache: State<'_, Arc<Mutex<agent_usage::AgentUsageCache>>>,
+    enabled: bool,
+) -> Result<agent_usage::AgentUsageSnapshot, String> {
+    let cache = cache.inner().clone();
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|_| "Home folder is unavailable".to_owned())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let roots = agent_usage::UsageRoots::from_home(&home);
+        agent_usage::snapshot_with(&cache, enabled, &roots, chrono::Local::now())
+    })
+    .await
+    .map_err(|_| "Agent usage task failed".to_owned())?
 }
 
 #[tauri::command]
@@ -331,6 +353,7 @@ pub fn run() {
         .manage(Mutex::new(SessionManager::default()))
         .manage(Mutex::new(TerminalResourceMonitor::default()))
         .manage(workspace_watch::WorkspaceWatchState::default())
+        .manage(Arc::new(Mutex::new(agent_usage::AgentUsageCache::default())))
         .invoke_handler(tauri::generate_handler![
             create_terminal,
             create_agent_terminal,
@@ -339,6 +362,7 @@ pub fn run() {
             resize_terminal,
             close_terminal,
             terminal_resource_usage,
+            agent_usage_snapshot,
             terminal_output_snapshot,
             git_repository_info,
             git_status,
