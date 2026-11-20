@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
+  formatBreakdown,
   formatPercentLeft,
   formatTokens,
   limitResetLabel,
@@ -56,11 +57,11 @@ export function AgentUsagePanel({ enabled }: { enabled: boolean }) {
   if (snapshot.status === "disabled") return <section className="agent-usage" aria-label="Agent usage"><p className="agent-usage-note">{"Agent usage is off. Turn it on in Settings > Terminal."}</p></section>;
 
   return <section className="agent-usage" aria-label="Agent usage" aria-live="polite">
-    {snapshot.agents.map((agent) => <AgentRow key={agent.id} agent={agent} nowMs={snapshot.generatedAtMs} />)}
+    {snapshot.agents.map((agent) => <AgentRow key={agent.id} agent={agent} />)}
   </section>;
 }
 
-function AgentRow({ agent, nowMs }: { agent: AgentUsage; nowMs: number }) {
+function AgentRow({ agent }: { agent: AgentUsage }) {
   const hasData = agent.supported && agent.available;
   return <div className="agent-usage-row" role="region" aria-label={`${agent.name} usage`}>
     <div className="agent-usage-head">
@@ -69,12 +70,14 @@ function AgentRow({ agent, nowMs }: { agent: AgentUsage; nowMs: number }) {
     </div>
     {!hasData ? <div className="agent-usage-empty">No usage data</div> : <>
       {agent.limitsSupported
-        ? agent.limits ? <LimitBars limits={agent.limits} nowMs={nowMs} /> : <div className="agent-usage-empty">No limit data yet</div>
+        ? agent.limits ? <LimitBars limits={agent.limits} /> : <div className="agent-usage-empty">No limit data yet</div>
         : <div className="agent-usage-note">Limit percentage can&apos;t be read locally for this tool.</div>}
       <div className="agent-usage-totals">
         <span>Today {formatTokens(agent.today.total)}</span>
         <span>Week {formatTokens(agent.week.total)}</span>
       </div>
+      <div className="agent-usage-note">Totals include cache tokens.</div>
+      <div className="agent-usage-breakdown" title="Week, by token kind">{formatBreakdown(agent.week)}</div>
       {agent.models.length > 0 && <div className="agent-usage-models">
         {agent.models.slice(0, 4).map((model) => <span className="agent-usage-model" key={model.model}>
           <span>{model.model}</span>
@@ -86,14 +89,20 @@ function AgentRow({ agent, nowMs }: { agent: AgentUsage; nowMs: number }) {
   </div>;
 }
 
-function LimitBars({ limits, nowMs }: { limits: LimitSnapshot; nowMs: number }) {
+function LimitBars({ limits }: { limits: LimitSnapshot }) {
   const windows = [limits.primary, limits.secondary].filter((window): window is LimitWindow => window !== null);
   return <div className="agent-usage-limits">
-    {windows.map((window) => <div className="agent-usage-limit" key={window.windowMinutes}>
-      <span className="agent-usage-window">{windowLabel(window.windowMinutes)}</span>
-      <span className="agent-usage-meter" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.max(0, window.remainingPercent))}%` }} /></span>
-      <span className="agent-usage-value">{formatPercentLeft(window.remainingPercent)}</span>
-      <span className="agent-usage-reset">{limitResetLabel(window.resetsAtMs, nowMs)}</span>
-    </div>)}
+    {windows.map((window) => window.ended || window.remainingPercent === null
+      ? <div className="agent-usage-limit is-ended" key={window.windowMinutes}>
+        <span className="agent-usage-window">{windowLabel(window.windowMinutes)}</span>
+        <span className="agent-usage-value">Window ended</span>
+        <span className="agent-usage-reset">Waiting for next Codex run</span>
+      </div>
+      : <div className="agent-usage-limit" key={window.windowMinutes}>
+        <span className="agent-usage-window">{windowLabel(window.windowMinutes)}</span>
+        <span className="agent-usage-meter" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.max(0, window.remainingPercent))}%` }} /></span>
+        <span className="agent-usage-value">{formatPercentLeft(window.remainingPercent)}</span>
+        <span className="agent-usage-reset">{limitResetLabel(window.resetsAtMs)}</span>
+      </div>)}
   </div>;
 }

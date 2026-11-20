@@ -23,13 +23,13 @@ const okSnapshot = {
       available: true,
       limitsSupported: true,
       limits: {
-        primary: { remainingPercent: 80, windowMinutes: 300, resetsAtMs: now + 3 * 3600_000 },
-        secondary: { remainingPercent: 50, windowMinutes: 10080, resetsAtMs: now + 2 * 86400_000 },
+        primary: { remainingPercent: 80, windowMinutes: 300, resetsAtMs: now + 3 * 3600_000, ended: false },
+        secondary: { remainingPercent: 50, windowMinutes: 10080, resetsAtMs: now + 2 * 86400_000, ended: false },
         observedAtMs: now,
       },
       planType: "plus",
-      today: { ...zero, total: 500 },
-      week: { ...zero, total: 1500 },
+      today: { ...zero, input: 300, output: 200, total: 500 },
+      week: { ...zero, input: 1000, output: 500, total: 1500 },
       models: [],
       error: null,
     },
@@ -82,7 +82,36 @@ describe("AgentUsagePanel", () => {
     expect(within(codex).getByText("7d")).toBeInTheDocument();
     expect(within(codex).getByText(/Today 500/)).toBeInTheDocument();
     expect(within(codex).getByText(/Week 1\.5K/)).toBeInTheDocument();
+    expect(within(codex).getByText("in 1K · out 500 · cache 0")).toBeInTheDocument();
+    expect(within(codex).getByText("Totals include cache tokens.")).toBeInTheDocument();
     expect(tauri.invoke).toHaveBeenCalledWith("agent_usage_snapshot", { enabled: true });
+  });
+
+  it("shows a neutral note instead of a percentage for a window that has ended", async () => {
+    const codexAgent = okSnapshot.agents[0];
+    const snapshot = {
+      ...okSnapshot,
+      agents: [
+        {
+          ...codexAgent,
+          limits: {
+            observedAtMs: now,
+            primary: { remainingPercent: null, windowMinutes: 300, resetsAtMs: now - 60_000, ended: true },
+            secondary: codexAgent.limits.secondary,
+          },
+        },
+        ...okSnapshot.agents.slice(1),
+      ],
+    };
+    tauri.invoke.mockResolvedValue(snapshot);
+    render(<AgentUsagePanel enabled />);
+    await flush();
+
+    const codex = screen.getByRole("region", { name: "Codex CLI usage" });
+    expect(within(codex).getByText("Window ended")).toBeInTheDocument();
+    expect(within(codex).getByText("Waiting for next Codex run")).toBeInTheDocument();
+    // Only the open secondary window still reports a percentage.
+    expect(within(codex).getAllByText(/% left/)).toHaveLength(1);
   });
 
   it("states that Claude limit percentages are not readable locally and lists the model split", async () => {

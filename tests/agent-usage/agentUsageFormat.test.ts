@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { formatPercentLeft, formatTokens, limitResetLabel, windowLabel } from "../../src/features/agent-usage/agentUsageFormat";
+import { formatBreakdown, formatPercentLeft, formatTokens, limitResetLabel, windowLabel } from "../../src/features/agent-usage/agentUsageFormat";
 
 describe("agent usage formatting", () => {
   it("shortens token counts for the compact rows", () => {
     expect(formatTokens(0)).toBe("0");
     expect(formatTokens(500)).toBe("500");
     expect(formatTokens(1500)).toBe("1.5K");
+    expect(formatTokens(1000)).toBe("1K");
+    expect(formatTokens(2_000_000)).toBe("2M");
     expect(formatTokens(45_300)).toBe("45K");
     expect(formatTokens(1_234_567)).toBe("1.2M");
     expect(formatTokens(12_000_000)).toBe("12M");
@@ -24,9 +26,12 @@ describe("agent usage formatting", () => {
     expect(windowLabel(90)).toBe("90m");
   });
 
-  it("shows the reset time while the window is open and flags it once it has passed", () => {
+  it("shows the reset time of an open window", () => {
     const now = Date.UTC(2026, 10, 20, 12, 0, 0);
-    expect(limitResetLabel(now + 3 * 3600_000, now)).toMatch(/^Resets .*Nov/);
-    expect(limitResetLabel(now - 60_000, now)).toBe("Window ended, reading may be stale");
+    expect(limitResetLabel(now + 3 * 3600_000)).toMatch(/^Resets .*Nov/);
+  });
+
+  it("states what a total covers: input, output and cache, with cache counted separately", () => {
+    expect(formatBreakdown({ input: 1500, output: 0, cacheRead: 400, cacheWrite: 20, total: 1900 })).toBe("in 1.5K · out 0 · cache 420");
   });
 });
