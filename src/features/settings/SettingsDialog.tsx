@@ -3,7 +3,7 @@ import "./settings.css";
 import { DEFAULT_LANGUAGES, EDITOR_LANGUAGES, type EditorLanguageId } from "../editor/editorLanguages";
 
 export type ThemeId = "obsidian" | "nordic" | "foundry";
-export type AppSettings = { theme: ThemeId; editorFontFamily: string; editorFontSize: number; terminalFontFamily: string; terminalFontSize: number; quickOpenScope: "active" | "all"; collapseOtherFolders: boolean; autoSave: boolean; enabledLanguages?: readonly EditorLanguageId[]; languageSetupComplete?: boolean };
+export type AppSettings = { theme: ThemeId; editorFontFamily: string; editorFontSize: number; terminalFontFamily: string; terminalFontSize: number; quickOpenScope: "active" | "all"; collapseOtherFolders: boolean; autoSave: boolean; agentUsageEnabled: boolean; enabledLanguages?: readonly EditorLanguageId[]; languageSetupComplete?: boolean };
 /** Supported font sizes (px) for the editor and terminal; also used when loading stored settings. */
 export const MIN_FONT_SIZE = 8;
 export const MAX_FONT_SIZE = 32;
@@ -53,6 +53,7 @@ export function SettingsDialog({ settings, shortcuts, onSettingsChange, onClose,
     { id: "collapse-folders", section: "explorer", label: "Collapse other folders when expanding", description: "Keep the selected folder and its parent path open.", control: <input className="settings-toggle" type="checkbox" aria-label="Collapse other folders when expanding" checked={settings.collapseOtherFolders} onChange={(event) => onSettingsChange({ ...settings, collapseOtherFolders: event.currentTarget.checked })} /> },
     { id: "terminal-font-family", section: "terminal", label: "Font family", description: "Used by every terminal.", control: <input className="settings-text" type="text" aria-label="Terminal font family" value={settings.terminalFontFamily} maxLength={250} onChange={(event) => onSettingsChange({ ...settings, terminalFontFamily: event.currentTarget.value })} /> },
     { id: "terminal-font-size", section: "terminal", label: "Font size", description: "Terminal text size in pixels.", control: <span className="settings-number"><input type="number" aria-label="Terminal font size" min={MIN_FONT_SIZE} max={MAX_FONT_SIZE} value={settings.terminalFontSize} onChange={(event) => { const value = event.currentTarget.valueAsNumber; if (Number.isFinite(value)) onSettingsChange({ ...settings, terminalFontSize: clampFontSize(value) }); }} />px</span> },
+    { id: "agent-usage", section: "terminal", label: "Agent usage", description: "Reads local Codex and Claude Code log files to show token use and limits. Nothing is sent over the network.", control: <input className="settings-toggle" type="checkbox" aria-label="Agent usage" checked={settings.agentUsageEnabled} onChange={(event) => onSettingsChange({ ...settings, agentUsageEnabled: event.currentTarget.checked })} /> },
     ...shortcuts.map((shortcut) => ({ id: "shortcut-" + shortcut.keys + "-" + shortcut.label, section: "shortcuts" as const, label: shortcut.label, control: <kbd className="settings-kbd">{shortcut.keys}</kbd> })),
   ];
 

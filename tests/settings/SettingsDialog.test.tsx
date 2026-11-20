@@ -12,6 +12,7 @@ const settings: AppSettings = {
   quickOpenScope: "active",
   collapseOtherFolders: false,
   autoSave: true,
+  agentUsageEnabled: false,
 };
 
 describe("SettingsDialog", () => {
@@ -46,6 +47,23 @@ describe("SettingsDialog", () => {
     await user.click(screen.getByRole("button", { name: /Explorer/ }));
     await user.click(screen.getByRole("checkbox", { name: /Collapse other folders/ }));
     expect(onSettingsChange).toHaveBeenLastCalledWith({ ...settings, collapseOtherFolders: true });
+  });
+});
+
+describe("SettingsDialog agent usage", () => {
+  afterEach(cleanup);
+
+  it("turns agent usage on from the Terminal section and says local logs are read without network use", async () => {
+    const user = userEvent.setup();
+    const onSettingsChange = vi.fn();
+    render(<SettingsDialog settings={settings} shortcuts={[]} onSettingsChange={onSettingsChange} onClose={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /Terminal/ }));
+
+    const toggle = screen.getByRole("checkbox", { name: "Agent usage" });
+    expect(toggle).not.toBeChecked();
+    expect(screen.getByText(/Reads local .*log files/)).toHaveTextContent("Nothing is sent over the network.");
+    await user.click(toggle);
+    expect(onSettingsChange).toHaveBeenLastCalledWith({ ...settings, agentUsageEnabled: true });
   });
 });
 

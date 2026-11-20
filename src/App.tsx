@@ -16,6 +16,7 @@ import { MergeConflicts } from "./features/git/MergeConflicts";
 import { joinRepoPath } from "./features/git/gitPaths";
 import type { CommitFileChange, CommitInfo } from "./features/git/gitTypes";
 import { TerminalResourceGraph } from "./features/terminal/TerminalResourceGraph";
+import { AgentUsagePanel } from "./features/agent-usage/AgentUsagePanel";
 import { PaneRenameInput, TerminalPaneMenu } from "./features/terminal/TerminalPaneMenu";
 import { CodeWorkspace, type EditorFileTab, type EditorGroupState } from "./features/editor/CodeWorkspace";
 import { QuickOpenDialog, type QuickOpenFile } from "./features/editor/QuickOpenDialog";
@@ -283,7 +284,7 @@ const TOOL_GROUPS: { id: ToolGroupId; label: string; toolIds: ToolId[] }[] = [
 ];
 
 const SETTINGS_KEY = "yerminal.app-settings.v1";
-const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13, quickOpenScope: "active", collapseOtherFolders: false, autoSave: false, enabledLanguages: DEFAULT_LANGUAGES, languageSetupComplete: false };
+const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13, quickOpenScope: "active", collapseOtherFolders: false, autoSave: false, agentUsageEnabled: false, enabledLanguages: DEFAULT_LANGUAGES, languageSetupComplete: false };
 function readAppSettings(): AppSettings {
   try {
     const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}");
@@ -296,6 +297,7 @@ function readAppSettings(): AppSettings {
       quickOpenScope: raw.quickOpenScope === "all" ? "all" : "active",
       collapseOtherFolders: raw.collapseOtherFolders === true,
       autoSave: raw.autoSave === true,
+      agentUsageEnabled: raw.agentUsageEnabled === true,
       enabledLanguages: normalizeEnabledLanguages(raw.enabledLanguages),
       languageSetupComplete: raw.languageSetupComplete === true,
     };
@@ -363,6 +365,7 @@ function App() {
   const [settingsInitialSection, setSettingsInitialSection] = useState<SectionId>("appearance");
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [terminalUsageOpen, setTerminalUsageOpen] = useState(false);
+  const [terminalMonitorTab, setTerminalMonitorTab] = useState<"resources" | "usage">("resources");
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const [settings, setSettings] = useState<AppSettings>(readAppSettings);
   const initializedWorkspaceIdsRef = useRef(new Set<string>());
@@ -1556,11 +1559,21 @@ function App() {
 
             <div className="pane-live-status" aria-live="polite" aria-atomic="true">{activeTerminal ? activeTerminal.name + ", " + activeTerminal.shellLabel : "No terminal"}</div>
           </section>
-          {terminalUsageOpen && <div id="terminal-resource-panel" className="terminal-resource-panel"><TerminalResourceGraph enabled={true} workspaceName={activeTerminalWorkspace?.name ?? "Workspace"} terminals={activeWorkspaceTerminals} activeTerminalId={activeTerminalId} onFocusTerminal={(id) => {
-            if (activeMainView !== "terminals") setActiveMainView("terminals");
-            if (focusedTerminalView && focusedTerminalView !== id) selectTerminalView(id);
-            else if (id !== activeTerminalId) focusTerminal(id);
-          }} /></div>}
+          {terminalUsageOpen && <div id="terminal-resource-panel" className={"terminal-resource-panel" + (terminalMonitorTab === "usage" ? " is-usage" : "")}>
+            <div className="terminal-monitor-tabs" role="tablist" aria-label="Terminal monitor">
+              <button type="button" role="tab" aria-selected={terminalMonitorTab === "resources"} onClick={() => setTerminalMonitorTab("resources")}>Resources</button>
+              <button type="button" role="tab" aria-selected={terminalMonitorTab === "usage"} onClick={() => setTerminalMonitorTab("usage")}>Usage</button>
+            </div>
+            <div className="terminal-monitor-body">
+              {terminalMonitorTab === "usage"
+                ? <AgentUsagePanel enabled={settings.agentUsageEnabled} />
+                : <TerminalResourceGraph enabled={true} workspaceName={activeTerminalWorkspace?.name ?? "Workspace"} terminals={activeWorkspaceTerminals} activeTerminalId={activeTerminalId} onFocusTerminal={(id) => {
+                  if (activeMainView !== "terminals") setActiveMainView("terminals");
+                  if (focusedTerminalView && focusedTerminalView !== id) selectTerminalView(id);
+                  else if (id !== activeTerminalId) focusTerminal(id);
+                }} />}
+            </div>
+          </div>}
           </div>} />
         </Panel>
       </PanelGroup>

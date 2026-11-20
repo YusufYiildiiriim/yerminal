@@ -1,0 +1,146 @@
+/* Agent usage list inside the terminal monitor. Tokens come from themes.css. */
+.agent-usage {
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  color: var(--theme-text, #e7e8eb);
+  font-size: 11px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--theme-border, #45434f) transparent;
+}
+
+.agent-usage-row {
+  padding: 5px 10px 6px;
+  border-bottom: 1px solid var(--theme-border, #24242a);
+}
+
+.agent-usage-row:last-child {
+  border-bottom: 0;
+}
+
+.agent-usage-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 18px;
+}
+
+.agent-usage-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.agent-usage-plan {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid var(--theme-border, #303139);
+  border-radius: 6px;
+  color: var(--theme-muted, #a7a8b1);
+  font-size: 9px;
+  line-height: 14px;
+}
+
+.agent-usage-limits {
+  display: grid;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.agent-usage-limit {
+  display: grid;
+  grid-template-columns: 24px minmax(40px, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-usage-window {
+  color: var(--theme-muted, #a7a8b1);
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 10px;
+}
+
+.agent-usage-meter {
+  display: block;
+  height: 3px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--theme-text, #e7e8eb) 12%, transparent);
+}
+
+.agent-usage-meter > span {
+  display: block;
+  height: 100%;
+  background: var(--theme-accent, #b39aff);
+}
+
+.agent-usage-value {
+  color: var(--theme-text, #e7e8eb);
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 10px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-usage-reset {
+  grid-column: 2 / 4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--theme-muted, #a7a8b1);
+  font-size: 9px;
+}
+
+.agent-usage-totals {
+  display: flex;
+  gap: 12px;
+  margin-top: 3px;
+  color: var(--theme-muted, #a7a8b1);
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-usage-models {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 3px;
+}
+
+.agent-usage-model {
+  display: inline-flex;
+  gap: 5px;
+  color: var(--theme-muted, #a7a8b1);
+  font-size: 10px;
+}
+
+.agent-usage-model > span:last-child {
+  color: var(--theme-text, #e7e8eb);
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-usage-empty,
+.agent-usage-note,
+.agent-usage-error {
+  margin: 0;
+  padding-top: 3px;
+  color: var(--theme-muted, #a7a8b1);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.agent-usage-error {
+  color: var(--theme-danger, #e58a8a);
+}
+
+.agent-usage > .agent-usage-note,
+.agent-usage > .agent-usage-error {
+  padding: 10px;
+}
