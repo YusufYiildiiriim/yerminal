@@ -31,6 +31,13 @@ describe("agent usage formatting", () => {
     expect(limitResetLabel(now + 3 * 3600_000)).toMatch(/^Resets .*Nov/);
   });
 
+  it("splits a Codex total so the three parts add up to it (cached input is not counted twice)", () => {
+    // Codex: total 1200 = uncached input 600 + output 200 + cached 400.
+    const codex = { input: 600, output: 200, cacheRead: 400, cacheWrite: 0, total: 1200 };
+    expect(formatBreakdown(codex)).toBe("in 600 · out 200 · cache 400");
+    expect(codex.input + codex.output + codex.cacheRead + codex.cacheWrite).toBe(codex.total);
+  });
+
   it("states what a total covers: input, output and cache, with cache counted separately", () => {
     expect(formatBreakdown({ input: 1500, output: 0, cacheRead: 400, cacheWrite: 20, total: 1900 })).toBe("in 1.5K · out 0 · cache 420");
   });
