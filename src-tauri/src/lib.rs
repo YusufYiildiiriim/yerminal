@@ -31,8 +31,9 @@ fn terminal_resource_usage(
         .map(|mut monitor| monitor.collect(roots))
 }
 
-/// Local agent usage summary. `enabled` comes from the app setting and is checked
-/// in the backend too: when it is false no log file is touched.
+/// Local agent usage summary. `enabled` is the frontend's copy of the "Agent usage"
+/// setting (stored in the webview's localStorage); the backend cannot read that
+/// store, so it only gates on this flag: when it is false no log file is opened.
 #[tauri::command]
 async fn agent_usage_snapshot(
     app: tauri::AppHandle,

@@ -2,8 +2,13 @@
 //!
 //! Reads only the agents' local JSONL logs. Each file keeps a byte offset in
 //! memory so later calls parse just the new complete lines. Only numeric
-//! summaries leave this module: no message text, working directories or
-//! project names. Nothing is persisted and nothing is sent over the network.
+//! summaries leave this module: no message text, working directories, session
+//! or message ids, or project names. Nothing is persisted and nothing is sent
+//! over the network.
+//!
+//! The on/off gate is the `enabled` flag the frontend passes with each call. The
+//! setting itself lives in the webview's localStorage, so this module does not
+//! read it; it only refuses to open any file while the flag is false.
 
 use chrono::{DateTime, FixedOffset, NaiveDate, TimeZone};
 use serde::{Deserialize, Serialize};
@@ -20,6 +25,10 @@ const TAIL_CHUNK: u64 = 64 * 1024;
 const TAIL_MAX_BYTES: u64 = 8 * 1024 * 1024;
 const TAIL_CANDIDATES: usize = 3;
 const READ_ERROR: &str = "Could not read usage logs";
+/// Longer lines are skipped without being parsed or buffered in full.
+pub const MAX_LINE_BYTES: usize = 1024 * 1024;
+/// Upper bound on candidate log files per snapshot.
+pub const MAX_CANDIDATE_FILES: usize = 2000;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -204,9 +213,11 @@ impl UsageRoots {
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct LimitWindow {
-    pub remaining_percent: f64,
+    /// `None` once the window has ended: the last reading no longer describes it.
+    pub remaining_percent: Option<f64>,
     pub window_minutes: u64,
     pub resets_at_ms: i64,
+    pub ended: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -412,17 +423,63 @@ pub fn sync_file<Tz: TimeZone>(
     let entry = cache.files.entry(path.to_path_buf()).or_default();
     let mut buf = Vec::new();
     loop {
-        buf.clear();
-        let read = reader.read_until(b'\n', &mut buf)?;
-        if read == 0 || buf.last() != Some(&b'\n') {
-            break;
-        }
-        entry.offset += read as u64;
-        if let Ok(text) = std::str::from_utf8(&buf) {
-            entry.ingest_line(source, text.trim_end(), tz);
+        match read_bounded_line(&mut reader, &mut buf, MAX_LINE_BYTES)? {
+            None | Some(BoundedLine::Partial) => break,
+            Some(BoundedLine::Oversized { len }) => entry.offset += len,
+            Some(BoundedLine::Complete { len }) => {
+                entry.offset += len;
+                if let Ok(text) = std::str::from_utf8(&buf) {
+                    entry.ingest_line(source, text.trim_end(), tz);
+                }
+            }
         }
     }
     Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum BoundedLine {
+    /// A full line (newline included in `len`) whose bytes are in the buffer.
+    Complete { len: u64 },
+    /// A full line longer than the limit; its bytes were consumed but not stored.
+    Oversized { len: u64 },
+    /// End of file before a newline: the caller must leave it for the next sync.
+    Partial,
+}
+
+/// Reads one line into `buf` without ever holding more than `max` bytes of it.
+/// Returns `None` at a clean end of file.
+fn read_bounded_line<R: BufRead>(reader: &mut R, buf: &mut Vec<u8>, max: usize) -> io::Result<Option<BoundedLine>> {
+    buf.clear();
+    let mut consumed: u64 = 0;
+    let mut oversized = false;
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            return Ok(if consumed == 0 { None } else { Some(BoundedLine::Partial) });
+        }
+        let (take, found_newline) = match available.iter().position(|byte| *byte == b'\n') {
+            Some(position) => (position + 1, true),
+            None => (available.len(), false),
+        };
+        if !oversized {
+            if buf.len() + take > max {
+                oversized = true;
+                buf.clear();
+            } else {
+                buf.extend_from_slice(&available[..take]);
+            }
+        }
+        reader.consume(take);
+        consumed += take as u64;
+        if found_newline {
+            return Ok(Some(if oversized {
+                BoundedLine::Oversized { len: consumed }
+            } else {
+                BoundedLine::Complete { len: consumed }
+            }));
+        }
+    }
 }
 
 fn rate_event_in(bytes: &[u8]) -> Option<CodexEvent> {
@@ -486,7 +543,7 @@ fn system_time_ms(time: std::time::SystemTime) -> i64 {
 
 /// Recursively lists `.jsonl` files whose mtime is inside the window. Older
 /// files are skipped before they are opened.
-fn collect_jsonl(dir: &Path, accept: fn(&str) -> bool, cutoff_ms: i64, depth: usize, out: &mut Vec<Candidate>) -> io::Result<()> {
+fn collect_jsonl(dir: &Path, accept: fn(&str) -> bool, cutoff_ms: i64, depth: usize, out: &mut Vec<Candidate>, limit: usize) -> io::Result<()> {
     if depth > MAX_DEPTH {
         return Ok(());
     }
@@ -502,7 +559,7 @@ fn collect_jsonl(dir: &Path, accept: fn(&str) -> bool, cutoff_ms: i64, depth: us
         }
         let path = entry.path();
         if file_type.is_dir() {
-            let _ = collect_jsonl(&path, accept, cutoff_ms, depth + 1, out);
+            let _ = collect_jsonl(&path, accept, cutoff_ms, depth + 1, out, limit);
             continue;
         }
         let name = entry.file_name();
@@ -514,6 +571,9 @@ fn collect_jsonl(dir: &Path, accept: fn(&str) -> bool, cutoff_ms: i64, depth: us
         let mtime_ms = meta.modified().map(system_time_ms).unwrap_or(0);
         if mtime_ms < cutoff_ms {
             continue;
+        }
+        if out.len() >= limit {
+            return Ok(());
         }
         out.push(Candidate { path, size: meta.len(), mtime_ms });
     }
@@ -539,11 +599,16 @@ fn cached_rate_tail(cache: &mut AgentUsageCache, path: &Path, size: u64) -> Opti
     event
 }
 
-fn remaining_window(window: CodexRateWindow) -> LimitWindow {
+/// Once `resets_at` has passed the stored reading describes a finished window, so
+/// no percentage is reported for it.
+fn remaining_window(window: CodexRateWindow, now_ms: i64) -> LimitWindow {
+    let resets_at_ms = window.resets_at.saturating_mul(1000);
+    let ended = resets_at_ms <= now_ms;
     LimitWindow {
-        remaining_percent: (100.0 - window.used_percent).clamp(0.0, 100.0),
+        remaining_percent: (!ended).then(|| (100.0 - window.used_percent).clamp(0.0, 100.0)),
         window_minutes: window.window_minutes,
-        resets_at_ms: window.resets_at.saturating_mul(1000),
+        resets_at_ms,
+        ended,
     }
 }
 
@@ -577,12 +642,12 @@ pub fn collect<Tz: TimeZone>(
     let mut codex_files = Vec::new();
     let mut codex_error = false;
     for root in &roots.codex {
-        if collect_jsonl(root, is_codex_name, cutoff_ms, 0, &mut codex_files).is_err() {
+        if collect_jsonl(root, is_codex_name, cutoff_ms, 0, &mut codex_files, MAX_CANDIDATE_FILES).is_err() {
             codex_error = true;
         }
     }
     let mut claude_files = Vec::new();
-    let claude_error = collect_jsonl(&roots.claude, accept_any, cutoff_ms, 0, &mut claude_files).is_err();
+    let claude_error = collect_jsonl(&roots.claude, accept_any, cutoff_ms, 0, &mut claude_files, MAX_CANDIDATE_FILES).is_err();
 
     let keep: HashSet<PathBuf> = codex_files.iter().chain(claude_files.iter()).map(|c| c.path.clone()).collect();
     cache.files.retain(|path, _| keep.contains(path));
@@ -628,8 +693,8 @@ pub fn collect<Tz: TimeZone>(
         if let Some(rate) = event.rate {
             codex.plan_type = rate.plan_type.clone();
             codex.limits = Some(LimitSnapshot {
-                primary: rate.primary.map(remaining_window),
-                secondary: rate.secondary.map(remaining_window),
+                primary: rate.primary.map(|window| remaining_window(window, now.timestamp_millis())),
+                secondary: rate.secondary.map(|window| remaining_window(window, now.timestamp_millis())),
                 observed_at_ms: event.at.timestamp_millis(),
             });
         }
@@ -726,10 +791,31 @@ mod tests {
     }
 
     fn codex_rate_line(at: DateTime<Utc>, used: f64) -> String {
+        codex_rate_line_resetting(at, used, at.timestamp() + 3 * 3600)
+    }
+
+    fn codex_rate_line_resetting(at: DateTime<Utc>, used: f64, resets_at: i64) -> String {
         format!(
-            r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"token_count","info":null,"rate_limits":{{"primary":{{"used_percent":{used},"window_minutes":300,"resets_at":1763632800}},"secondary":null,"plan_type":"plus"}}}}}}"#,
+            r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"token_count","info":null,"rate_limits":{{"primary":{{"used_percent":{used},"window_minutes":300,"resets_at":{resets_at}}},"secondary":null,"plan_type":"plus"}}}}}}"#,
             at.to_rfc3339(),
-            used = used
+            used = used,
+            resets_at = resets_at
+        )
+    }
+
+    fn codex_session_meta() -> String {
+        concat!(
+            r#"{"timestamp":"2026-11-20T08:00:00.000Z","type":"session_meta","payload":{"id":"SYNTH_CODEX_SESSION","cwd":"C:/SYNTH_CWD_MARKER","cli_version":"0.0.0"}}"#,
+            "\n",
+            r#"{"timestamp":"2026-11-20T08:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":"SYNTH_TEXT_MARKER"}}"#,
+        )
+        .to_owned()
+    }
+
+    fn claude_user_line(at: DateTime<Utc>) -> String {
+        format!(
+            r#"{{"type":"user","sessionId":"SYNTH_CLAUDE_SESSION","cwd":"C:/SYNTH_CWD_MARKER","timestamp":"{}","message":{{"role":"user","content":"SYNTH_TEXT_MARKER"}}}}"#,
+            at.to_rfc3339()
         )
     }
 
@@ -904,24 +990,41 @@ mod tests {
         _dir: tempfile::TempDir,
         roots: UsageRoots,
         now: DateTime<Utc>,
+        /// Every synthetic log line written, used to prove the privacy test is not vacuous.
+        raw: String,
     }
 
     fn fixture() -> Fixture {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path();
         let now = Utc::now();
+        let mut raw = String::new();
         let codex_file = home.join(".codex/sessions/2026/11/20/rollout-1.jsonl");
-        append(&codex_file, &format!("{}\n", codex_line(now - Duration::days(2), 1000)));
-        append(&codex_file, &format!("{}\n", codex_line(now, 1200)));
-        append(&codex_file, &format!("{}\n", codex_rate_line(now, 20.0)));
-        append(&codex_file, &format!("{}\n", codex_line(now, 1500)));
+        let codex_lines = [
+            codex_session_meta(),
+            codex_line(now - Duration::days(2), 1000),
+            codex_line(now, 1200),
+            codex_rate_line(now, 20.0),
+            codex_line(now, 1500),
+        ];
+        for line in &codex_lines {
+            append(&codex_file, &format!("{line}\n"));
+            raw.push_str(line);
+        }
         let claude_file = home.join(".claude/projects/project-x/session.jsonl");
-        append(&claude_file, &format!("{}\n", claude_line(now, "msg_1", "opus", 10, 5)));
-        append(&claude_file, &format!("{}\n", claude_line(now, "msg_1", "opus", 10, 5)));
-        append(&claude_file, &format!("{}\n", claude_line(now - Duration::days(2), "msg_2", "sonnet", 1, 1)));
-        append(&claude_file, &format!("{}\n", claude_line(now - Duration::days(8), "msg_3", "haiku", 50, 49)));
+        let claude_lines = [
+            claude_user_line(now),
+            claude_line(now, "SYNTH_MSG_1", "opus", 10, 5),
+            claude_line(now, "SYNTH_MSG_1", "opus", 10, 5),
+            claude_line(now - Duration::days(2), "SYNTH_MSG_2", "sonnet", 1, 1),
+            claude_line(now - Duration::days(8), "SYNTH_MSG_3", "haiku", 50, 49),
+        ];
+        for line in &claude_lines {
+            append(&claude_file, &format!("{line}\n"));
+            raw.push_str(line);
+        }
         let roots = UsageRoots::from_home(home);
-        Fixture { _dir: dir, roots, now }
+        Fixture { _dir: dir, roots, now, raw }
     }
 
     #[test]
@@ -950,7 +1053,8 @@ mod tests {
         assert_eq!(codex.today.total, 500);
         assert_eq!(codex.week.total, 1500);
         let limits = codex.limits.as_ref().expect("codex limits");
-        assert_eq!(limits.primary.as_ref().unwrap().remaining_percent, 80.0);
+        assert_eq!(limits.primary.as_ref().unwrap().remaining_percent, Some(80.0));
+        assert!(!limits.primary.as_ref().unwrap().ended);
         assert_eq!(limits.primary.as_ref().unwrap().window_minutes, 300);
         assert!(limits.secondary.is_none());
 
@@ -969,15 +1073,59 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_json_carries_no_paths_or_message_content() {
+    fn snapshot_json_carries_no_paths_ids_or_message_content() {
         let fixture = fixture();
+        // The fixture really contains the sentinel values (cwd, session id, message id, text).
+        for sentinel in ["SYNTH_CWD_MARKER", "SYNTH_CODEX_SESSION", "SYNTH_CLAUDE_SESSION", "SYNTH_MSG_1", "SYNTH_TEXT_MARKER"] {
+            assert!(fixture.raw.contains(sentinel), "fixture lacks {sentinel}");
+        }
         let cache = Mutex::new(AgentUsageCache::default());
         let snapshot = snapshot_with(&cache, true, &fixture.roots, fixture.now).unwrap();
         let json = serde_json::to_string(&snapshot).unwrap();
-        let marker = fixture._dir.path().file_name().unwrap().to_str().unwrap().to_owned();
-        assert!(!json.contains(&marker));
-        assert!(!json.contains("synthetic/project"));
-        assert!(!json.contains("cwd"));
-        assert!(!json.contains(".jsonl"));
+        let dir_name = fixture._dir.path().file_name().unwrap().to_str().unwrap().to_owned();
+        for forbidden in ["SYNTH_", "C:/", "cwd", ".jsonl", "rollout-", "session", dir_name.as_str()] {
+            assert!(!json.contains(forbidden), "snapshot leaked {forbidden}");
+        }
+    }
+
+    #[test]
+    fn overlong_line_is_skipped_and_the_following_line_still_counts() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rollout-long.jsonl");
+        let now = Utc::now();
+        // A valid token_count padded past MAX_LINE_BYTES must not be parsed or buffered.
+        let oversized = format!("{}{}", codex_line(now, 5000), " ".repeat(MAX_LINE_BYTES));
+        append(&path, &format!("{oversized}\n{}\n", codex_line(now, 250)));
+        let mut cache = AgentUsageCache::default();
+        sync_file(&mut cache, &path, Source::Codex, &Utc).unwrap();
+        assert_eq!(cache.files[&path].codex.daily[&now.date_naive()].total, 250);
+        assert_eq!(cache.files[&path].offset, fs::metadata(&path).unwrap().len());
+    }
+
+    #[test]
+    fn candidate_listing_stops_at_the_file_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        for index in 0..5 {
+            append(&dir.path().join(format!("rollout-{index}.jsonl")), "{}\n");
+        }
+        let mut out = Vec::new();
+        collect_jsonl(dir.path(), is_codex_name, i64::MIN, 0, &mut out, 2).unwrap();
+        assert_eq!(out.len(), 2);
+    }
+
+    #[test]
+    fn expired_rate_window_is_flagged_and_has_no_percentage() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = Utc::now();
+        let ended_at = (now - Duration::minutes(1)).timestamp();
+        append(
+            &dir.path().join(".codex/sessions/rollout-x.jsonl"),
+            &format!("{}\n", codex_rate_line_resetting(now, 20.0, ended_at)),
+        );
+        let cache = Mutex::new(AgentUsageCache::default());
+        let snapshot = snapshot_with(&cache, true, &UsageRoots::from_home(dir.path()), now).unwrap();
+        let primary = snapshot.agents[0].limits.as_ref().unwrap().primary.clone().unwrap();
+        assert!(primary.ended);
+        assert_eq!(primary.remaining_percent, None);
     }
 }
