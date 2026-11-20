@@ -135,7 +135,9 @@ impl CodexFileUsage {
         self.prev = Some(current);
         let day = event.at.with_timezone(tz).date_naive();
         let entry = self.daily.entry(day).or_default();
-        entry.input += delta.input;
+        // Codex input_tokens includes the cached part; keep only the uncached input so
+        // input + output + cache_read equals total.
+        entry.input += delta.input.saturating_sub(delta.cached);
         entry.output += delta.output;
         entry.cache_read += delta.cached;
         entry.total += delta.total;
@@ -542,8 +544,18 @@ fn system_time_ms(time: std::time::SystemTime) -> i64 {
 }
 
 /// Recursively lists `.jsonl` files whose mtime is inside the window. Older
-/// files are skipped before they are opened.
+/// files are skipped before they are opened. At the top level the result is
+/// capped to the `limit` newest files, so a huge log tree cannot exhaust the cache.
 fn collect_jsonl(dir: &Path, accept: fn(&str) -> bool, cutoff_ms: i64, depth: usize, out: &mut Vec<Candidate>, limit: usize) -> io::Result<()> {
+    collect_jsonl_walk(dir, accept, cutoff_ms, depth, out)?;
+    if depth == 0 && out.len() > limit {
+        out.sort_by(|a, b| b.mtime_ms.cmp(&a.mtime_ms));
+        out.truncate(limit);
+    }
+    Ok(())
+}
+
+fn collect_jsonl_walk(dir: &Path, accept: fn(&str) -> bool, cutoff_ms: i64, depth: usize, out: &mut Vec<Candidate>) -> io::Result<()> {
     if depth > MAX_DEPTH {
         return Ok(());
     }
@@ -559,7 +571,7 @@ fn collect_jsonl(dir: &Path, accept: fn(&str) -> bool, cutoff_ms: i64, depth: us
         }
         let path = entry.path();
         if file_type.is_dir() {
-            let _ = collect_jsonl(&path, accept, cutoff_ms, depth + 1, out, limit);
+            let _ = collect_jsonl_walk(&path, accept, cutoff_ms, depth + 1, out);
             continue;
         }
         let name = entry.file_name();
@@ -571,9 +583,6 @@ fn collect_jsonl(dir: &Path, accept: fn(&str) -> bool, cutoff_ms: i64, depth: us
         let mtime_ms = meta.modified().map(system_time_ms).unwrap_or(0);
         if mtime_ms < cutoff_ms {
             continue;
-        }
-        if out.len() >= limit {
-            return Ok(());
         }
         out.push(Candidate { path, size: meta.len(), mtime_ms });
     }
@@ -1103,14 +1112,57 @@ mod tests {
     }
 
     #[test]
-    fn candidate_listing_stops_at_the_file_limit() {
+    fn candidate_listing_keeps_the_newest_files_when_capped() {
         let dir = tempfile::tempdir().unwrap();
-        for index in 0..5 {
-            append(&dir.path().join(format!("rollout-{index}.jsonl")), "{}\n");
+        let base = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        // Alphabetical order (what read_dir tends to return) lists the oldest files first.
+        for index in 0..5u64 {
+            let path = dir.path().join(format!("rollout-{index}.jsonl"));
+            append(&path, "{}\n");
+            let file = OpenOptions::new().write(true).open(&path).unwrap();
+            file.set_modified(base + std::time::Duration::from_secs(index * 60)).unwrap();
         }
         let mut out = Vec::new();
         collect_jsonl(dir.path(), is_codex_name, i64::MIN, 0, &mut out, 2).unwrap();
-        assert_eq!(out.len(), 2);
+        let mut names: Vec<String> = out
+            .iter()
+            .map(|candidate| candidate.path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, vec!["rollout-3.jsonl", "rollout-4.jsonl"]);
+    }
+
+    #[test]
+    fn codex_breakdown_counts_cached_input_once_so_the_parts_sum_to_total() {
+        let event = parse_codex_line(CODEX_TOKEN_LINE).unwrap();
+        let mut usage = CodexFileUsage::default();
+        usage.apply(&event, &Utc);
+        let totals = usage.daily[&day(2026, 11, 20)];
+        assert_eq!(totals.total, 1200);
+        // input_tokens (1000) includes the 400 cached tokens; uncached input is 600.
+        assert_eq!(totals.input, 600);
+        assert_eq!(totals.output, 200);
+        assert_eq!(totals.cache_read, 400);
+        assert_eq!(totals.input + totals.output + totals.cache_read + totals.cache_write, totals.total);
+    }
+
+    #[test]
+    fn overlong_partial_line_at_end_of_file_waits_for_its_newline() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rollout-tail.jsonl");
+        let now = Utc::now();
+        let oversized = format!("{}{}", codex_line(now, 5000), " ".repeat(MAX_LINE_BYTES));
+        append(&path, &oversized);
+        let mut cache = AgentUsageCache::default();
+        sync_file(&mut cache, &path, Source::Codex, &Utc).unwrap();
+        // Still unterminated: nothing consumed, nothing counted.
+        assert_eq!(cache.files.get(&path).map_or(0, |file| file.offset), 0);
+        assert!(cache.files.get(&path).map_or(true, |file| file.codex.daily.is_empty()));
+
+        append(&path, &format!("\n{}\n", codex_line(now, 250)));
+        sync_file(&mut cache, &path, Source::Codex, &Utc).unwrap();
+        assert_eq!(cache.files[&path].codex.daily[&now.date_naive()].total, 250);
+        assert_eq!(cache.files[&path].offset, fs::metadata(&path).unwrap().len());
     }
 
     #[test]
