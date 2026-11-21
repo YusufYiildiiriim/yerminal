@@ -32,6 +32,13 @@ describe("History section stays inside the narrow Git Changes rail", () => {
     expect(declarations(".gb-commit")).toMatch(/min-width:\s*0/);
   });
 
+  it("caps the pushed commit list with its own vertical scroll box", () => {
+    const box = declarations(".hist-list-scroll");
+    expect(box).toMatch(/max-height:\s*(?:2[89]\d|3[0-4]\d)px/);
+    expect(box).toMatch(/overflow-y:\s*auto/);
+    expect(box).toMatch(/overflow-x:\s*hidden/);
+  });
+
   it("flows the branch picker popover under its trigger so the repository block cannot clip it", () => {
     expect(declarations(".git-repository-branch-row .bp-popover")).toMatch(/position:\s*static/);
   });

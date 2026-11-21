@@ -43,6 +43,13 @@ describe("Git Changes panel keeps its controls readable in a narrow rail", () =>
     expect(declarations(".git-changes-view .tool-header .refresh-button")).toMatch(/flex:\s*none/);
   });
 
+  it("keeps each repository block at its content height so the Git Changes list scrolls instead of squeezing it", () => {
+    expect(declarations(".git-repository-section")).toMatch(/flex(?:-shrink)?:\s*(?:none|0)\b/);
+    const list = declarations(".git-changes-view .git-repository-list");
+    expect(list).toMatch(/overflow:\s*auto/);
+    expect(list).toMatch(/min-height:\s*0/);
+  });
+
   it("lets repository body, branch row and folder actions shrink without clipping the list", () => {
     expect(declarations(".git-repository-body")).toMatch(/min-width:\s*0/);
     expect(declarations(".git-repository-branch-row")).toMatch(/min-width:\s*0/);

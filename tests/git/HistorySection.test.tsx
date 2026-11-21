@@ -91,6 +91,17 @@ describe("HistorySection", () => {
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
   });
 
+  it("keeps Load more inside the capped scroll box that holds the commit list", async () => {
+    const user = userEvent.setup();
+    renderSection();
+
+    await user.click(historyToggle());
+    const list = await screen.findByRole("list", { name: "Pushed commits" });
+    const scrollBox = list.closest(".hist-list-scroll");
+    expect(scrollBox).not.toBeNull();
+    expect(within(scrollBox as HTMLElement).getByRole("button", { name: "Load more" })).toBeInTheDocument();
+  });
+
   it("shows the short hash and relative time of each commit but not its author", async () => {
     const user = userEvent.setup();
     renderSection();
