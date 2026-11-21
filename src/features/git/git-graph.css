@@ -76,3 +76,21 @@
 .gg-repo-picker span { color: var(--theme-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .gg-repo-picker select option { background: var(--theme-surface, #19191f); color: var(--theme-text); }
 .gg-repo-picker select { width: 100%; height: 26px; padding: 0 6px; color: var(--theme-text); background: var(--theme-surface, #19191f); border: 1px solid var(--theme-border, rgba(255,255,255,.14)); border-radius: 6px; font: inherit; font-size: 12px; }
+
+/* History: a collapsible section under Outgoing commits in each Git Changes repository (HistorySection.tsx). */
+.hist-section { display: flex; flex-direction: column; min-width: 0; margin-top: 4px; }
+.hist-toggle { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; height: 26px; margin-top: 6px; padding: 0 4px; border: 0; border-radius: 6px; background: transparent; color: var(--theme-muted); font: inherit; font-size: 12px; font-weight: 500; text-align: left; cursor: pointer; }
+.hist-toggle:hover, .hist-toggle:focus-visible { background: var(--hover); color: var(--theme-text); outline: none; }
+.hist-toggle > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-toggle .gb-count { margin-left: auto; }
+.hist-chev { display: inline-flex; flex: none; }
+.hist-chev svg { width: 10px; height: 10px; transform: rotate(-90deg); transition: transform 140ms ease; }
+.hist-chev.open svg { transform: none; }
+.hist-branch { min-width: 0; margin: 2px 8px 4px 12px; overflow: hidden; color: var(--theme-muted); font-family: var(--editor-font-family, "Cascadia Code", Consolas, monospace); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+.hist-section .gb-commits { min-width: 0; }
+.more-wrap { padding: 4px 8px 6px 12px; }
+.up-note { margin: 6px 8px 8px 12px; padding: 8px; border: 1px dashed var(--theme-border); border-radius: 6px; color: var(--theme-muted); font-size: 11px; line-height: 1.5; }
+@media (prefers-reduced-motion: reduce) { .hist-chev svg { transition: none; } }
+
+/* The branch picker popover flows under its trigger in Git Changes, so the repository block's overflow:hidden cannot clip it. */
+.git-repository-branch-row .bp-popover { position: static; margin-top: 4px; }
