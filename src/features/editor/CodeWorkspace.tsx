@@ -3,7 +3,6 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { MonacoCodeEditor } from "./MonacoCodeEditor";
 import { DEFAULT_LANGUAGES, detectEditorLanguage, type EditorLanguageId } from "./editorLanguages";
 import type { AppSettings } from "../settings/SettingsDialog";
-import { CommitSnapshotBanner } from "./CommitSnapshotBanner";
 import { DiffView } from "../git/DiffView";
 import type { DiffVersions } from "../git/diffEditorModel";
 import { useFloatingEditorLayout, type EditorLayoutMode, type EditorResizeDirection } from "./floatingEditorLayout";
@@ -171,7 +170,6 @@ function EditorGroupPane({ enabledLanguages, fontFamily, fontSize, theme, layout
       {groupTabs.length === 0 && <span className="editor-tabs-empty">No open files</span>}
     </nav>
     {activeTab ? <>
-      {isReadOnly && activeTab.snapshot && <CommitSnapshotBanner snapshot={activeTab.snapshot} filePath={activeTab.path} />}
       <header className="code-editor-header">
         {(() => { const display = editorDisplayPath(activeTab.root, activeTab.path); return <span className="code-editor-header-path" title={display.full}>{display.label}</span>; })()}
         <div className="code-editor-meta">
