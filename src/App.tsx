@@ -365,6 +365,8 @@ function App() {
   const [settingsInitialSection, setSettingsInitialSection] = useState<SectionId>("appearance");
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [terminalUsageOpen, setTerminalUsageOpen] = useState(false);
+  const [monitorHeight, setMonitorHeight] = useState(200);
+  const monitorDrag = useRef<{ y: number; height: number } | null>(null);
   const [terminalMonitorTab, setTerminalMonitorTab] = useState<"resources" | "usage">("resources");
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const [settings, setSettings] = useState<AppSettings>(readAppSettings);
@@ -1559,7 +1561,13 @@ function App() {
 
             <div className="pane-live-status" aria-live="polite" aria-atomic="true">{activeTerminal ? activeTerminal.name + ", " + activeTerminal.shellLabel : "No terminal"}</div>
           </section>
-          {terminalUsageOpen && <div id="terminal-resource-panel" className={"terminal-resource-panel" + (terminalMonitorTab === "usage" ? " is-usage" : "")}>
+          {terminalUsageOpen && <>
+          <div className="terminal-monitor-resize" role="separator" aria-label="Resize terminal monitor" aria-orientation="horizontal" aria-valuemin={80} aria-valuemax={600} aria-valuenow={monitorHeight} tabIndex={0}
+            onKeyDown={(event) => { if (event.key === "ArrowUp" || event.key === "ArrowDown") { event.preventDefault(); setMonitorHeight((height) => Math.max(80, Math.min(600, height + (event.key === "ArrowUp" ? 20 : -20)))); } }}
+            onPointerDown={(event) => { monitorDrag.current = { y: event.clientY, height: monitorHeight }; event.currentTarget.setPointerCapture(event.pointerId); }}
+            onPointerMove={(event) => { if (monitorDrag.current) setMonitorHeight(Math.max(80, Math.min(600, monitorDrag.current.height + monitorDrag.current.y - event.clientY))); }}
+            onPointerUp={() => { monitorDrag.current = null; }} onPointerCancel={() => { monitorDrag.current = null; }} />
+          <div id="terminal-resource-panel" className="terminal-resource-panel" style={{ flexBasis: monitorHeight, height: monitorHeight }}>
             <div className="terminal-monitor-tabs" role="tablist" aria-label="Terminal monitor">
               <button type="button" role="tab" aria-selected={terminalMonitorTab === "resources"} onClick={() => setTerminalMonitorTab("resources")}>Resources</button>
               <button type="button" role="tab" aria-selected={terminalMonitorTab === "usage"} onClick={() => setTerminalMonitorTab("usage")}>Usage</button>
@@ -1573,7 +1581,7 @@ function App() {
                   else if (id !== activeTerminalId) focusTerminal(id);
                 }} />}
             </div>
-          </div>}
+          </div></>}
           </div>} />
         </Panel>
       </PanelGroup>
@@ -1923,7 +1931,7 @@ function WorkspacePanel({ toolSwitch, mode, terminalLayoutMode, onChangeTerminal
           <header className="workspace-section-header workspace-terminal-groups-header">
             <h2>Terminal groups</h2>
             <div className="sec-acts">
-              <button className={`ib workspace-terminal-resource-button${terminalUsageOpen ? " active" : ""}`} type="button" aria-label="Resource usage" aria-pressed={terminalUsageOpen} aria-controls="terminal-resource-panel" onClick={onToggleTerminalUsage} title="Toggle CPU and RAM monitor">
+              <button className={`ib workspace-terminal-resource-button${terminalUsageOpen ? " active" : ""}`} type="button" aria-label="Resource usage" aria-pressed={terminalUsageOpen} aria-controls="terminal-resource-panel" onClick={onToggleTerminalUsage} title="Toggle resources and agent usage monitor">
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 12h4l3-7 4 14 3-7h4" /></svg>
               </button>
               <button className="ib workspace-terminal-add-button" type="button" aria-label="Add terminal to group" title="Add terminal to group" onClick={onAddTerminal}>

@@ -47,9 +47,11 @@
   min-height: 0;
 }
 
-.app-shell[data-theme] .terminal-resource-panel.is-usage {
-  flex: 0 0 170px;
-  height: 170px;
-  min-height: 170px;
-  max-height: 170px;
+.app-shell[data-theme] .terminal-workspace-view .terminal-resource-panel.terminal-resource-panel {
+  min-height: 80px;
+  max-height: min(600px, 70%);
 }
+.terminal-monitor-resize { flex: 0 0 8px; cursor: ns-resize; touch-action: none; position: relative; }
+.terminal-monitor-resize::after { content: ""; position: absolute; inset: 3px 8px; border-radius: 4px; background: var(--theme-border); }
+.terminal-monitor-resize:hover::after, .terminal-monitor-resize:focus-visible::after { background: var(--theme-accent); }
+.terminal-monitor-resize:focus-visible { outline: 1px solid var(--theme-accent); }

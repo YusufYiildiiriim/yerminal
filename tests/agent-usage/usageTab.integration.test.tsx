@@ -84,6 +84,17 @@ afterEach(() => {
 });
 
 describe("terminal monitor Usage tab", () => {
+  it("allows resizing the monitor with the keyboard and retains its size across tabs", async () => {
+    const { user, panel } = await openMonitorTab("Resources");
+    const handle = screen.getByRole("separator", { name: "Resize terminal monitor" });
+    const before = Number(handle.getAttribute("aria-valuenow"));
+    handle.focus();
+    await user.keyboard("{ArrowUp}");
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBeGreaterThan(before);
+    await user.click(within(panel).getByRole("tab", { name: "Usage" }));
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBeGreaterThan(before);
+  });
+
   it("does not request usage while the Resources tab is selected", async () => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({ agentUsageEnabled: true }));
     await openMonitorTab("Resources");
