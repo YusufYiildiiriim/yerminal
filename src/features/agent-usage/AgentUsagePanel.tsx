@@ -12,7 +12,7 @@ import {
   type LimitWindow,
 } from "./agentUsageFormat";
 import "./agent-usage.css";
-import "./terminal-monitor-tabs.css";
+
 
 const REFRESH_MS = 15_000;
 

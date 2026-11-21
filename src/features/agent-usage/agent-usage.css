@@ -164,3 +164,13 @@
 .agent-usage > .agent-usage-error {
   padding: 10px;
 }
+
+/* Agent usage is independent from the compact resource strip. */
+.sidebar-agent-usage { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--theme-border); }
+.sidebar-agent-resize { flex: 0 0 8px; cursor: ns-resize; touch-action: none; }
+.sidebar-agent-resize:hover, .sidebar-agent-resize:focus-visible { background: var(--theme-accent); outline: none; }
+.sidebar-agent-toggle { flex: none; display: flex; gap: 8px; align-items: center; width: 100%; border: 0; padding: 8px 4px; background: transparent; color: var(--theme-text); text-align: left; font: 600 12px Inter, "Segoe UI", sans-serif; cursor: pointer; }
+.sidebar-agent-toggle span { color: var(--theme-muted); }
+.sidebar-agent-toggle:hover { background: var(--hover); }
+.sidebar-agent-toggle:focus-visible { outline: 1px solid var(--theme-accent); }
+.sidebar-agent-content { min-height: 0; max-height: 55vh; overflow: hidden; }

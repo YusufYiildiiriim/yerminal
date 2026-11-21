@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -62,17 +62,6 @@ function mockBackend() {
   });
 }
 
-async function openMonitorTab(tab: "Resources" | "Usage") {
-  const user = userEvent.setup();
-  render(<App />);
-  const terminalGroups = screen.getByRole("region", { name: "Terminal groups" });
-  await user.click(within(terminalGroups).getByRole("button", { name: "Resource usage" }));
-  const panel = document.getElementById("terminal-resource-panel") as HTMLElement;
-  expect(panel).toBeInTheDocument();
-  await user.click(within(panel).getByRole("tab", { name: tab }));
-  return { user, panel };
-}
-
 beforeEach(() => {
   tauri.invoke.mockReset();
   mockBackend();
@@ -83,41 +72,32 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe("terminal monitor Usage tab", () => {
-  it("allows resizing the monitor with the keyboard and retains its size across tabs", async () => {
-    const { user, panel } = await openMonitorTab("Resources");
-    const handle = screen.getByRole("separator", { name: "Resize terminal monitor" });
-    const before = Number(handle.getAttribute("aria-valuenow"));
-    handle.focus();
-    await user.keyboard("{ArrowUp}");
-    expect(Number(handle.getAttribute("aria-valuenow"))).toBeGreaterThan(before);
-    await user.click(within(panel).getByRole("tab", { name: "Usage" }));
-    expect(Number(handle.getAttribute("aria-valuenow"))).toBeGreaterThan(before);
-  });
-
-  it("does not request usage while the Resources tab is selected", async () => {
+describe("sidebar agent usage", () => {
+  it("keeps the resources strip independent and reads usage only when expanded", async () => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({ agentUsageEnabled: true }));
-    await openMonitorTab("Resources");
+    const user = userEvent.setup(); render(<App />);
+    await user.click(within(screen.getByRole("region", { name: "Terminal groups" })).getByRole("button", { name: "Resource usage" }));
+    expect(document.getElementById("terminal-resource-panel")).toBeInTheDocument();
     expect(usageCalls()).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "Agent usage" }));
+    expect(await screen.findByRole("region", { name: "Codex CLI usage" })).toBeInTheDocument();
+    expect(document.getElementById("terminal-resource-panel")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Agent usage" }));
+    expect(screen.queryByRole("region", { name: "Codex CLI usage" })).not.toBeInTheDocument();
   });
-
-  it("with the setting off, the Usage tab asks the backend with enabled false and shows the off state", async () => {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ agentUsageEnabled: false }));
-    const { panel } = await openMonitorTab("Usage");
-
-    expect(await within(panel).findByText("Agent usage is off. Turn it on in Settings > Terminal.")).toBeInTheDocument();
-    expect(usageCalls().length).toBeGreaterThan(0);
-    expect(usageCalls().every(([, args]) => (args as { enabled: boolean }).enabled === false)).toBe(true);
-    expect(within(panel).queryByRole("region", { name: "Codex CLI usage" })).not.toBeInTheDocument();
+  it("shows the disabled message when the setting is off", async () => {
+    const user = userEvent.setup(); render(<App />);
+    await user.click(screen.getByRole("button", { name: "Agent usage" }));
+    expect(await screen.findByText("Agent usage is off. Turn it on in Settings > Terminal.")).toBeInTheDocument();
+    expect(usageCalls().at(-1)?.[1]).toEqual({ enabled: false });
   });
-
-  it("with the setting on, the Usage tab shows the agent panel and the Resources graph is hidden", async () => {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ agentUsageEnabled: true }));
-    const { panel } = await openMonitorTab("Usage");
-
-    await waitFor(() => expect(within(panel).getByRole("region", { name: "Codex CLI usage" })).toBeInTheDocument());
-    expect(usageCalls().at(-1)?.[1]).toEqual({ enabled: true });
-    expect(within(panel).getByRole("tab", { name: "Usage" })).toHaveAttribute("aria-selected", "true");
-    expect(within(panel).queryByLabelText("Terminal resource usage")).not.toBeInTheDocument();
+  it("resizes agent usage with the keyboard without resizing resources", async () => {
+    const user = userEvent.setup(); render(<App />);
+    await user.click(screen.getByRole("button", { name: "Agent usage" }));
+    const handle = screen.getByRole("separator", { name: "Resize agent usage" });
+    const before = Number(handle.getAttribute("aria-valuenow"));
+    handle.focus(); await user.keyboard("{ArrowUp}");
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBeGreaterThan(before);
+    expect(document.getElementById("terminal-resource-panel")).not.toBeInTheDocument();
   });
 });
