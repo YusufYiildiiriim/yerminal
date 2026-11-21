@@ -156,11 +156,12 @@ export function HistorySection({ repoPath, repoKey, branch, refreshKey = 0, onEr
     if (list.status === "error" && list.commits.length === 0) return <div className="gb-note gb-error" role="alert"><span>{list.error}</span> <button type="button" className="gb-retry" onClick={() => void requestPage(0)}>Retry</button></div>;
     if (list.upstream === null) return <div className="up-note">No upstream for this branch. Publish it from the sync bar to start tracking; pushed history shows here after that.</div>;
     if (list.commits.length === 0) return <div className="gb-note">No pushed commits on {list.upstream}.</div>;
-    return <>
+    // The list and Load more share one capped scroll box, so Load more stays at the end of the list.
+    return <div className="hist-list-scroll">
       <ul className="gb-commits" aria-label="Pushed commits">{list.commits.map(renderCommit)}</ul>
       {list.status === "error" && <div className="gb-note gb-error" role="alert"><span>{list.error}</span> <button type="button" className="gb-retry" onClick={() => void requestPage(list.commits.length)}>Retry</button></div>}
       {list.hasMore && <div className="more-wrap"><button type="button" className="gb-more" disabled={list.loadingMore} onClick={() => void requestPage(list.commits.length)}>{list.loadingMore ? "Loading…" : "Load more"}</button></div>}
-    </>;
+    </div>;
   };
 
   const showsUpstream = list.status === "ready" && list.upstream !== null;

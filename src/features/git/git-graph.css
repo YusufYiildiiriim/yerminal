@@ -88,6 +88,7 @@
 .hist-chev.open svg { transform: none; }
 .hist-branch { min-width: 0; margin: 2px 8px 4px 12px; overflow: hidden; color: var(--theme-muted); font-family: var(--editor-font-family, "Cascadia Code", Consolas, monospace); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
 .hist-section .gb-commits { min-width: 0; }
+.hist-list-scroll { max-height: 320px; overflow-y: auto; overflow-x: hidden; }
 .more-wrap { padding: 4px 8px 6px 12px; }
 .up-note { margin: 6px 8px 8px 12px; padding: 8px; border: 1px dashed var(--theme-border); border-radius: 6px; color: var(--theme-muted); font-size: 11px; line-height: 1.5; }
 @media (prefers-reduced-motion: reduce) { .hist-chev svg { transition: none; } }

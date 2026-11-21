@@ -322,6 +322,7 @@
   padding: 6px 6px 8px;
 }
 .git-repository-section {
+  flex: none;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--theme-border, #34343c);
