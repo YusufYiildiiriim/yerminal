@@ -576,6 +576,45 @@ pub fn outgoing_commits(path: &str) -> Result<Vec<CommitInfo>, String> {
     collect_history(&repo, walk, 0, OUTGOING_LIMIT)
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryPage {
+    /// Upstream the page was read from ("origin/main"), or None when the branch tracks nothing or HEAD is detached.
+    pub upstream: Option<String>,
+    pub commits: Vec<CommitInfo>,
+}
+
+/// One page of the commits the checked-out branch has already pushed: history reachable from its upstream, newest first.
+/// Without an upstream the page reports `upstream: None` and carries the HEAD history instead.
+pub fn pushed_history(path: &str, skip: usize, limit: usize) -> Result<HistoryPage, String> {
+    let repo = open_repository(path)?;
+    let Ok(head) = repo.head() else {
+        return Ok(HistoryPage { upstream: None, commits: Vec::new() });
+    };
+    let head_target = head.target();
+    let (upstream, target) = if head.is_branch() {
+        match git2::Branch::wrap(head).upstream() {
+            Ok(upstream) => (
+                upstream.get().shorthand().map(str::to_owned),
+                upstream.get().target(),
+            ),
+            Err(_) => (None, head_target),
+        }
+    } else {
+        (None, head_target)
+    };
+    let Some(target) = target else {
+        return Ok(HistoryPage { upstream, commits: Vec::new() });
+    };
+    let mut walk = repo
+        .revwalk()
+        .map_err(|error| format!("Could not open commit history: {error}"))?;
+    walk.push(target)
+        .map_err(|error| format!("Could not read branch history: {error}"))?;
+    let commits = collect_history(&repo, walk, skip, limit)?;
+    Ok(HistoryPage { upstream, commits })
+}
+
 fn collect_history(repo: &Repository, mut walk: git2::Revwalk, skip: usize, limit: usize) -> Result<Vec<CommitInfo>, String> {
     walk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)
         .map_err(|error| format!("Could not sort commit history: {error}"))?;
@@ -1914,6 +1953,56 @@ mod tests {
         }
 
         assert!(outgoing_commits(&path).expect("outgoing commits").is_empty());
+    }
+
+    fn track_upstream(path: &str, pushed: &str) -> String {
+        let repo = git2::Repository::open(path).expect("open repository");
+        let branch = repo.head().expect("head").shorthand().expect("branch name").to_owned();
+        repo.remote("origin", "https://example.invalid/yerminal-test.git").expect("add remote");
+        repo.reference(&format!("refs/remotes/origin/{branch}"), Oid::from_str(pushed).expect("oid"), true, "test upstream")
+            .expect("create remote-tracking ref");
+        let mut config = repo.config().expect("repository config");
+        config.set_str(&format!("branch.{branch}.remote"), "origin").expect("set remote");
+        config.set_str(&format!("branch.{branch}.merge"), &format!("refs/heads/{branch}")).expect("set merge");
+        format!("origin/{branch}")
+    }
+
+    #[test]
+    fn pushed_history_pages_only_commits_reachable_from_the_upstream() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "a.txt", "one\n");
+        let first = stage_and_commit(&path, "a.txt", "first pushed");
+        add_file(dir.path(), "b.txt", "two\n");
+        let second = stage_and_commit(&path, "b.txt", "second pushed");
+        add_file(dir.path(), "c.txt", "three\n");
+        let local = stage_and_commit(&path, "c.txt", "local only");
+        let upstream = track_upstream(&path, &second);
+
+        let first_page = pushed_history(&path, 0, 1).expect("first page");
+        assert_eq!(first_page.upstream.as_deref(), Some(upstream.as_str()));
+        let ids: Vec<&str> = first_page.commits.iter().map(|commit| commit.id.as_str()).collect();
+        assert_eq!(ids, vec![second.as_str()]);
+
+        let second_page = pushed_history(&path, 1, 20).expect("second page");
+        let ids: Vec<&str> = second_page.commits.iter().map(|commit| commit.id.as_str()).collect();
+        assert_eq!(ids, vec![first.as_str()]);
+        assert!(!ids.contains(&local.as_str()));
+
+        let past_end = pushed_history(&path, 2, 20).expect("page past the end");
+        assert!(past_end.commits.is_empty());
+    }
+
+    #[test]
+    fn pushed_history_without_upstream_reports_none_and_falls_back_to_head_history() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "a.txt", "one\n");
+        let only = stage_and_commit(&path, "a.txt", "local only");
+        let _ = dir;
+
+        let page = pushed_history(&path, 0, 20).expect("history without upstream");
+        assert_eq!(page.upstream, None);
+        let ids: Vec<&str> = page.commits.iter().map(|commit| commit.id.as_str()).collect();
+        assert_eq!(ids, vec![only.as_str()]);
     }
 
     #[test]

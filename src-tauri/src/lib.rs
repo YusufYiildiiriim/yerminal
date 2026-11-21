@@ -183,6 +183,11 @@ fn git_outgoing_commits(path: String) -> Result<Vec<CommitInfo>, String> {
 }
 
 #[tauri::command]
+fn git_pushed_history(path: String, skip: usize, limit: usize) -> Result<git::HistoryPage, String> {
+    git::pushed_history(&path, skip, limit)
+}
+
+#[tauri::command]
 fn git_branches(path: String) -> Result<Vec<BranchInfo>, String> {
     git::branches(&path)
 }
@@ -379,6 +384,7 @@ pub fn run() {
             git_diff,
             git_history,
             git_outgoing_commits,
+            git_pushed_history,
             git_branches,
             git_remote_state,
             git_fetch,
