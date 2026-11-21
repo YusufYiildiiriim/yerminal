@@ -52,6 +52,15 @@ describe("OutgoingCommits", () => {
     expect(onOpenFile).toHaveBeenCalledWith(commit, file);
   });
 
+  it("renders an opened commit's files inside a capped scroll box", async () => {
+    const user = userEvent.setup();
+    render(<OutgoingCommits repoPath="C:/repo" refreshKey={0} onError={vi.fn()} onOpenFile={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: /Add graph view/ }));
+    const list = await screen.findByRole("list", { name: "Changed files in aaaaaaaa" });
+    expect(list.closest(".gb-files-scroll")).not.toBeNull();
+  });
+
   it("reports a failed load through onError", async () => {
     const onError = vi.fn();
     invokeMock.mockImplementation(async (command: string) => {
