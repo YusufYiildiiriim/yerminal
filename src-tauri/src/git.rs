@@ -552,6 +552,30 @@ pub fn branch_history(path: &str, branch: &str, skip: usize, limit: usize) -> Re
     collect_history(&repo, walk, skip, limit)
 }
 
+/// Commits the checked-out branch has that its upstream does not (`git log @{u}..HEAD`), newest first.
+/// Empty when HEAD is detached or unborn, has no upstream, or is not ahead.
+pub fn outgoing_commits(path: &str) -> Result<Vec<CommitInfo>, String> {
+    const OUTGOING_LIMIT: usize = 100;
+    let repo = open_repository(path)?;
+    let Ok(head) = repo.head() else { return Ok(Vec::new()) };
+    if !head.is_branch() {
+        return Ok(Vec::new());
+    }
+    let local = git2::Branch::wrap(head);
+    let Ok(upstream) = local.upstream() else { return Ok(Vec::new()) };
+    let (Some(local_target), Some(upstream_target)) = (local.get().target(), upstream.get().target()) else {
+        return Ok(Vec::new());
+    };
+    let mut walk = repo
+        .revwalk()
+        .map_err(|error| format!("Could not open commit history: {error}"))?;
+    walk.push(local_target)
+        .map_err(|error| format!("Could not read branch history: {error}"))?;
+    walk.hide(upstream_target)
+        .map_err(|error| format!("Could not compare with upstream: {error}"))?;
+    collect_history(&repo, walk, 0, OUTGOING_LIMIT)
+}
+
 fn collect_history(repo: &Repository, mut walk: git2::Revwalk, skip: usize, limit: usize) -> Result<Vec<CommitInfo>, String> {
     walk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)
         .map_err(|error| format!("Could not sort commit history: {error}"))?;
@@ -1840,6 +1864,56 @@ mod tests {
         assert!(commits[0].parents.is_empty());
 
         assert!(dir.path().join(".git").exists());
+    }
+
+    #[test]
+    fn outgoing_commits_lists_only_commits_ahead_of_the_upstream() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "a.txt", "one\n");
+        let pushed = stage_and_commit(&path, "a.txt", "already pushed");
+        add_file(dir.path(), "b.txt", "two\n");
+        let first_local = stage_and_commit(&path, "b.txt", "local first");
+        add_file(dir.path(), "c.txt", "three\n");
+        let second_local = stage_and_commit(&path, "c.txt", "local second");
+
+        // Without an upstream there is nothing to push against.
+        assert!(outgoing_commits(&path).expect("outgoing without upstream").is_empty());
+
+        let repo = git2::Repository::open(dir.path()).expect("open repository");
+        let branch = repo.head().expect("head").shorthand().expect("branch name").to_owned();
+        repo.remote("origin", "https://example.invalid/yerminal-test.git").expect("add remote");
+        repo.reference(&format!("refs/remotes/origin/{branch}"), Oid::from_str(&pushed).expect("oid"), true, "test upstream")
+            .expect("create remote-tracking ref");
+        {
+            let mut config = repo.config().expect("repository config");
+            config.set_str(&format!("branch.{branch}.remote"), "origin").expect("set remote");
+            config.set_str(&format!("branch.{branch}.merge"), &format!("refs/heads/{branch}")).expect("set merge");
+        }
+
+        let outgoing = outgoing_commits(&path).expect("outgoing commits");
+        let ids: Vec<&str> = outgoing.iter().map(|commit| commit.id.as_str()).collect();
+        assert_eq!(ids, vec![second_local.as_str(), first_local.as_str()]);
+        assert_eq!(outgoing[0].message, "local second");
+        assert_eq!(outgoing[0].author, "Yerminal Test");
+    }
+
+    #[test]
+    fn outgoing_commits_is_empty_when_the_branch_is_in_sync() {
+        let (dir, path) = init_repo();
+        add_file(dir.path(), "a.txt", "one\n");
+        let head = stage_and_commit(&path, "a.txt", "shared");
+        let repo = git2::Repository::open(dir.path()).expect("open repository");
+        let branch = repo.head().expect("head").shorthand().expect("branch name").to_owned();
+        repo.remote("origin", "https://example.invalid/yerminal-test.git").expect("add remote");
+        repo.reference(&format!("refs/remotes/origin/{branch}"), Oid::from_str(&head).expect("oid"), true, "test upstream")
+            .expect("create remote-tracking ref");
+        {
+            let mut config = repo.config().expect("repository config");
+            config.set_str(&format!("branch.{branch}.remote"), "origin").expect("set remote");
+            config.set_str(&format!("branch.{branch}.merge"), &format!("refs/heads/{branch}")).expect("set merge");
+        }
+
+        assert!(outgoing_commits(&path).expect("outgoing commits").is_empty());
     }
 
     #[test]

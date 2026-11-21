@@ -261,6 +261,24 @@ describe("App user flows", () => {
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("read_workspace_text_file", expect.objectContaining({ path: `${rootPath.replace(/[\/]+$/, "")}/src/a.txt` })));
   });
 
+  it("lists commits ahead of the upstream in Git Changes and opens a picked file's commit diff", async () => {
+    const user = userEvent.setup();
+    const sha = "c".repeat(40);
+    seedWorkspace();
+    invokeMock.mockImplementation(async (command: string, args?: InvokeArgs) => {
+      if (command === "git_outgoing_commits") return [{ id: sha, shortId: "cccccccc", message: "Local change", author: "Yusuf", timestamp: 1700000000, parents: [], branches: [] }];
+      if (command === "git_commit_files") return [{ path: "notes.txt", kind: "modified" }];
+      return defaultInvokeResult(command, args);
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Git" }));
+    const region = await screen.findByRole("region", { name: "Outgoing commits" });
+    await user.click(within(region).getByRole("button", { name: /Local change/ }));
+    await user.click(await within(region).findByRole("button", { name: "notes.txt" }));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith(expect.stringMatching(/^git_commit_file_(diff|versions)$/), expect.objectContaining({ commitId: sha, filePath: "notes.txt" })));
+  });
+
   it("renders the commit button label as its own element so it can truncate in a narrow rail", async () => {
     seedWorkspace();
     render(<App />);
