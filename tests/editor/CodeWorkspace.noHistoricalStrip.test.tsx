@@ -37,10 +37,11 @@ describe("commit source view header", () => {
     expect(screen.queryByText("Modified in commit")).toBeNull();
   });
 
-  it("keeps the header path and read-only status bar badge", () => {
+  it("keeps the read-only state in the status bar instead of the removed info row", () => {
     renderCommitTab("text");
 
-    expect(document.querySelector(".code-editor-header-path")).toHaveTextContent("src/app.ts");
-    expect(document.querySelector(".code-editor-readonly")).toHaveTextContent("Read only");
+    expect(document.querySelector(".code-editor-header")).toBeNull();
+    expect(document.querySelector(".code-editor-readonly")).toBeNull();
+    expect(document.querySelector(".code-editor-statusbar")).toHaveTextContent("Read-only commit snapshot");
   });
 });
