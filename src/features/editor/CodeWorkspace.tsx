@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { MonacoCodeEditor } from "./MonacoCodeEditor";
-import { DEFAULT_LANGUAGES, detectEditorLanguage, type EditorLanguageId } from "./editorLanguages";
+import { DEFAULT_LANGUAGES, type EditorLanguageId } from "./editorLanguages";
 import type { AppSettings } from "../settings/SettingsDialog";
 import { DiffView } from "../git/DiffView";
 import type { DiffVersions } from "../git/diffEditorModel";
@@ -90,8 +90,6 @@ function normalizeNewlines(content: string | null): string {
 function EditorGroupPane({ enabledLanguages, fontFamily, fontSize, theme, layoutMode, groupStyle, dragging, resizing, onStartDrag, onMoveDrag, onEndDrag, onCancelDrag, onStartResize, onMoveResize, onEndResize, onCancelResize, onNudgeResize, group, groups, tabs, isActive, onSelect, onActivateGroup, onClose, onChange, onSave, onMoveTab, onCloseGroup }: EditorGroupPaneProps) {
   const groupTabs = group.tabIds.map((id) => tabs.find((tab) => tab.id === id)).filter((tab): tab is EditorFileTab => Boolean(tab));
   const activeTab = groupTabs.find((tab) => tab.id === group.activeTabId) ?? null;
-  const detected = activeTab ? detectEditorLanguage(activeTab.path) : null;
-  const language = detected && (detected.id === "plaintext" || enabledLanguages.includes(detected.id)) ? detected : { id: "plaintext", label: "Plain Text" };
   const isReadOnly = Boolean(activeTab?.sourceCommitId) || activeTab?.view === "diff";
   const isDirty = Boolean(activeTab && activeTab.content !== null && normalizeNewlines(activeTab.content) !== normalizeNewlines(activeTab.savedContent));
 
@@ -170,16 +168,6 @@ function EditorGroupPane({ enabledLanguages, fontFamily, fontSize, theme, layout
       {groupTabs.length === 0 && <span className="editor-tabs-empty">No open files</span>}
     </nav>
     {activeTab ? <>
-      <header className="code-editor-header">
-        {(() => { const display = editorDisplayPath(activeTab.root, activeTab.path); return <span className="code-editor-header-path" title={display.full}>{display.label}</span>; })()}
-        <div className="code-editor-meta">
-          <span>{language?.label ?? "Plain Text"}</span>
-          <span className="code-editor-source-label" title={activeTab.sourceLabel ?? "Workspace file"}>{activeTab.sourceLabel ?? "Workspace file"}</span>
-          {isReadOnly ? <span className="code-editor-readonly">Read only</span> : <>
-            <span className={"code-editor-editable-badge" + (isDirty ? " dirty" : "")}>{isDirty ? "Unsaved changes" : "Editable"}</span>
-          </>}
-        </div>
-      </header>
       <div className="code-editor-layout">
       <div className={"code-editor-content" + (activeTab.view === "diff" ? " is-diff" : " is-monaco")}>
         {activeTab.view === "diff" ? activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this diff</strong><span>{activeTab.error}</span></div> : <DiffView diff={activeTab.content ?? ""} path={activeTab.path} root={activeTab.root} staged={activeTab.diffStaged === true} sideLabel={activeTab.sourceCommitId ? activeTab.snapshot?.shortId ?? activeTab.sourceCommitId.slice(0, 8) : undefined} loading={activeTab.status === "loading"} emptyMessage="No diff available for this selection." versions={activeTab.diffVersions ?? null} enabledLanguages={enabledLanguages} theme={theme} fontFamily={fontFamily} fontSize={fontSize} /> : activeTab.status === "loading" ? <div className="code-editor-message" role="status"><span className="editor-loading-indicator" /><span>Loading file content…</span></div> : activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this file</strong><span>{activeTab.error}</span></div> : <MonacoCodeEditor key={activeTab.id} id={activeTab.id} path={activeTab.path} name={activeTab.name} value={activeTab.content ?? ""} readOnly={isReadOnly} enabledLanguages={enabledLanguages} fontFamily={fontFamily} fontSize={fontSize} theme={theme} onChange={(content) => onChange(activeTab.id, content)} onSave={() => onSave(activeTab.id)} />}
@@ -191,21 +179,6 @@ function EditorGroupPane({ enabledLanguages, fontFamily, fontSize, theme, layout
       </footer>
     </> : <div className="code-editor-empty"><div className="code-editor-empty-icon">⌘</div><h2>Open a file in this group</h2><p>Choose a file from the workspace explorer or Git history. It will open in this editor group.</p></div>}
   </section>;
-}
-
-// Folder name and the path relative to it for the editor header; the full path goes in the tooltip.
-export function editorDisplayPath(root: string, path: string): { label: string; full: string } {
-  const strip = (value: string) => value.replace(/^\\\\\?\\/, "");
-  const cleanRoot = strip(root).replace(/[\\/]+$/, "");
-  const cleanPath = strip(path);
-  const folder = cleanRoot.split(/[\\/]/).filter(Boolean).pop() ?? cleanRoot;
-  const separator = cleanRoot.includes("\\") ? "\\" : "/";
-  const isAbsolute = /^[a-zA-Z]:[\\/]/.test(cleanPath) || cleanPath.startsWith("/");
-  const full = isAbsolute ? cleanPath : cleanRoot + separator + cleanPath;
-  const relative = full.toLowerCase().startsWith(cleanRoot.toLowerCase() + separator.toLowerCase()) || full.toLowerCase().startsWith(cleanRoot.toLowerCase() + "/")
-    ? full.slice(cleanRoot.length + 1)
-    : cleanPath;
-  return { label: folder + " › " + relative, full };
 }
 
 export function CodeWorkspace({ workspaceId, settings, onChooseLanguages, onConfirmLanguages, tabs, groups, activeGroupId, onSelect, onActivateGroup, onClose, onChange, onSave, onMoveTab, onCloseGroup, onModeState }: CodeWorkspaceProps) {

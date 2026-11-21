@@ -79,9 +79,6 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .editor-group-move:disabled { opacity: .45; }
 .editor-group-close { width: 22px; height: 22px; border: 0; border-radius: 4px; background: transparent; color: #81828c; font-size: 14px; }
 .editor-group-close:hover { background: #30272d; color: #edb1b9; }
-.editor-group-pane .code-editor-header { align-items: flex-start; flex-direction: column; gap: 5px; padding: 7px 10px; }
-.editor-group-pane .code-editor-meta { max-width: 100%; flex-wrap: wrap; gap: 6px; }
-.editor-group-pane .code-editor-source-label { max-width: 120px; }
 .editor-file-tabs { height: 37px; flex: 0 0 37px; display: flex; align-items: stretch; overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid #292a31; background: #17181d; scrollbar-color: #45434f #15161a; scrollbar-width: thin; }
 .editor-file-tab { min-width: 120px; max-width: 220px; display: flex; align-items: stretch; border-right: 1px solid #282930; color: #9698a1; }
 .editor-file-tab.selected { background: #101114; color: #e8e7ee; box-shadow: inset 0 2px #b2a5ff; }
@@ -95,15 +92,6 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .editor-file-tab-close { width: 26px; flex: 0 0 26px; border: 0; background: transparent; color: #747680; font-size: 15px; }
 .editor-file-tab-close:hover { background: #2a2b31; color: #eee; }
 .editor-tabs-empty { display: flex; align-items: center; padding: 0 12px; color: #777984; font-size: 10px; }
-.code-editor-header { min-height: 39px; flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; border-bottom: 1px solid #23242a; background: #141519; }
-.code-editor-breadcrumb { min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; color: #777984; font: 10px "Cascadia Code", Consolas, monospace; white-space: nowrap; }
-.code-editor-breadcrumb strong { overflow: hidden; color: #c6c7d0; font-weight: 500; text-overflow: ellipsis; }
-.code-editor-separator { color: #555762; }
-.code-editor-meta { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; color: #858791; font-size: 9px; }
-.code-editor-source-label { max-width: 190px; overflow: hidden; color: #b3a7e4; text-overflow: ellipsis; white-space: nowrap; }
-.code-editor-readonly { padding: 3px 6px; border: 1px solid #32333a; border-radius: 4px; background: #1d1e23; color: #92949d; }
-.code-editor-editable-badge { padding: 3px 6px; border: 1px solid #334038; border-radius: 4px; background: #1c2520; color: #9cc8ab; }
-.code-editor-editable-badge.dirty { border-color: #61532e; background: #292519; color: #dcc884; }
 .code-editor-save { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border: 1px solid #5d508c; border-radius: 5px; background: #342e49; color: #dcd5ff; font-size: 9px; }
 .code-editor-save:hover:not(:disabled) { border-color: #8878c4; background: #433a5d; }
 .code-editor-save:disabled { border-color: #34343c; background: #202126; color: #62646d; cursor: default; }

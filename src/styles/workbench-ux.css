@@ -29,10 +29,6 @@
 .app-shell[data-theme] .editor-file-tab-readonly-mark { font-size: 11px; }
 .app-shell[data-theme] .editor-file-tab.selected { box-shadow: inset 0 2px var(--theme-accent); }
 .app-shell[data-theme] .editor-tabs-empty { color: var(--theme-muted); font-size: 12px; }
-.app-shell[data-theme] .editor-group-pane .code-editor-header { padding: 8px 12px; }
-.app-shell[data-theme] .code-editor-breadcrumb { max-width: 100%; color: var(--theme-muted); font: 12px "Segoe UI", sans-serif; }
-.app-shell[data-theme] .code-editor-breadcrumb strong { color: var(--theme-text); }
-.app-shell[data-theme] .code-editor-meta { min-width: 0; font-size: 12px; color: var(--theme-muted); }
 .app-shell[data-theme] .code-editor-save { min-height: 28px; font-size: 12px; }
 .app-shell[data-theme] .code-editor-save kbd { font-size: 10px; }
 .app-shell[data-theme] .code-editor-message { color: var(--theme-muted); font-size: 13px; }
@@ -60,7 +56,6 @@
 @media (max-width: 900px) {
   .app-shell[data-theme] .terminal-toolbar { grid-template-columns: minmax(36px, 1fr) auto minmax(36px, 1fr); }
   .app-shell[data-theme] .editor-groups-toolbar { padding-inline: 8px; }
-  .app-shell[data-theme] .code-editor-meta { flex-wrap: wrap; }
   .app-shell[data-theme] .statusbar { gap: 10px; overflow-x: auto; white-space: nowrap; }
 }
 
@@ -189,26 +184,6 @@
 .app-shell[data-theme] .editor-file-tabs { height: 36px; flex-basis: 36px; }
 .app-shell[data-theme] .editor-file-tab { min-width: 112px; }
 .app-shell[data-theme] .editor-file-tab-select { gap: 6px; padding-inline: 8px; font-size: 12px; }
-.app-shell[data-theme] .editor-group-pane .code-editor-header {
-  height: 32px;
-  min-height: 32px;
-  flex: 0 0 32px;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 0 8px;
-}
-.app-shell[data-theme] .code-editor-meta {
-  width: 100%;
-  min-width: 0;
-  flex: 1 1 auto;
-  flex-wrap: nowrap;
-  justify-content: flex-end;
-  gap: 8px;
-  font-size: 10px;
-}
-.app-shell[data-theme] .code-editor-source-label { max-width: 150px; font-size: 10px; }
-.app-shell[data-theme] .code-editor-editable-badge,
-.app-shell[data-theme] .code-editor-readonly { padding: 2px 6px; font-size: 9px; white-space: nowrap; }
 .app-shell[data-theme] .code-editor-save { min-height: 23px; gap: 5px; padding: 2px 7px; font-size: 10px; white-space: nowrap; }
 .app-shell[data-theme] .code-editor-save kbd { font-size: 8px; }
 .app-shell[data-theme] .code-editor-statusbar {
@@ -240,8 +215,6 @@
 .app-shell[data-theme] .code-editor-minimap-window { cursor: grab; }
 .app-shell[data-theme] .code-editor-minimap:active .code-editor-minimap-window { cursor: grabbing; }
 @media (max-width: 900px) {
-  .app-shell[data-theme] .code-editor-meta { flex-wrap: nowrap; gap: 5px; font-size: 9px; }
-  .app-shell[data-theme] .code-editor-source-label { max-width: 92px; }
   .app-shell[data-theme] .code-editor-statusbar { gap: 6px; }
 }
 
