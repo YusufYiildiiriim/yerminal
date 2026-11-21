@@ -67,6 +67,30 @@ describe("SettingsDialog agent usage", () => {
   });
 });
 
+describe("SettingsDialog editor minimap", () => {
+  afterEach(cleanup);
+
+  it("turns the editor minimap off from the Editor section and back on", async () => {
+    const user = userEvent.setup();
+    const onSettingsChange = vi.fn();
+    render(<SettingsDialog settings={{ ...settings, editorMinimap: true }} shortcuts={[]} onSettingsChange={onSettingsChange} onClose={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /Editor/ }));
+
+    const toggle = screen.getByRole("checkbox", { name: "Editor minimap" });
+    expect(toggle).toBeChecked();
+    await user.click(toggle);
+    expect(onSettingsChange).toHaveBeenLastCalledWith({ ...settings, editorMinimap: false });
+  });
+
+  it("shows the minimap as on when the stored setting is missing", async () => {
+    const user = userEvent.setup();
+    render(<SettingsDialog settings={settings} shortcuts={[]} onSettingsChange={vi.fn()} onClose={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /Editor/ }));
+
+    expect(screen.getByRole("checkbox", { name: "Editor minimap" })).toBeChecked();
+  });
+});
+
 describe("SettingsDialog layout", () => {
   afterEach(cleanup);
 

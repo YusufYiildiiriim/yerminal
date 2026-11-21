@@ -758,6 +758,15 @@ describe("Stored settings and workspace migration", () => {
     });
   });
 
+  it("keeps the editor minimap on by default and persists a stored off choice", async () => {
+    const first = render(<App />);
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("yerminal.app-settings.v1") ?? "{}")).toMatchObject({ editorMinimap: true }));
+    first.unmount();
+    localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({ editorMinimap: false }));
+    render(<App />);
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("yerminal.app-settings.v1") ?? "{}")).toMatchObject({ editorMinimap: false }));
+  });
+
   it("clamps stored sizes between 32 and 40px down to 32px for the editor and the terminal", async () => {
     localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({ editorFontSize: 36, terminalFontSize: 40 }));
     render(<App />);

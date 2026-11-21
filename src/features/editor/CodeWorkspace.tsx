@@ -58,6 +58,7 @@ type EditorGroupPaneProps = {
   enabledLanguages: readonly EditorLanguageId[];
   fontFamily: string;
   fontSize: number;
+  minimap: boolean;
   theme: AppSettings["theme"];
   layoutMode: EditorLayoutMode;
   groupStyle: CSSProperties;
@@ -89,7 +90,7 @@ function normalizeNewlines(content: string | null): string {
   return (content ?? "").replace(/\r\n/g, "\n");
 }
 
-function EditorGroupPane({ enabledLanguages, fontFamily, fontSize, theme, layoutMode, groupStyle, dragging, resizing, onStartDrag, onMoveDrag, onEndDrag, onCancelDrag, onStartResize, onMoveResize, onEndResize, onCancelResize, onNudgeResize, group, groups, tabs, isActive, onSelect, onActivateGroup, onClose, onChange, onSave, onMoveTab, onCloseGroup }: EditorGroupPaneProps) {
+function EditorGroupPane({ enabledLanguages, fontFamily, fontSize, minimap, theme, layoutMode, groupStyle, dragging, resizing, onStartDrag, onMoveDrag, onEndDrag, onCancelDrag, onStartResize, onMoveResize, onEndResize, onCancelResize, onNudgeResize, group, groups, tabs, isActive, onSelect, onActivateGroup, onClose, onChange, onSave, onMoveTab, onCloseGroup }: EditorGroupPaneProps) {
   const groupTabs = group.tabIds.map((id) => tabs.find((tab) => tab.id === id)).filter((tab): tab is EditorFileTab => Boolean(tab));
   const activeTab = groupTabs.find((tab) => tab.id === group.activeTabId) ?? null;
   const isReadOnly = Boolean(activeTab?.sourceCommitId) || activeTab?.view === "diff";
@@ -187,7 +188,7 @@ function EditorGroupPane({ enabledLanguages, fontFamily, fontSize, theme, layout
     {activeTab ? <>
       <div className="code-editor-layout">
       <div className={"code-editor-content" + (activeTab.view === "diff" ? " is-diff" : " is-monaco")}>
-        {activeTab.view === "diff" ? activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this diff</strong><span>{activeTab.error}</span></div> : <DiffView diff={activeTab.content ?? ""} path={activeTab.path} root={activeTab.root} staged={activeTab.diffStaged === true} sideLabel={activeTab.sourceCommitId ? activeTab.snapshot?.shortId ?? activeTab.sourceCommitId.slice(0, 8) : undefined} loading={activeTab.status === "loading"} emptyMessage="No diff available for this selection." versions={activeTab.diffVersions ?? null} enabledLanguages={enabledLanguages} theme={theme} fontFamily={fontFamily} fontSize={fontSize} /> : activeTab.status === "loading" ? <div className="code-editor-message" role="status"><span className="editor-loading-indicator" /><span>Loading file content…</span></div> : activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this file</strong><span>{activeTab.error}</span></div> : <MonacoCodeEditor key={activeTab.id} id={activeTab.id} path={activeTab.path} name={activeTab.name} value={activeTab.content ?? ""} readOnly={isReadOnly} enabledLanguages={enabledLanguages} fontFamily={fontFamily} fontSize={fontSize} theme={theme} onChange={(content) => onChange(activeTab.id, content)} onSave={() => onSave(activeTab.id)} />}
+        {activeTab.view === "diff" ? activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this diff</strong><span>{activeTab.error}</span></div> : <DiffView diff={activeTab.content ?? ""} path={activeTab.path} root={activeTab.root} staged={activeTab.diffStaged === true} sideLabel={activeTab.sourceCommitId ? activeTab.snapshot?.shortId ?? activeTab.sourceCommitId.slice(0, 8) : undefined} loading={activeTab.status === "loading"} emptyMessage="No diff available for this selection." versions={activeTab.diffVersions ?? null} enabledLanguages={enabledLanguages} theme={theme} fontFamily={fontFamily} fontSize={fontSize} /> : activeTab.status === "loading" ? <div className="code-editor-message" role="status"><span className="editor-loading-indicator" /><span>Loading file content…</span></div> : activeTab.status === "error" ? <div className="code-editor-message code-editor-error" role="alert"><span className="code-editor-message-icon">!</span><strong>Could not open this file</strong><span>{activeTab.error}</span></div> : <MonacoCodeEditor key={activeTab.id} id={activeTab.id} path={activeTab.path} name={activeTab.name} value={activeTab.content ?? ""} readOnly={isReadOnly} enabledLanguages={enabledLanguages} fontFamily={fontFamily} fontSize={fontSize} minimap={minimap} theme={theme} onChange={(content) => onChange(activeTab.id, content)} onSave={() => onSave(activeTab.id)} />}
       </div>
       </div>
       <footer className="code-editor-statusbar" aria-live="polite">
@@ -216,6 +217,7 @@ export function CodeWorkspace({ workspaceId, settings, onChooseLanguages, onConf
         enabledLanguages={settings?.enabledLanguages ?? DEFAULT_LANGUAGES}
         fontFamily={settings?.editorFontFamily ?? '"Cascadia Code", Consolas, monospace'}
         fontSize={settings?.editorFontSize ?? 13}
+        minimap={settings?.editorMinimap !== false}
         theme={settings?.theme ?? "obsidian"}
         layoutMode={layout.mode}
         groupStyle={layout.getWindowStyle(group.id)}

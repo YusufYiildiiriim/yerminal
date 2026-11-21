@@ -8,7 +8,7 @@ import "./monaco-editor.css";
 
 export type MonacoCodeEditorProps = {
   id: string; path: string; name: string; value: string; readOnly: boolean;
-  enabledLanguages: readonly EditorLanguageId[]; fontFamily: string; fontSize: number; theme: ThemeId;
+  enabledLanguages: readonly EditorLanguageId[]; fontFamily: string; fontSize: number; theme: ThemeId; minimap?: boolean;
   onChange: (value: string) => void; onSave: () => void;
 };
 type MountedEditor = { runtime: MonacoRuntime; model: editor.ITextModel; editor: editor.IStandaloneCodeEditor };
@@ -35,7 +35,7 @@ export function MonacoCodeEditor(props: MonacoCodeEditorProps) {
       model.updateOptions({ tabSize: 4, insertSpaces: true });
       let instance: editor.IStandaloneCodeEditor;
       try {
-        instance = monaco.editor.create(host.current, { model, automaticLayout: true, readOnly: current.readOnly, ariaLabel: (current.readOnly ? "Contents of " : "Edit ") + current.name, fontFamily: current.fontFamily, fontSize: current.fontSize, minimap: { enabled: true }, scrollBeyondLastLine: false, wordBasedSuggestions: "currentDocument", padding: { top: 12 }, theme: "vs-dark" });
+        instance = monaco.editor.create(host.current, { model, automaticLayout: true, readOnly: current.readOnly, ariaLabel: (current.readOnly ? "Contents of " : "Edit ") + current.name, fontFamily: current.fontFamily, fontSize: current.fontSize, minimap: { enabled: current.minimap !== false }, scrollBeyondLastLine: false, wordBasedSuggestions: "currentDocument", padding: { top: 12 }, theme: "vs-dark" });
       } catch (reason) { model.dispose(); throw reason; }
       const changes = instance.onDidChangeModelContent(() => {
         if (!applying.current && !latest.current.readOnly) latest.current.onChange(model.getValue());
@@ -57,9 +57,9 @@ export function MonacoCodeEditor(props: MonacoCodeEditorProps) {
 
   useEffect(() => {
     if (!mounted) return;
-    mounted.editor.updateOptions({ fontFamily: props.fontFamily, fontSize: props.fontSize, readOnly: props.readOnly, ariaLabel: (props.readOnly ? "Contents of " : "Edit ") + props.name });
+    mounted.editor.updateOptions({ fontFamily: props.fontFamily, fontSize: props.fontSize, readOnly: props.readOnly, minimap: { enabled: props.minimap !== false }, ariaLabel: (props.readOnly ? "Contents of " : "Edit ") + props.name });
     applyYerminalTheme(mounted.runtime.monaco, host.current, props.theme);
-  }, [mounted, props.fontFamily, props.fontSize, props.readOnly, props.name, props.theme]);
+  }, [mounted, props.fontFamily, props.fontSize, props.readOnly, props.name, props.theme, props.minimap]);
 
   useEffect(() => {
     if (!mounted) return;

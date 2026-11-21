@@ -58,6 +58,15 @@ describe("Monaco editor lifecycle", () => {
     await waitFor(() => expect(runtime.create).toHaveBeenCalled());
     expect(runtime.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ minimap: { enabled: true } }));
   });
+  it("creates the editor with the minimap setting and applies later changes to the open editor", async () => {
+    const view = render(<MonacoCodeEditor {...base} minimap={false} />);
+    await waitFor(() => expect(runtime.create).toHaveBeenCalled());
+    expect(runtime.create).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ minimap: { enabled: false } }));
+    view.rerender(<MonacoCodeEditor {...base} minimap />);
+    expect(runtime.instance.updateOptions).toHaveBeenLastCalledWith(expect.objectContaining({ minimap: { enabled: true } }));
+    view.rerender(<MonacoCodeEditor {...base} minimap={false} />);
+    expect(runtime.instance.updateOptions).toHaveBeenLastCalledWith(expect.objectContaining({ minimap: { enabled: false } }));
+  });
   it("shows an actionable error when the editor fails to load", async () => {
     runtime.load.mockRejectedValueOnce(new Error("chunk unavailable"));
     render(<MonacoCodeEditor {...base} />);
