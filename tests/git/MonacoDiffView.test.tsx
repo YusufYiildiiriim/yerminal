@@ -1,7 +1,15 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const runtime = vi.hoisted(() => ({ load: vi.fn(), instance: null as any, monaco: null as any, languages: null as any }));
+const nav = vi.hoisted(() => ({
+  changes: [] as Array<{ modifiedStartLineNumber: number; modifiedEndLineNumber: number }>,
+  cursor: { lineNumber: 1, column: 1 },
+  onCursor: null as null | (() => void),
+  onUpdate: null as null | (() => void),
+  commands: new Map<number, () => void>(),
+}));
 vi.mock("../../src/features/editor/monacoRuntime", () => ({ loadMonaco: runtime.load }));
 import { DiffView } from "../../src/features/git/DiffView";
 
@@ -10,7 +18,25 @@ const versions = { original: "old value\nkeep\n", modified: "new value\nkeep\n",
 const fakeModel = (value: string) => ({ value, dispose: vi.fn() });
 
 beforeEach(() => {
-  runtime.instance = { setModel: vi.fn(), updateOptions: vi.fn(), dispose: vi.fn() };
+  nav.changes = [];
+  nav.cursor = { lineNumber: 1, column: 1 };
+  nav.onCursor = null;
+  nav.onUpdate = null;
+  nav.commands.clear();
+  const modifiedEditor = {
+    getPosition: vi.fn(() => nav.cursor),
+    setPosition: vi.fn(),
+    onDidChangeCursorPosition: vi.fn((callback: () => void) => { nav.onCursor = callback; return { dispose: vi.fn() }; }),
+    addCommand: vi.fn((key: number, handler: () => void) => { nav.commands.set(key, handler); }),
+  };
+  runtime.instance = {
+    setModel: vi.fn(), updateOptions: vi.fn(), dispose: vi.fn(),
+    revealFirstDiff: vi.fn(() => { nav.cursor = { lineNumber: nav.changes[0]?.modifiedStartLineNumber ?? 1, column: 1 }; nav.onCursor?.(); }),
+    goToDiff: vi.fn(),
+    getLineChanges: vi.fn(() => nav.changes),
+    getModifiedEditor: vi.fn(() => modifiedEditor),
+    onDidUpdateDiff: vi.fn((callback: () => void) => { nav.onUpdate = callback; return { dispose: vi.fn() }; }),
+  };
   runtime.monaco = {
     editor: {
       createModel: vi.fn((value: string) => fakeModel(value)),
@@ -20,6 +46,8 @@ beforeEach(() => {
       setTheme: vi.fn(),
     },
     Uri: { parse: (value: string) => value },
+    KeyMod: { Alt: 512, Shift: 1024 },
+    KeyCode: { F5: 62 },
   };
   runtime.languages = { setEnabled: vi.fn(), ensure: vi.fn(async () => "typescript") };
   runtime.load.mockResolvedValue({ monaco: runtime.monaco, languages: runtime.languages });
@@ -97,5 +125,65 @@ describe("DiffView with full file versions", () => {
     render(<DiffView diff={patch} path="src/app.ts" root="repo" staged={false} versions={versions} />);
     expect(await screen.findByText("new value")).toBeInTheDocument();
     expect(document.querySelector(".diff-view-cell.added")).toBeInTheDocument();
+  });
+});
+
+describe("DiffView change navigation", () => {
+  const altF5 = 512 | 62;
+  const shiftAltF5 = 512 | 1024 | 62;
+
+  it("opens on the first change instead of the top of the file", async () => {
+    nav.changes = [{ modifiedStartLineNumber: 5, modifiedEndLineNumber: 6 }, { modifiedStartLineNumber: 9, modifiedEndLineNumber: 9 }];
+    render(renderDiff());
+    await waitFor(() => expect(runtime.instance.revealFirstDiff).toHaveBeenCalledOnce());
+    expect(await screen.findByText("1 / 2")).toBeInTheDocument();
+  });
+
+  it("moves to the next and previous change with the buttons", async () => {
+    nav.changes = [{ modifiedStartLineNumber: 5, modifiedEndLineNumber: 6 }, { modifiedStartLineNumber: 9, modifiedEndLineNumber: 9 }];
+    render(renderDiff());
+    await screen.findByText("1 / 2");
+    const next = screen.getByRole("button", { name: "Next change" });
+    const previous = screen.getByRole("button", { name: "Previous change" });
+    expect(next).toBeEnabled();
+    expect(previous).toBeEnabled();
+    await act(async () => { next.click(); });
+    expect(runtime.instance.goToDiff).toHaveBeenLastCalledWith("next");
+    await act(async () => { previous.click(); });
+    expect(runtime.instance.goToDiff).toHaveBeenLastCalledWith("previous");
+  });
+
+  it("follows the cursor so the position reads 2 / 2 after moving to the last change", async () => {
+    nav.changes = [{ modifiedStartLineNumber: 5, modifiedEndLineNumber: 6 }, { modifiedStartLineNumber: 9, modifiedEndLineNumber: 9 }];
+    render(renderDiff());
+    await screen.findByText("1 / 2");
+    nav.cursor = { lineNumber: 9, column: 1 };
+    act(() => { nav.onCursor?.(); });
+    expect(screen.getByText("2 / 2")).toBeInTheDocument();
+  });
+
+  it("binds Alt+F5 and Shift+Alt+F5 to next and previous change", async () => {
+    nav.changes = [{ modifiedStartLineNumber: 5, modifiedEndLineNumber: 6 }];
+    render(renderDiff());
+    await waitFor(() => expect(nav.commands.size).toBe(2));
+    act(() => { nav.commands.get(altF5)?.(); });
+    expect(runtime.instance.goToDiff).toHaveBeenLastCalledWith("next");
+    act(() => { nav.commands.get(shiftAltF5)?.(); });
+    expect(runtime.instance.goToDiff).toHaveBeenLastCalledWith("previous");
+  });
+
+  it("disables the change buttons and reads 0 / 0 when the diff has no change ranges", async () => {
+    render(renderDiff());
+    await waitFor(() => expect(runtime.instance.setModel).toHaveBeenCalled());
+    expect(screen.getByText("0 / 0")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next change" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Previous change" })).toBeDisabled();
+  });
+
+  it("keeps the Monaco host below the navigation bar instead of covering it", () => {
+    const css = readFileSync("src/features/editor/monaco-editor.css", "utf8");
+    const host = css.match(/\.diff-monaco\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(host).not.toMatch(/position:\s*absolute/);
+    expect(css).toMatch(/\.diff-monaco-nav\s*\{[^}]*display:\s*flex/);
   });
 });
