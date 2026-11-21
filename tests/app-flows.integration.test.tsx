@@ -410,6 +410,67 @@ describe("Closing editor tabs", () => {
     expect(editor).toHaveValue("keep me");
   });
 
+  async function openNotesAndMain(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole("button", { name: "Expand src" }));
+    await user.click(await screen.findByRole("button", { name: /main/ }));
+    await screen.findByRole("tab", { name: /main\.ts/ });
+  }
+
+  it("Close All asks before discarding a dirty tab, keeps it when cancelled, and still closes the clean ones", async () => {
+    const user = userEvent.setup();
+    seedWorkspace();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<App />);
+    openEditorTool();
+
+    const editor = await openNotesAndEdit(user, "keep me");
+    await openNotesAndMain(user);
+    fireEvent.contextMenu(screen.getByRole("tab", { name: /main\.ts/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Close All" }));
+
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm).toHaveBeenCalledWith("Discard unsaved changes to notes.txt?");
+    expect(editor).toHaveValue("keep me");
+    expect(screen.queryByRole("tab", { name: /main\.ts/ })).toBeNull();
+    expect(screen.getByRole("tab", { name: /notes\.txt/ })).toBeInTheDocument();
+  });
+
+  it("Close All discards a dirty tab after confirmation and leaves the group empty", async () => {
+    const user = userEvent.setup();
+    seedWorkspace();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<App />);
+    openEditorTool();
+
+    await openNotesAndEdit(user, "throw away");
+    await openNotesAndMain(user);
+    fireEvent.contextMenu(screen.getByRole("tab", { name: /notes\.txt/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Close All" }));
+
+    expect(confirm).toHaveBeenCalledWith("Discard unsaved changes to notes.txt?");
+    expect(screen.queryByRole("tab", { name: /notes\.txt/ })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /main\.ts/ })).toBeNull();
+    expect(screen.getByText("No open files")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Open a file in this group" })).toBeInTheDocument();
+  });
+
+  it("Close Others keeps the clicked tab active and asks before discarding the dirty tab it closes", async () => {
+    const user = userEvent.setup();
+    seedWorkspace();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<App />);
+    openEditorTool();
+
+    await openNotesAndEdit(user, "throw away");
+    await openNotesAndMain(user);
+    fireEvent.contextMenu(screen.getByRole("tab", { name: /main\.ts/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Close Others" }));
+
+    expect(confirm).toHaveBeenCalledWith("Discard unsaved changes to notes.txt?");
+    expect(screen.queryByRole("tab", { name: /notes\.txt/ })).toBeNull();
+    expect(screen.getByRole("tab", { name: /main\.ts/ })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("asks before closing a tab whose save is still in flight, even if its text matches the baseline", async () => {
     const user = userEvent.setup();
     seedWorkspace();
