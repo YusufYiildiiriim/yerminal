@@ -279,6 +279,27 @@ describe("App user flows", () => {
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith(expect.stringMatching(/^git_commit_file_(diff|versions)$/), expect.objectContaining({ commitId: sha, filePath: "notes.txt" })));
   });
 
+  it("shows History in Git Changes even with no outgoing commits and opens a pushed commit's file", async () => {
+    const user = userEvent.setup();
+    const sha = "d".repeat(40);
+    seedWorkspace();
+    invokeMock.mockImplementation(async (command: string, args?: InvokeArgs) => {
+      if (command === "git_outgoing_commits") return [];
+      if (command === "git_pushed_history") return { upstream: "origin/main", commits: [{ id: sha, shortId: "dddddddd", message: "Pushed change", author: "Test User", timestamp: 1700000000, parents: [], branches: [] }] };
+      if (command === "git_commit_files") return [{ path: "old.txt", kind: "modified" }];
+      return defaultInvokeResult(command, args);
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Git" }));
+    const history = await screen.findByRole("region", { name: "History" });
+    expect(screen.queryByRole("region", { name: "Outgoing commits" })).not.toBeInTheDocument();
+    await user.click(within(history).getByRole("button", { name: /^History/ }));
+    await user.click(await within(history).findByText("Pushed change"));
+    await user.click(await within(history).findByRole("button", { name: "old.txt" }));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith(expect.stringMatching(/^git_commit_file_(diff|versions)$/), expect.objectContaining({ commitId: sha, filePath: "old.txt" })));
+  });
+
   it("renders the commit button label as its own element so it can truncate in a narrow rail", async () => {
     seedWorkspace();
     render(<App />);

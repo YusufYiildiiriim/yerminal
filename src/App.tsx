@@ -10,6 +10,7 @@ import type { DiffVersions } from "./features/git/diffEditorModel";
 import { BranchPicker } from "./features/git/BranchPicker";
 import { SyncBar } from "./features/git/SyncBar";
 import { OutgoingCommits } from "./features/git/OutgoingCommits";
+import { HistorySection } from "./features/git/HistorySection";
 import { readCollapsedRepos, repoExpansionKey, setRepoExpanded, writeCollapsedRepos } from "./features/git/repoExpansion";
 import { classifyToast, type ToastKind } from "./toastKind";
 import { baseName, buildChangeTree, type ChangeTreeNode } from "./features/git/changeTree";
@@ -2248,6 +2249,7 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenD
       <div className="git-repository-branch-row"><BranchPicker repoPath={repoPath} currentBranch={repoInfo.branch} onChanged={onBranchChanged} onError={onError} /></div>
       <SyncBar repoPath={repoPath} refreshKey={syncNonce + refreshNonce} onChanged={onBranchChanged} onError={onError} />
       <OutgoingCommits repoPath={repoPath} refreshKey={syncNonce + refreshNonce} onError={onError} onOpenFile={(commit, file) => onOpenCommitFile(repoInfo.root, commit, file)} />
+      <HistorySection repoPath={repoPath} repoKey={expansionKey} branch={repoInfo.branch} refreshKey={syncNonce + refreshNonce} onError={onError} onOpenFile={(commit, file) => onOpenCommitFile(repoInfo.root, commit, file)} />
       <MergeConflicts repoPath={repoPath} merging={repoInfo.state === "merge in progress"} conflicts={conflictedPaths} onChanged={onBranchChanged} onError={onError} onOpenFile={(relativePath) => onOpenFile(repoInfo.root, relativePath)} />
       {changes.length > 0 && <section className="git-commit-box" aria-label="Commit staged changes">
         <textarea aria-label="Commit message" placeholder="Message (required)" rows={2} maxLength={65536} value={commitMessage} onChange={(event) => setCommitMessage(event.currentTarget.value)} />
