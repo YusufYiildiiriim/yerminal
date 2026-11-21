@@ -49,22 +49,22 @@ describe("editor tab context menu", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
-  it("Close Others closes every other tab in order and keeps the clicked one", () => {
+  it("Close Others closes every other tab in order and keeps the clicked one", async () => {
     const onClose = renderStrip(["a", "b", "c"]);
 
     fireEvent.contextMenu(tabButton("b"));
     fireEvent.click(menuItem("Close Others"));
 
-    expect(onClose.mock.calls.map(([id]) => id)).toEqual(["a", "c"]);
+    await waitFor(() => expect(onClose.mock.calls.map(([id]) => id)).toEqual(["a", "c"]));
   });
 
-  it("Close All closes every tab in the group in order", () => {
+  it("Close All closes every tab in the group in order", async () => {
     const onClose = renderStrip(["a", "b", "c"]);
 
     fireEvent.contextMenu(tabButton("b"));
     fireEvent.click(menuItem("Close All"));
 
-    expect(onClose.mock.calls.map(([id]) => id)).toEqual(["a", "b", "c"]);
+    await waitFor(() => expect(onClose.mock.calls.map(([id]) => id)).toEqual(["a", "b", "c"]));
   });
 
   it("disables Close Others when only one tab is open, and a click does nothing", () => {
@@ -77,7 +77,7 @@ describe("editor tab context menu", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it("on the empty strip, Close and Close Others are disabled and Close All closes the group", () => {
+  it("on the empty strip, Close and Close Others are disabled and Close All closes the group", async () => {
     const onClose = renderStrip(["a", "b"]);
 
     fireEvent.contextMenu(document.querySelector(".editor-file-tabs") as HTMLElement);
@@ -86,7 +86,7 @@ describe("editor tab context menu", () => {
     expect(menuItem("Close Others")).toBeDisabled();
     expect(menuItem("Close All")).toBeEnabled();
     fireEvent.click(menuItem("Close All"));
-    expect(onClose.mock.calls.map(([id]) => id)).toEqual(["a", "b"]);
+    await waitFor(() => expect(onClose.mock.calls.map(([id]) => id)).toEqual(["a", "b"]));
   });
 
   it("Escape closes the menu without closing any tab", () => {

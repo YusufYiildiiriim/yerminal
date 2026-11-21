@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { Fragment, useCallback, useEffect, useState, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { MonacoCodeEditor } from "./MonacoCodeEditor";
 import { DEFAULT_LANGUAGES, type EditorLanguageId } from "./editorLanguages";
@@ -6,6 +6,8 @@ import type { AppSettings } from "../settings/SettingsDialog";
 import { DiffView } from "../git/DiffView";
 import type { DiffVersions } from "../git/diffEditorModel";
 import { useFloatingEditorLayout, type EditorLayoutMode, type EditorResizeDirection } from "./floatingEditorLayout";
+import { PointerMenu, type PointerMenuTarget } from "../workspace/PointerMenu";
+import { editorTabMenuItems } from "./editorTabMenu";
 import "./floating-editor-layout.css";
 
 export type EditorFileTab = {
@@ -44,7 +46,7 @@ type CodeWorkspaceProps = {
   activeGroupId: string;
   onSelect: (groupId: string, tabId: string) => void;
   onActivateGroup: (groupId: string) => void;
-  onClose: (tabId: string) => void;
+  onClose: (tabId: string) => void | Promise<void>;
   onChange: (tabId: string, content: string) => void;
   onSave: (tabId: string) => void;
   onMoveTab: (tabId: string, groupId: string) => void;
@@ -76,7 +78,7 @@ type EditorGroupPaneProps = {
   isActive: boolean;
   onSelect: (groupId: string, tabId: string) => void;
   onActivateGroup: (groupId: string) => void;
-  onClose: (tabId: string) => void;
+  onClose: (tabId: string) => void | Promise<void>;
   onChange: (tabId: string, content: string) => void;
   onSave: (tabId: string) => void;
   onMoveTab: (tabId: string, groupId: string) => void;
@@ -92,6 +94,20 @@ function EditorGroupPane({ enabledLanguages, fontFamily, fontSize, theme, layout
   const activeTab = groupTabs.find((tab) => tab.id === group.activeTabId) ?? null;
   const isReadOnly = Boolean(activeTab?.sourceCommitId) || activeTab?.view === "diff";
   const isDirty = Boolean(activeTab && activeTab.content !== null && normalizeNewlines(activeTab.content) !== normalizeNewlines(activeTab.savedContent));
+  const [tabMenu, setTabMenu] = useState<PointerMenuTarget | null>(null);
+  const closeTabMenu = useCallback(() => setTabMenu(null), []);
+  // One at a time: each close can stop at its own unsaved-changes prompt, and a cancelled prompt must not skip the rest.
+  const closeTabs = async (tabIds: readonly string[]) => {
+    for (const tabId of tabIds) await onClose(tabId);
+  };
+  const openTabMenu = (event: ReactMouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const tabElement = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-tab-id]") : null;
+    const tabId = tabElement?.dataset.tabId ?? null;
+    const groupTabIds = groupTabs.map((tab) => tab.id);
+    setTabMenu({ x: event.clientX, y: event.clientY, label: "Editor tab actions", items: editorTabMenuItems({ tabId, groupTabIds }, { closeTabs }) });
+  };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     const resizeHandle = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>(".editor-group-resize-handle") : null;
@@ -155,8 +171,9 @@ function EditorGroupPane({ enabledLanguages, fontFamily, fontSize, theme, layout
         {groups.length > 1 && <button className="editor-group-close" type="button" title={"Close " + group.name + " and move its tabs"} aria-label={"Close " + group.name + " and move its tabs"} onClick={() => onCloseGroup(group.id)}>×</button>}
       </div>
     </header>}
-    <nav className="editor-file-tabs" role="tablist" aria-label={group.name + " open files"}>
-      {groupTabs.map((tab) => <div className={"editor-file-tab" + (group.activeTabId === tab.id ? " selected" : "")} key={tab.id} onMouseDown={(event) => { if (event.button === 1) event.preventDefault(); }} onAuxClick={(event) => { if (event.button !== 1) return; event.preventDefault(); event.stopPropagation(); onClose(tab.id); }}>
+    <PointerMenu target={tabMenu} onClose={closeTabMenu} />
+    <nav className="editor-file-tabs" role="tablist" aria-label={group.name + " open files"} onContextMenu={openTabMenu}>
+      {groupTabs.map((tab) => <div className={"editor-file-tab" + (group.activeTabId === tab.id ? " selected" : "")} key={tab.id} data-tab-id={tab.id} onMouseDown={(event) => { if (event.button === 1) event.preventDefault(); }} onAuxClick={(event) => { if (event.button !== 1) return; event.preventDefault(); event.stopPropagation(); onClose(tab.id); }}>
         <button className="editor-file-tab-select" role="tab" aria-selected={group.activeTabId === tab.id} onClick={() => onSelect(group.id, tab.id)} type="button" title={tab.path + " · Middle-click to close"}>
           <span className="editor-file-tab-icon" aria-hidden="true">{tab.name.split(".").pop()?.slice(0, 2).toUpperCase() ?? "·"}</span>
           <span>{tab.name}</span>
