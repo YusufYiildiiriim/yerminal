@@ -261,6 +261,14 @@ describe("App user flows", () => {
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("read_workspace_text_file", expect.objectContaining({ path: `${rootPath.replace(/[\/]+$/, "")}/src/a.txt` })));
   });
 
+  it("renders the commit button label as its own element so it can truncate in a narrow rail", async () => {
+    seedWorkspace();
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Git" }));
+    await waitFor(() => expect(document.querySelector(".git-commit-button .git-commit-label")).toHaveTextContent("Commit staged"));
+  });
+
   it("groups Git Changes by folder in tree view, remembers the choice, and stages a whole folder", async () => {
     const user = userEvent.setup();
     localStorage.removeItem("yerminal.git-change-view");

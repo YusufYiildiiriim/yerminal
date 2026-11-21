@@ -2249,7 +2249,7 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenD
       <MergeConflicts repoPath={repoPath} merging={repoInfo.state === "merge in progress"} conflicts={conflictedPaths} onChanged={onBranchChanged} onError={onError} onOpenFile={(relativePath) => onOpenFile(repoInfo.root, relativePath)} />
       {changes.length > 0 && <section className="git-commit-box" aria-label="Commit staged changes">
         <textarea aria-label="Commit message" placeholder="Message (required)" rows={2} maxLength={65536} value={commitMessage} onChange={(event) => setCommitMessage(event.currentTarget.value)} />
-        <button className="git-commit-button" onClick={() => void commitStaged()} disabled={isCommitting || Boolean(fileAction) || stagedChanges.length === 0 || !commitMessage.trim()} type="button"><span aria-hidden="true">✓</span><span>{isCommitting ? "Committing…" : "Commit staged"}</span><small>{stagedChanges.length}</small></button>
+        <button className="git-commit-button" onClick={() => void commitStaged()} disabled={isCommitting || Boolean(fileAction) || stagedChanges.length === 0 || !commitMessage.trim()} type="button"><span aria-hidden="true">✓</span><span className="git-commit-label">{isCommitting ? "Committing…" : "Commit staged"}</span><small>{stagedChanges.length}</small></button>
       </section>}
       {changes.length > 0 && <div className="change-view-bar"><div className="change-view-toggle" role="group" aria-label="Changes view">
         <button type="button" aria-pressed={changeView === "list"} title="Show changed files as a flat list" onClick={() => chooseChangeView("list")}>List</button>

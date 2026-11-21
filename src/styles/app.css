@@ -214,7 +214,7 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .git-commit-box textarea { width: 100%; min-height: 42px; max-height: 90px; resize: vertical; padding: 7px 8px; border: 1px solid #34353d; border-radius: 5px; outline: none; background: #101115; color: #d8d8e0; font: 10px/1.45 Inter, "Segoe UI", sans-serif; }
 .git-commit-box textarea::placeholder { color: #737580; }
 .git-commit-box textarea:focus { border-color: #7567a7; box-shadow: 0 0 0 2px #7868a51f; }
-.git-commit-button { min-height: 30px; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 0 9px; border: 1px solid #514773; border-radius: 5px; background: #302a43; color: #e0d9ff; font-size: 10px; font-weight: 600; }
+.git-commit-button { min-width: 0; max-width: 100%; min-height: 30px; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 0 9px; border: 1px solid #514773; border-radius: 5px; background: #302a43; color: #e0d9ff; font-size: 10px; font-weight: 600; }
 .git-commit-button > span:first-child { color: #aee0bd; font-size: 13px; }
 .git-commit-button small { min-width: 16px; margin-left: auto; padding: 2px 4px; border-radius: 8px; background: #443b5c; color: #e5deff; font-size: 9px; }
 .git-commit-button:hover:not(:disabled), .git-commit-button:focus-visible { border-color: #897bbb; outline: none; background: #3b3450; }

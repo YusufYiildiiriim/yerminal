@@ -32,5 +32,5 @@
 .bp-confirm button { height: 22px; padding: 0 8px; border: 1px solid var(--theme-border, #2c2c34); border-radius: 5px; background: transparent; color: var(--theme-text); font: inherit; font-size: 11px; cursor: pointer; }
 .bp-confirm .bp-danger { border-color: #c4586a; color: #f0a0ac; }
 .bp-empty { padding: 8px 4px; color: var(--theme-muted); font-size: 12px; }
-.git-repository-branch-row { display: block; padding: 6px 8px 0; }
+.git-repository-branch-row { display: block; min-width: 0; padding: 6px 8px 0; }
 .gg-branch-switch { padding: 0 8px 4px; }

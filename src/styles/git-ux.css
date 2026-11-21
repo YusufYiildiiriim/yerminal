@@ -361,11 +361,11 @@
   line-height: 1;
   text-align: center;
 }
-/* The name takes the first line and keeps at least ~6em; branch and counts wrap onto a second line when tight. */
+/* The name takes the first line and keeps at least ~12em before it truncates; branch and counts wrap onto a second line when tight. */
 .git-repository-name {
   display: flex;
   flex: 1 1 0;
-  min-width: min(100%, 6em);
+  min-width: min(100%, 12em);
 }
 .git-repository-name strong {
   display: block;
@@ -415,6 +415,13 @@
 .git-changes-view .tool-header h1 { font-size: 12px; }
 .git-changes-view .tool-header p { margin-top: 2px; font-size: 10px; }
 .git-changes-view .tool-header .refresh-button { width: 22px; height: 22px; font-size: 12px; }
+/* Narrow left rail (about 260px at 1366px wide): the header title truncates, buttons never shrink, and boxes stay inside the panel. */
+.git-changes-view .tool-header > div { min-width: 0; flex: 1 1 auto; }
+.git-changes-view .tool-header h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-changes-view .tool-header .refresh-button { flex: none; }
+.git-repository-body { min-width: 0; max-width: 100%; }
+.git-commit-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-commit-button small { flex: none; }
 
 /* Git Changes / Git Graph switch: icon-less labels so both stay readable in a narrow rail. */
 .app-shell[data-theme] .git-tool-switch .tool-primary-switch { margin: 6px 8px; padding: 2px; }
