@@ -1,7 +1,7 @@
 vi.unmock("../../src/features/editor/MonacoCodeEditor");
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-const runtime = vi.hoisted(() => ({ load: vi.fn(), ensure: vi.fn(async () => "typescript"), setEnabled: vi.fn(), changed: null as null | (() => void), command: null as null | (() => void), value: "", model: null as any, instance: null as any }));
+const runtime = vi.hoisted(() => ({ load: vi.fn(), ensure: vi.fn(async () => "typescript"), setEnabled: vi.fn(), changed: null as null | (() => void), command: null as null | (() => void), value: "", model: null as any, instance: null as any, create: vi.fn() }));
 vi.mock("../../src/features/editor/monacoRuntime", () => ({ loadMonaco: runtime.load }));
 import { MonacoCodeEditor } from "../../src/features/editor/MonacoCodeEditor";
 
@@ -9,7 +9,8 @@ beforeEach(() => {
   runtime.changed = null;
   runtime.model = { getValue: () => runtime.value, setValue: vi.fn((value: string) => { runtime.value = value; runtime.changed?.(); }), updateOptions: vi.fn(), dispose: vi.fn() };
   runtime.instance = { onDidChangeModelContent: vi.fn((callback: () => void) => { runtime.changed = callback; return { dispose: vi.fn() }; }), addCommand: vi.fn((_key: number, callback: () => void) => { runtime.command = callback; }), updateOptions: vi.fn(), dispose: vi.fn() };
-  runtime.load.mockResolvedValue({ monaco: { editor: { createModel: vi.fn((value: string) => { runtime.value = value; return runtime.model; }), create: vi.fn(() => runtime.instance), setModelLanguage: vi.fn(), defineTheme: vi.fn(), setTheme: vi.fn() }, Uri: { parse: (value: string) => value }, KeyMod: { CtrlCmd: 2048 }, KeyCode: { KeyS: 49 } }, languages: { ensure: runtime.ensure, setEnabled: runtime.setEnabled } });
+  runtime.create.mockImplementation(() => runtime.instance);
+  runtime.load.mockResolvedValue({ monaco: { editor: { createModel: vi.fn((value: string) => { runtime.value = value; return runtime.model; }), create: runtime.create, setModelLanguage: vi.fn(), defineTheme: vi.fn(), setTheme: vi.fn() }, Uri: { parse: (value: string) => value }, KeyMod: { CtrlCmd: 2048 }, KeyCode: { KeyS: 49 } }, languages: { ensure: runtime.ensure, setEnabled: runtime.setEnabled } });
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 const base = { id: "tab-1", path: "C:/repo/a.ts", name: "a.ts", value: "const a = 1;", readOnly: false, enabledLanguages: ["typescript"] as const, fontFamily: "Consolas", fontSize: 13, theme: "obsidian" as const, onChange: vi.fn(), onSave: vi.fn() };
@@ -51,6 +52,11 @@ describe("Monaco editor lifecycle", () => {
     const view = render(<MonacoCodeEditor {...base} />); view.unmount();
     await act(async () => resolve(loaded));
     expect(loaded.monaco.editor.create).not.toHaveBeenCalled();
+  });
+  it("keeps Monaco's built-in minimap enabled", async () => {
+    render(<MonacoCodeEditor {...base} />);
+    await waitFor(() => expect(runtime.create).toHaveBeenCalled());
+    expect(runtime.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ minimap: { enabled: true } }));
   });
   it("shows an actionable error when the editor fails to load", async () => {
     runtime.load.mockRejectedValueOnce(new Error("chunk unavailable"));
