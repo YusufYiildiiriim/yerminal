@@ -80,7 +80,7 @@ export function OutgoingCommits({ repoPath, refreshKey = 0, onError, onOpenFile 
     if (!state || state.loading) return <div className="gb-note" role="status">Loading changed files…</div>;
     if (state.error) return <div className="gb-note gb-error" role="alert"><span>{state.error}</span> <button type="button" className="gb-retry" onClick={() => void loadDetails(commit)}>Retry</button></div>;
     if (state.files.length === 0) return <div className="gb-note">No files changed in this commit.</div>;
-    return <ul className="gb-files" aria-label={`Changed files in ${commit.shortId}`}>
+    return <div className="gb-files-scroll"><ul className="gb-files" aria-label={`Changed files in ${commit.shortId}`}>
       {state.files.map((file) => {
         const letter = changeKindLetter(file.kind);
         const name = file.path.split(/[\\/]/).pop() ?? file.path;
@@ -93,7 +93,7 @@ export function OutgoingCommits({ repoPath, refreshKey = 0, onError, onOpenFile 
           </button>
         </li>;
       })}
-    </ul>;
+    </ul></div>;
   };
 
   return <section className="outgoing-commits" aria-label="Outgoing commits">

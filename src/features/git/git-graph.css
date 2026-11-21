@@ -46,6 +46,11 @@
 .gb-detail-meta code { font-family: var(--editor-font-family, "Cascadia Code", Consolas, monospace); font-size: 11px; }
 .gb-detail-files-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 4px; border-top: 1px solid var(--theme-border); color: var(--theme-muted); font-size: 11.5px; font-weight: 500; }
 .gb-files { margin: 0; padding: 0; list-style: none; }
+/* Outgoing commits: an opened commit lists its files in a capped box that scrolls itself, so the panel does not grow with the file count. */
+.outgoing-commits { flex: none; }
+.outgoing-commits > .gb-sec { position: relative; z-index: 1; overflow: visible; height: auto; min-height: 22px; margin-top: 8px; line-height: 16px; }
+.gb-files-scroll { max-height: 240px; overflow-y: auto; overflow-x: hidden; }
+.gb-files-scroll .gb-file { max-width: 100%; }
 .gb-file { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; height: 26px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--row-text); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
 .gb-file:hover, .gb-file:focus-visible { background: var(--hover); color: var(--bright); outline: none; }
 .gb-file .k { flex: none; width: 12px; text-align: center; font-size: 10.5px; font-weight: 700; }
