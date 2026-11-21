@@ -267,7 +267,7 @@
 }
 .app-shell[data-theme] .code-editor-content {
   position: absolute;
-  inset: 0 98px 0 0;
+  inset: 0;
   width: auto;
   height: auto;
   min-width: 0;
@@ -276,30 +276,6 @@
   padding: 0;
   overflow: auto;
 }
-.app-shell[data-theme] .code-editor-minimap {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 2;
-  width: 98px;
-  overflow: hidden;
-  border-left: 1px solid var(--theme-border);
-  background: var(--theme-chrome);
-  opacity: .82;
-  cursor: pointer;
-}
-.app-shell[data-theme] .code-editor-minimap canvas { display: block; width: 100%; height: 100%; }
-.app-shell[data-theme] .code-editor-minimap-window {
-  position: absolute;
-  right: 0;
-  left: 0;
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 35%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 9%, transparent);
-  pointer-events: none;
-}
 @media (max-width: 1000px) {
   .app-shell[data-theme] .titlebar-resource-button { display: none; }
-  .app-shell[data-theme] .code-editor-minimap { width: 66px; }
-  .app-shell[data-theme] .code-editor-content { right: 66px; }
 }

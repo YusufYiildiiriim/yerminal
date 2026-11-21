@@ -198,22 +198,6 @@
 }
 .app-shell[data-theme] .code-editor-statusbar > .code-editor-path { flex: 1 1 auto; min-width: 0; color: color-mix(in srgb, var(--theme-text) 72%, var(--theme-muted)); font-size: 10px; }
 
-/* Render a small, faithful source preview and keep the minimap viewport fixed at the editor's right edge. */
-.app-shell[data-theme] .code-editor-minimap {
-  right: 0;
-  touch-action: none;
-  user-select: none;
-  cursor: ns-resize;
-}
-.app-shell[data-theme] .code-editor-minimap-code {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: max-content;
-  pointer-events: none;
-}
-.app-shell[data-theme] .code-editor-minimap-window { cursor: grab; }
-.app-shell[data-theme] .code-editor-minimap:active .code-editor-minimap-window { cursor: grabbing; }
 @media (max-width: 900px) {
   .app-shell[data-theme] .code-editor-statusbar { gap: 6px; }
 }
