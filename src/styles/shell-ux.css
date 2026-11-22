@@ -134,6 +134,8 @@
 .app-shell[data-theme] .workspace-explorer-tree { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0; color: var(--row-text); font-size: var(--fs-md); }
 .app-shell[data-theme] .workspace-root { margin: 0; border: 0; border-radius: 6px; background: transparent; }
 .app-shell[data-theme] .workspace-root.selected { background: transparent; border: 0; }
+/* Two or more open folders: a divider and space separate each root block. */
+.app-shell[data-theme] .workspace-root + .workspace-root { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--theme-border); }
 .app-shell[data-theme] .workspace-root-row { display: flex; align-items: center; gap: 2px; min-height: 26px; height: 26px; border-radius: 6px; }
 .app-shell[data-theme] .workspace-root-row:hover { background: var(--shell-hover); }
 .app-shell[data-theme] .workspace-root-row > .workspace-folder-select { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--theme-text); text-align: left; }
