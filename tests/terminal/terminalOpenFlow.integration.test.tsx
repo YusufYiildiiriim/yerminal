@@ -287,19 +287,21 @@ describe("group row add button asks only for the folder (#44)", () => {
     expect(savedGroupIds()).toEqual([]);
   });
 
-  it("the header add button on the selected group asks only for the folder", async () => {
+  it("the general header add button asks the group and the folder, and the terminal lands in the chosen group", async () => {
     const user = userEvent.setup();
     seedTwoGroups({ terminalUseDefaults: false });
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Cancel" }));
 
     await user.click(screen.getByRole("button", { name: "Add terminal to group" }));
-    const dialog = await screen.findByRole("dialog", { name: "Terminal Folder" });
-    expect(within(dialog).queryByRole("radio", { name: /Logs|Terminal 1/ })).toBeNull();
+    const dialog = await screen.findByRole("dialog", { name: "Open terminal" });
+    expect(within(dialog).getByRole("group", { name: "Group" })).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("radio", { name: "Logs" }));
+    await user.click(within(dialog).getByRole("radio", { name: apiFolder }));
     await user.click(within(dialog).getByRole("button", { name: "Open terminal" }));
 
-    await waitFor(() => expect(createdDirectories()).toEqual([root]));
-    await waitFor(() => expect(savedGroupIds()).toEqual(["g-one"]));
+    await waitFor(() => expect(createdDirectories()).toEqual([apiFolder]));
+    await waitFor(() => expect(savedGroupIds()).toEqual(["g-two"]));
   });
 
   it("with defaults on, the same row button asks nothing and only selects the group", async () => {

@@ -115,7 +115,13 @@ describe("terminal groups header icon buttons: labels and tooltips", () => {
   const headerStart = app.indexOf("workspace-section-header workspace-terminal-groups-header");
   const headerEnd = app.indexOf("</header>", headerStart);
   const header = app.slice(headerStart, headerEnd);
-  const buttons = header.split("<button").slice(1).map((chunk) => chunk.slice(0, chunk.indexOf("</button>")));
+  // The header's add button is its own component (TerminalGroupAddButtons.tsx); its <button> is read from that file.
+  const groupAddSource = readFileSync(join(srcDir, "features", "terminal", "TerminalGroupAddButtons.tsx"), "utf8");
+  const headerAddButton = groupAddSource.slice(groupAddSource.indexOf("<button"), groupAddSource.indexOf("</button>"));
+  const buttons = [
+    ...header.split("<button").slice(1).map((chunk) => chunk.slice(0, chunk.indexOf("</button>"))),
+    ...(header.includes("<GroupHeaderAddButton") ? [headerAddButton] : []),
+  ];
 
   it("finds the four header icon buttons (three actions and the collapse toggle)", () => {
     expect(buttons).toHaveLength(4);

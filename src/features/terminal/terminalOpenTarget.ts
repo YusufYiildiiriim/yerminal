@@ -15,6 +15,14 @@ export function normalizeTerminalName(value: string | undefined): string | undef
 }
 /** Which questions the prompt asks. Entry points that already know the folder skip the folder question. */
 export type TerminalOpenAsk = { folder: boolean; group: boolean };
+/**
+ * The two entry points that open a terminal from the sidebar. "pickGroupAndFolder": the general add button in the
+ * Terminal groups header, where no group is known. "folderOnly": a group's own add button, the group is already known.
+ */
+export type TerminalOpenMode = "pickGroupAndFolder" | "folderOnly";
+export function terminalOpenAsk(mode: TerminalOpenMode): TerminalOpenAsk {
+  return mode === "folderOnly" ? { folder: true, group: false } : { folder: true, group: true };
+}
 export type TerminalOpenDefaults = { terminalDefaultPath?: string; terminalDefaultGroup?: string };
 
 export const RECENT_TERMINAL_FOLDERS_KEY = "yerminal.terminal-recent-folders.v1";

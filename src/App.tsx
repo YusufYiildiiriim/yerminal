@@ -42,7 +42,8 @@ import "@fontsource-variable/geist/index.css";
 import "@fontsource-variable/geist-mono/index.css";
 import "./styles/typography.css";
 import { TerminalOpenDialog } from "./features/terminal/TerminalOpenDialog";
-import { applyTerminalGroupChoice, type TerminalGroupChoice, folderChoices, readRecentTerminalFolders, rememberTerminalFolder, resolveTerminalOpenDefaults, type TerminalOpenAsk, type TerminalOpenChoice } from "./features/terminal/terminalOpenTarget";
+import { GroupHeaderAddButton, GroupRowAddButton } from "./features/terminal/TerminalGroupAddButtons";
+import { applyTerminalGroupChoice, type TerminalGroupChoice, folderChoices, readRecentTerminalFolders, rememberTerminalFolder, resolveTerminalOpenDefaults, terminalOpenAsk, type TerminalOpenAsk, type TerminalOpenChoice } from "./features/terminal/terminalOpenTarget";
 import { nextTerminalName, planRestore, readTerminalSessions, RESTORE_STAGGER_MS, SNAPSHOT_DEBOUNCE_MS, snapshotWorkspaceSessions, writeTerminalSessions, type PersistedTerminalSession, type PersistedTerminalSessions } from "./features/terminal/terminalSessionStore";
 import type { TerminalExitOptions } from "./features/terminal/TerminalPane";
 import "./styles/app.css";
@@ -1356,25 +1357,33 @@ function App() {
   const addTerminalToGroup = useCallback(async (groupId: string) => {
     const workspace = activeTerminalWorkspace;
     if (!workspace) return;
-    const created = await startTerminal(false, undefined, { folder: true, group: false }, groupId);
+    const created = await startTerminal(false, undefined, terminalOpenAsk("folderOnly"), groupId);
     if (!created) return;
     updateTerminalWorkspace(workspace.id, (current) => updateActiveTerminalGroup(current, (group) => ({ ...group, layout: buildTerminalLayout(group.terminalIds) })));
   }, [activeTerminalWorkspace, startTerminal, updateTerminalWorkspace]);
 
+  // The general header button: no group is known, so with defaults off the prompt asks the group and the folder.
   const addTerminalToWorkspace = useCallback(async () => {
     const workspace = activeTerminalWorkspace;
     if (!workspace) {
       await startTerminal();
       return;
     }
-    if (settings.terminalUseDefaults === false) {
+    const created = await startTerminal(false, undefined, terminalOpenAsk("pickGroupAndFolder"));
+    if (!created) return;
+    updateTerminalWorkspace(workspace.id, (current) => updateActiveTerminalGroup(current, (group) => ({ ...group, layout: buildTerminalLayout(group.terminalIds) })));
+  }, [activeTerminalWorkspace, startTerminal, updateTerminalWorkspace]);
+
+  // The empty group's New Terminal button: its group is the active one, so with defaults off only the folder is asked.
+  const addTerminalToActiveGroup = useCallback(async () => {
+    const workspace = activeTerminalWorkspace;
+    if (workspace && settings.terminalUseDefaults === false) {
       await addTerminalToGroup(workspace.activeGroupId);
       return;
     }
-    const created = await startTerminal(false);
-    if (!created) return;
-    updateTerminalWorkspace(workspace.id, (current) => updateActiveTerminalGroup(current, (group) => ({ ...group, layout: buildTerminalLayout(group.terminalIds) })));
-  }, [activeTerminalWorkspace, addTerminalToGroup, settings.terminalUseDefaults, startTerminal, updateTerminalWorkspace]);
+    await addTerminalToWorkspace();
+  }, [activeTerminalWorkspace, addTerminalToGroup, addTerminalToWorkspace, settings.terminalUseDefaults]);
+
 
   const moveTerminal = useCallback((sourceId: string, targetId: string) => {
     if (sourceId === targetId || !activeTerminalWorkspace) return;
@@ -1770,7 +1779,7 @@ function App() {
           />} terminal={<div className={`terminal-workspace-view${terminalUsageOpen ? " has-terminal-usage" : ""}`}>
           <section className="terminal-surface" aria-label="Terminal workspace">
             <TerminalWorkspaceLayout layout={layout} focusedTerminalId={focusedTerminalView && activeGroupTerminalIds.includes(focusedTerminalView) ? focusedTerminalView : null} terminals={activeWorkspaceTerminals} visibleTerminalIds={activeGroupTerminalIds} workspaceId={`${activeTerminalWorkspace?.id ?? ""}:${activeTerminalGroup?.id ?? ""}`} onDockToTiledLayout={dockTerminalToTiledLayout} onModeState={registerFloatingLayoutControl} activeTerminalId={activeTerminalId} onLinkHint={showToast} onFocus={focusTerminal} onExit={handleTerminalExit} onClose={closeTerminal} onMove={moveTerminal} onResize={resizeLayoutSplit} groups={activeTerminalWorkspace?.groups ?? []} activeGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} editingTerminalId={editingTerminalId} terminalNameDraft={terminalNameDraft} nameInputRef={terminalNameInputRef} onBeginRename={beginRenameTerminal} onChangeRenameDraft={setTerminalNameDraft} onSaveRename={saveTerminalName} onCancelRename={cancelTerminalRename} onMoveToGroup={moveTerminalToGroup} onSplit={(terminalId) => void splitActiveTerminal("horizontal", terminalId)} onShowAll={() => selectTerminalView(null)} />
-            {activeGroupTerminalIds.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Terminal group is empty</div><p>Add a terminal to get started.</p><button className="primary-button" onClick={() => void addTerminalToWorkspace()} type="button">New Terminal</button></div>}
+            {activeGroupTerminalIds.length === 0 && <div className="terminal-placeholder"><div className="welcome-title">Terminal group is empty</div><p>Add a terminal to get started.</p><button className="primary-button" onClick={() => void addTerminalToActiveGroup()} type="button">New Terminal</button></div>}
 
             <div className="pane-live-status" aria-live="polite" aria-atomic="true">{activeTerminal ? activeTerminal.name + ", " + activeTerminal.shellLabel : "No terminal"}</div>
           </section>
@@ -2139,9 +2148,7 @@ function WorkspacePanel({ toolSwitch, mode, terminalLayoutMode, onChangeTerminal
               <button className={`ib workspace-terminal-resource-button${terminalUsageOpen ? " active" : ""}`} type="button" aria-label="Resource usage" aria-pressed={terminalUsageOpen} aria-controls="terminal-resource-panel" onClick={onToggleTerminalUsage} title="Toggle CPU and RAM monitor">
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 12h4l3-7 4 14 3-7h4" /></svg>
               </button>
-              <button className="ib workspace-terminal-add-button" type="button" aria-label="Add terminal to group" title="Add terminal to group" onClick={onAddTerminal}>
-                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6l5 5-5 5M11 18h9" /></svg>
-              </button>
+              <GroupHeaderAddButton onClick={onAddTerminal} />
               <button className="ib workspace-terminal-group-create" type="button" aria-label="New terminal group" title="New terminal group" onClick={onCreateTerminalGroup}>
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
               </button>
@@ -2173,9 +2180,7 @@ function WorkspacePanel({ toolSwitch, mode, terminalLayoutMode, onChangeTerminal
                         <span className="workspace-terminal-group-count">{groupTerminals.length}</span>
                       </button>
                       <div className="workspace-terminal-group-acts">
-                        <button className="ib" type="button" aria-label={`New terminal in ${group.name}`} title={`New terminal in ${group.name}`} onClick={() => onAddTerminalToGroup(group.id)}>
-                          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
-                        </button>
+                        <GroupRowAddButton groupName={group.name} onClick={() => onAddTerminalToGroup(group.id)} />
                         <ActionMenu label={`Group actions for ${group.name}`} title="Group actions" className="ib" items={groupMenuItems}>
                           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></svg>
                         </ActionMenu>
