@@ -29,6 +29,7 @@ import { FloatingTerminalDockGuides, FloatingTerminalModeToggle } from "./featur
 import { useFloatingTerminalLayout, type TerminalDockEdge, type TerminalLayoutMode } from "./features/terminal/floatingTerminalLayout";
 import { ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { clampFontSize, SettingsDialog, type AppSettings, type SectionId } from "./features/settings/SettingsDialog";
+import { applyInterfaceSize, normalizeInterfaceSize } from "./features/settings/interfaceSize";
 import { WorkspaceViewLayout } from "./features/workspace/WorkspaceViewLayout";
 import { FolderContextMenu, type FolderContextMenuAction, type FolderContextMenuTarget } from "./features/explorer/FolderContextMenu";
 import { useTerminalGroupDrag } from "./features/terminal/useTerminalGroupDrag";
@@ -289,7 +290,7 @@ const TOOL_GROUPS: { id: ToolGroupId; label: string; toolIds: ToolId[] }[] = [
 ];
 
 const SETTINGS_KEY = "yerminal.app-settings.v1";
-const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13, quickOpenScope: "active", collapseOtherFolders: false, autoSave: false, agentUsageEnabled: false, editorMinimap: true, enabledLanguages: DEFAULT_LANGUAGES, languageSetupComplete: false };
+const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13, quickOpenScope: "active", collapseOtherFolders: false, autoSave: false, agentUsageEnabled: false, editorMinimap: true, enabledLanguages: DEFAULT_LANGUAGES, languageSetupComplete: false, interfaceSize: "default" };
 function readAppSettings(): AppSettings {
   try {
     const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}");
@@ -306,6 +307,7 @@ function readAppSettings(): AppSettings {
       editorMinimap: raw.editorMinimap !== false,
       enabledLanguages: normalizeEnabledLanguages(raw.enabledLanguages),
       languageSetupComplete: raw.languageSetupComplete === true,
+      interfaceSize: normalizeInterfaceSize(raw.interfaceSize),
     };
   } catch { return DEFAULT_SETTINGS; }
 }
@@ -461,6 +463,7 @@ function App() {
     root.style.setProperty("--editor-font-size", settings.editorFontSize + "px");
     root.style.setProperty("--terminal-font-family", settings.terminalFontFamily);
     root.style.setProperty("--terminal-font-size", settings.terminalFontSize + "px");
+    applyInterfaceSize(root, settings.interfaceSize ?? "default");
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* Retain settings in memory. */ }
   }, [settings]);
 

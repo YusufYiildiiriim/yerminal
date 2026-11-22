@@ -138,3 +138,28 @@ it("offers language toggles with defaults, plain-text fallback and persistent ch
   expect(screen.getByText(/Disabled languages open as plain text/)).toBeInTheDocument();
   cleanup();
 });
+
+describe("interface size control", () => {
+  afterEach(cleanup);
+  it("offers Small, Default and Large and reports the chosen size", async () => {
+    const user = userEvent.setup();
+    const onSettingsChange = vi.fn();
+    render(<SettingsDialog settings={settings} shortcuts={[]} onSettingsChange={onSettingsChange} onClose={vi.fn()} />);
+
+    const group = screen.getByRole("group", { name: "Interface size" });
+    expect(within(group).getByRole("button", { name: "Default" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(within(group).getByRole("button", { name: "Small" }));
+    expect(onSettingsChange).toHaveBeenLastCalledWith({ ...settings, interfaceSize: "small" });
+    await user.click(within(group).getByRole("button", { name: "Large" }));
+    expect(onSettingsChange).toHaveBeenLastCalledWith({ ...settings, interfaceSize: "large" });
+  });
+
+  it("does not change the editor or terminal font size when the interface size changes", async () => {
+    const user = userEvent.setup();
+    const onSettingsChange = vi.fn();
+    render(<SettingsDialog settings={settings} shortcuts={[]} onSettingsChange={onSettingsChange} onClose={vi.fn()} />);
+
+    await user.click(within(screen.getByRole("group", { name: "Interface size" })).getByRole("button", { name: "Large" }));
+    expect(onSettingsChange).toHaveBeenLastCalledWith(expect.objectContaining({ editorFontSize: 14, terminalFontSize: 13 }));
+  });
+});

@@ -190,6 +190,23 @@ describe("App user flows", () => {
     expect(await screen.findByText("All changes saved")).toBeInTheDocument();
   });
 
+  it("persists the interface size across restarts without changing the editor font size", async () => {
+    const user = userEvent.setup();
+    seedWorkspace({ editorFontSize: 14 });
+    const first = render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Help & Settings" }));
+    await user.click(within(screen.getByRole("group", { name: "Interface size" })).getByRole("button", { name: "Large" }));
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("yerminal.app-settings.v1") ?? "{}").interfaceSize).toBe("large"));
+    expect(document.documentElement.style.getPropertyValue("--ui-scale")).toBe("1.1");
+    expect(document.documentElement.style.getPropertyValue("--editor-font-size")).toBe("14px");
+    first.unmount();
+
+    render(<App />);
+    await waitFor(() => expect(document.documentElement.style.getPropertyValue("--ui-scale")).toBe("1.1"));
+    expect(document.documentElement.style.getPropertyValue("--editor-font-size")).toBe("14px");
+  });
+
   it("persists the selected theme and enforces the 1 MiB diff limit", async () => {
     const user = userEvent.setup();
     seedWorkspace();

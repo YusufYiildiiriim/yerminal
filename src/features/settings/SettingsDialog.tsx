@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./settings.css";
 import { DEFAULT_LANGUAGES, EDITOR_LANGUAGES, type EditorLanguageId } from "../editor/editorLanguages";
+import { INTERFACE_SIZES, type InterfaceSize } from "./interfaceSize";
 
 export type ThemeId = "obsidian" | "nordic" | "foundry";
-export type AppSettings = { theme: ThemeId; editorFontFamily: string; editorFontSize: number; terminalFontFamily: string; terminalFontSize: number; quickOpenScope: "active" | "all"; collapseOtherFolders: boolean; autoSave: boolean; agentUsageEnabled: boolean; editorMinimap?: boolean; enabledLanguages?: readonly EditorLanguageId[]; languageSetupComplete?: boolean };
+export type AppSettings = { theme: ThemeId; editorFontFamily: string; editorFontSize: number; terminalFontFamily: string; terminalFontSize: number; quickOpenScope: "active" | "all"; collapseOtherFolders: boolean; autoSave: boolean; agentUsageEnabled: boolean; editorMinimap?: boolean; enabledLanguages?: readonly EditorLanguageId[]; languageSetupComplete?: boolean; interfaceSize?: InterfaceSize };
 /** Supported font sizes (px) for the editor and terminal; also used when loading stored settings. */
 export const MIN_FONT_SIZE = 8;
 export const MAX_FONT_SIZE = 32;
@@ -29,6 +30,7 @@ const themes: { id: ThemeId; label: string; short: string }[] = [
   { id: "foundry", label: "Foundry", short: "Foundry" },
 ];
 
+const interfaceSizeLabels: Record<InterfaceSize, string> = { small: "Small", default: "Default", large: "Large" };
 export function SettingsDialog({ settings, shortcuts, onSettingsChange, onClose, initialSection = "appearance" }: Props) {
   const [section, setSection] = useState<SectionId>(initialSection);
   const [query, setQuery] = useState("");
@@ -46,6 +48,7 @@ export function SettingsDialog({ settings, shortcuts, onSettingsChange, onClose,
   const rows: SettingRow[] = [
     ...EDITOR_LANGUAGES.map((language): SettingRow => ({ id: "language-" + language.id, section: "languages", label: language.label, control: <input className="settings-toggle" type="checkbox" aria-label={"Enable " + language.label} checked={enabledLanguages.includes(language.id)} onChange={(event) => onSettingsChange({ ...settings, languageSetupComplete: true, enabledLanguages: event.currentTarget.checked ? [...enabledLanguages, language.id] : enabledLanguages.filter((id) => id !== language.id) })} /> })),
     { id: "theme", section: "appearance", label: "Theme", description: "Colors for the whole window.", control: <div className="settings-seg" role="group" aria-label="Theme">{themes.map((theme) => <button key={theme.id} type="button" aria-label={theme.label} aria-pressed={settings.theme === theme.id} onClick={() => onSettingsChange({ ...settings, theme: theme.id })}>{theme.short}</button>)}</div> },
+    { id: "interface-size", section: "appearance", label: "Interface size", description: "Text size for the window. Editor and terminal fonts keep their own size.", control: <div className="settings-seg" role="group" aria-label="Interface size">{INTERFACE_SIZES.map((size) => <button key={size} type="button" aria-label={interfaceSizeLabels[size]} aria-pressed={(settings.interfaceSize ?? "default") === size} onClick={() => onSettingsChange({ ...settings, interfaceSize: size })}>{interfaceSizeLabels[size]}</button>)}</div> },
     { id: "editor-font-family", section: "editor", label: "Font family", description: "Used by the code editor.", control: <input className="settings-text" type="text" aria-label="Editor font family" value={settings.editorFontFamily} maxLength={250} onChange={(event) => onSettingsChange({ ...settings, editorFontFamily: event.currentTarget.value })} /> },
     { id: "editor-font-size", section: "editor", label: "Font size", description: "Editor text size in pixels.", control: <span className="settings-number"><input type="number" aria-label="Editor font size" min={MIN_FONT_SIZE} max={MAX_FONT_SIZE} value={settings.editorFontSize} onChange={(event) => { const value = event.currentTarget.valueAsNumber; if (Number.isFinite(value)) onSettingsChange({ ...settings, editorFontSize: clampFontSize(value) }); }} />px</span> },
     { id: "editor-minimap", section: "editor", label: "Minimap", description: "Show the code overview on the right edge of the editor. Open editors update at once.", control: <input className="settings-toggle" type="checkbox" aria-label="Editor minimap" checked={settings.editorMinimap !== false} onChange={(event) => onSettingsChange({ ...settings, editorMinimap: event.currentTarget.checked })} /> },
