@@ -118,6 +118,35 @@ describe("sidebar terminal name rename (double-click)", () => {
     expect(sidebarNameOf(0)).toBe(before);
   });
 
+  it("the inline name field is never inside a button (the row is not a button while editing)", async () => {
+    const user = await renderWithTwoTerminals();
+    await user.dblClick(firstSidebarName());
+
+    expect(renameInput().closest("button")).toBeNull();
+  });
+
+  it("keys typed in the name field, Space included, do not reach the row or the document", async () => {
+    const user = await renderWithTwoTerminals();
+    await user.click(sidebarRows()[1]);
+    await user.dblClick(firstSidebarName());
+    const input = renameInput();
+    await user.clear(input);
+
+    const leaked: string[] = [];
+    const onKeyDown = (event: KeyboardEvent) => { leaked.push(event.key); };
+    document.addEventListener("keydown", onKeyDown);
+    try {
+      await user.keyboard("A B{ArrowLeft}{ArrowDown}");
+    } finally {
+      document.removeEventListener("keydown", onKeyDown);
+    }
+
+    expect(input.value).toBe("A B");
+    expect(leaked).toEqual([]);
+    expect(sidebarRows()[0]).toHaveAttribute("aria-pressed", "true");
+    expect(sidebarRows()[1]).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("a single click on a sidebar row still selects that terminal and opens no field", async () => {
     const user = await renderWithTwoTerminals();
     const second = sidebarRows()[1];
