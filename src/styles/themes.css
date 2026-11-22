@@ -11,6 +11,15 @@
   --theme-border: #23232a;
   --theme-accent: #f59e0b;
   --theme-success: #34d399;
+  /* Text tokens pass 4.5:1 on every surface of the theme (tests/styles/textContrast.test.ts).
+     Fill tokens are dark tones for backgrounds and lines only; never use them as text. */
+  --text-muted: #808290;
+  --text-amber: #d99a3e;
+  --text-green: #2fb070;
+  --text-violet: #a99cf7;
+  --fill-amber: #a3650f;
+  --fill-green: #1c7a48;
+  --fill-violet: #35227a;
   --hover: color-mix(in srgb, var(--theme-text) 7%, transparent);
   --row-text: color-mix(in srgb, var(--theme-text) 88%, var(--theme-muted));
   --bright: color-mix(in srgb, var(--theme-text) 60%, #ffffff);
@@ -36,6 +45,7 @@
   --theme-border: #29413e;
   --theme-accent: #8edbd3;
   --theme-success: #9ad8a7;
+  --text-muted: #859995;
 }
 .app-shell[data-theme="foundry"] {
   --theme-background: #131216;
@@ -49,6 +59,7 @@
   --theme-border: #3d3333;
   --theme-accent: #f2bd82;
   --theme-success: #9dc8a1;
+  --text-muted: #a29ba0;
 }
 .app-shell[data-theme] :is(.titlebar, .statusbar) {
   background: var(--theme-chrome);
@@ -192,7 +203,7 @@
   border: 1px solid var(--theme-border);
   border-radius: 6px;
   background: var(--theme-raised);
-  color: var(--theme-muted);
+  color: var(--text-muted);
   font-size: var(--fs-xs);
 }
 .app-shell[data-theme] .titlebar-resource-button:hover,

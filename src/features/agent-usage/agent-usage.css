@@ -41,7 +41,7 @@
   padding: 0 5px;
   border: 1px solid var(--theme-border, #303139);
   border-radius: 6px;
-  color: var(--theme-muted, #a7a8b1);
+  color: var(--text-muted);
   font-size: var(--fs-xs);
   line-height: 14px;
 }
@@ -60,7 +60,7 @@
 }
 
 .agent-usage-window {
-  color: var(--theme-muted, #a7a8b1);
+  color: var(--text-muted);
   font-family: var(--font-mono-ui);
   font-size: var(--fs-xs);
 }
@@ -92,7 +92,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--theme-muted, #a7a8b1);
+  color: var(--text-muted);
   font-size: var(--fs-xs);
 }
 
@@ -100,7 +100,7 @@
   display: flex;
   gap: 12px;
   margin-top: 3px;
-  color: var(--theme-muted, #a7a8b1);
+  color: var(--text-muted);
   font-family: var(--font-mono-ui);
   font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
@@ -108,7 +108,7 @@
 
 .agent-usage-breakdown {
   margin-top: 1px;
-  color: var(--theme-muted, #a7a8b1);
+  color: var(--text-muted);
   font-family: var(--font-mono-ui);
   font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
@@ -119,7 +119,7 @@
 }
 
 .agent-usage-limit.is-ended .agent-usage-value {
-  color: var(--theme-muted, #a7a8b1);
+  color: var(--text-muted);
 }
 
 .agent-usage-limit.is-ended .agent-usage-reset {
@@ -136,7 +136,7 @@
 .agent-usage-model {
   display: inline-flex;
   gap: 5px;
-  color: var(--theme-muted, #a7a8b1);
+  color: var(--text-muted);
   font-size: var(--fs-xs);
 }
 
@@ -151,7 +151,7 @@
 .agent-usage-error {
   margin: 0;
   padding-top: 3px;
-  color: var(--theme-muted, #a7a8b1);
+  color: var(--text-muted);
   font-size: var(--fs-xs);
   line-height: 1.4;
 }
@@ -170,7 +170,7 @@
 .sidebar-agent-resize { flex: 0 0 8px; cursor: ns-resize; touch-action: none; }
 .sidebar-agent-resize:hover, .sidebar-agent-resize:focus-visible { background: var(--theme-accent); outline: none; }
 .sidebar-agent-toggle { flex: none; display: flex; gap: 8px; align-items: center; width: 100%; border: 0; padding: 8px 4px; background: transparent; color: var(--theme-text); text-align: left; font: 600 var(--fs-sm) var(--font-ui); cursor: pointer; }
-.sidebar-agent-toggle span { color: var(--theme-muted); }
+.sidebar-agent-toggle span { color: var(--text-muted); }
 .sidebar-agent-toggle:hover { background: var(--hover); }
 .sidebar-agent-toggle:focus-visible { outline: 1px solid var(--theme-accent); }
 .sidebar-agent-content { min-height: 0; max-height: 55vh; overflow: hidden; }

@@ -9,15 +9,15 @@
 
 .change-view-bar { display: flex; align-items: center; justify-content: flex-end; padding: 4px 8px 0; }
 .change-view-toggle { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--theme-border, #2c2c34); border-radius: 6px; }
-.change-view-toggle button { height: 20px; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: var(--theme-muted); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.change-view-toggle button { height: 20px; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: var(--text-muted); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
 .change-view-toggle button[aria-pressed="true"] { background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 18%, transparent); color: var(--theme-text); }
 
 .change-dir-row { display: flex; align-items: center; min-height: 22px; padding-right: 7px; }
 .change-dir-row:hover { background: color-mix(in srgb, var(--theme-text, #fff) 5%, transparent); }
 .change-dir-toggle { display: flex; flex: 1; align-items: center; gap: 5px; min-width: 0; height: 22px; border: 0; background: transparent; color: var(--theme-text); font: inherit; font-size: var(--fs-xs); text-align: left; cursor: pointer; }
-.change-dir-toggle svg { width: 10px; height: 10px; flex: none; color: var(--theme-muted); transition: transform .12s ease; }
+.change-dir-toggle svg { width: 10px; height: 10px; flex: none; color: var(--text-muted); transition: transform .12s ease; }
 .change-dir-toggle[aria-expanded="false"] svg { transform: rotate(-90deg); }
 .change-dir-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.change-dir-count { margin-left: auto; padding: 0 5px; border-radius: 8px; background: color-mix(in srgb, var(--theme-text, #fff) 10%, transparent); color: var(--theme-muted); font-size: var(--fs-xs); }
+.change-dir-count { margin-left: auto; padding: 0 5px; border-radius: 8px; background: color-mix(in srgb, var(--theme-text, #fff) 10%, transparent); color: var(--text-muted); font-size: var(--fs-xs); }
 .change-dir-actions { display: flex; flex: none; opacity: .3; transition: opacity .12s ease; }
 .change-dir-row:hover .change-dir-actions, .change-dir-row:focus-within .change-dir-actions { opacity: 1; }
