@@ -19,7 +19,7 @@
   border-radius: 6px;
   background: transparent;
   color: var(--theme-muted);
-  font-size: 13px;
+  font-size: var(--fs-md);
   text-align: left;
   cursor: pointer;
 }

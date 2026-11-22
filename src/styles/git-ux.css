@@ -15,7 +15,7 @@
   border-radius: 6px;
   background: var(--theme-background, #141419);
   color: var(--theme-text, #efedf4);
-  font: 11px/1.4 var(--font-ui);
+  font: var(--fs-xs)/1.4 var(--font-ui);
 }
 .tool-content .git-commit-box textarea::placeholder { color: var(--theme-muted, #aaa8b4); opacity: 1; }
 .tool-content .git-commit-button {
@@ -23,9 +23,9 @@
   justify-content: center;
   gap: 6px;
   padding: 3px 8px;
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
-.tool-content .git-commit-button small { margin-left: 0; font-size: 10px; }
+.tool-content .git-commit-button small { margin-left: 0; font-size: var(--fs-xs); }
 .tool-content .change-list { padding: 2px 0 8px; }
 .tool-content .change-group-heading {
   height: auto;
@@ -33,19 +33,19 @@
   gap: 6px;
   padding: 2px 10px;
   color: var(--theme-text, #e7e5ee);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   letter-spacing: 0;
   text-transform: none;
 }
 .tool-content .change-group-heading span:last-child {
   min-width: 16px;
   padding: 1px 4px;
-  font-size: 9px;
+  font-size: var(--fs-xs);
 }
 .tool-content .change-empty {
   padding: 6px 10px;
   color: var(--theme-muted, #aaa8b4);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   line-height: 1.5;
 }
 .tool-content .change-row {
@@ -65,11 +65,11 @@
   gap: 6px;
   padding-left: 10px;
   color: var(--theme-text, #e7e5ee);
-  font: 11px/1.3 var(--font-ui);
+  font: var(--fs-xs)/1.3 var(--font-ui);
 }
 .tool-content .change-path { min-width: 0; }
-.tool-content .change-kind { flex-basis: 14px; width: 14px; font-size: 10px; }
-.tool-content .change-badge { flex: 0 0 auto; padding: 1px 4px; font-size: 9px; }
+.tool-content .change-kind { flex-basis: 14px; width: 14px; font-size: var(--fs-xs); }
+.tool-content .change-badge { flex: 0 0 auto; padding: 1px 4px; font-size: var(--fs-xs); }
 .tool-content .change-row-actions { gap: 3px; opacity: 1; }
 .tool-content .change-action {
   width: auto;
@@ -80,9 +80,9 @@
   border-color: var(--theme-border, #45434d);
   color: var(--theme-text, #e7e5ee);
   background: var(--theme-raised, #24242c);
-  font: 11px/1.2 var(--font-ui);
+  font: var(--fs-xs)/1.2 var(--font-ui);
 }
-.tool-content .change-action.discard { min-width: 20px; font-size: 12px; }
+.tool-content .change-action.discard { min-width: 20px; font-size: var(--fs-sm); }
 .tool-content .change-action:disabled { opacity: .55; }
 .tool-content :is(.change-main-row, .change-action, .git-commit-button):focus-visible,
 .tool-content .git-commit-box textarea:focus-visible {
@@ -156,11 +156,11 @@
   padding: 3px 12px;
   border-bottom: 1px solid var(--theme-border, #34343c);
   background: var(--theme-surface, #19191f);
-  font: 11px/1.4 var(--font-ui);
+  font: var(--fs-xs)/1.4 var(--font-ui);
 }
-.app-shell[data-theme] .diff-view-details { flex: 0 0 auto; color: var(--theme-muted); font: 11px/1.5 var(--font-ui); }
+.app-shell[data-theme] .diff-view-details { flex: 0 0 auto; color: var(--theme-muted); font: var(--fs-xs)/1.5 var(--font-ui); }
 .app-shell[data-theme] .diff-view-details summary { width: max-content; padding: 4px 12px; cursor: pointer; }
-.app-shell[data-theme] .diff-view-details pre { margin: 0; padding: 4px 12px 8px; white-space: pre; font: 11px/1.5 var(--editor-font-family, monospace); }
+.app-shell[data-theme] .diff-view-details pre { margin: 0; padding: 4px 12px 8px; white-space: pre; font: var(--fs-xs)/1.5 var(--editor-font-family, monospace); }
 .app-shell[data-theme] .diff-view-details summary:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }
 .app-shell[data-theme] .diff-view-file {
   min-width: 0;
@@ -176,7 +176,7 @@
   border: 1px solid var(--theme-border, #34343c);
   border-radius: 4px;
   color: var(--theme-muted, #aaa8b4);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 .app-shell[data-theme] .diff-view-side.staged {
   border-color: color-mix(in srgb, var(--theme-accent, #b3a3ee) 45%, var(--theme-border, #34343c));
@@ -187,7 +187,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--theme-muted, #85848e);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -197,7 +197,7 @@
   place-items: center;
   padding: 20px;
   color: var(--theme-muted, #85848e);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 .app-shell[data-theme] .diff-view-columns {
   display: grid;
@@ -206,7 +206,7 @@
   border-bottom: 1px solid var(--theme-border, #34343c);
   background: var(--theme-surface, #19191f);
   color: var(--theme-muted, #85848e);
-  font: 10px/22px var(--font-ui);
+  font: var(--fs-xs)/22px var(--font-ui);
   text-transform: uppercase;
   letter-spacing: .04em;
 }
@@ -269,7 +269,7 @@
 .app-shell[data-theme] .diff-view-note {
   display: block;
   color: var(--theme-muted, #85848e);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   line-height: 16px;
 }
 .app-shell[data-theme] .diff-view-cell.added {
@@ -303,7 +303,7 @@
 }
 .app-shell[data-theme] .diff-view-hidden {
   font-family: var(--font-ui);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   letter-spacing: .01em;
   cursor: default;
 }
@@ -358,7 +358,7 @@
   flex: 0 0 10px;
   width: 10px;
   color: var(--theme-muted, #aaa8b4);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   line-height: 1;
   text-align: center;
 }
@@ -373,7 +373,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--theme-text, #efedf4);
-  font-size: 11.5px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   line-height: 16px;
   text-overflow: ellipsis;
@@ -389,7 +389,7 @@
   border: 1px solid var(--theme-border, #34343c);
   border-radius: 3px;
   color: var(--theme-muted, #aaa8b4);
-  font-size: 9.5px;
+  font-size: var(--fs-xs);
   line-height: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -400,7 +400,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--theme-muted, #aaa8b4);
-  font-size: 9.5px;
+  font-size: var(--fs-xs);
   line-height: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -413,9 +413,9 @@
   overflow: auto;
 }
 .git-changes-view .tool-header { padding: 10px 12px; }
-.git-changes-view .tool-header h1 { font-size: 12px; }
-.git-changes-view .tool-header p { margin-top: 2px; font-size: 10px; }
-.git-changes-view .tool-header .refresh-button { width: 22px; height: 22px; font-size: 12px; }
+.git-changes-view .tool-header h1 { font-size: var(--fs-sm); }
+.git-changes-view .tool-header p { margin-top: 2px; font-size: var(--fs-xs); }
+.git-changes-view .tool-header .refresh-button { width: 22px; height: 22px; font-size: var(--fs-sm); }
 /* Narrow left rail (about 260px at 1366px wide): the header title truncates, buttons never shrink, and boxes stay inside the panel. */
 .git-changes-view .tool-header > div { min-width: 0; flex: 1 1 auto; }
 .git-changes-view .tool-header h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -426,5 +426,5 @@
 
 /* Git Changes / Git Graph switch: icon-less labels so both stay readable in a narrow rail. */
 .app-shell[data-theme] .git-tool-switch .tool-primary-switch { margin: 6px 8px; padding: 2px; }
-.app-shell[data-theme] .git-tool-switch .tool-primary-switch-item { height: 24px; padding: 0 4px; font-size: 11px; }
+.app-shell[data-theme] .git-tool-switch .tool-primary-switch-item { height: 24px; padding: 0 4px; font-size: var(--fs-xs); }
 .app-shell[data-theme] .git-tool-switch .tool-sidebar-icon { display: none; }

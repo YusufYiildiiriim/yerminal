@@ -16,10 +16,10 @@
 .app-shell[data-theme] .brand-logo {
   width: 24px; height: 24px; flex: none; display: grid; place-items: center;
   border-radius: 6px; background: var(--theme-accent); color: var(--theme-chrome);
-  font-size: 13px; font-weight: 700;
+  font-size: var(--fs-md); font-weight: 700;
 }
-.app-shell[data-theme] .brand-name { font-size: 13px; font-weight: 600; letter-spacing: 0; color: var(--theme-text); }
-.app-shell[data-theme] .titlebar-breadcrumb { min-width: 0; overflow: hidden; color: var(--theme-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell[data-theme] .brand-name { font-size: var(--fs-md); font-weight: 600; letter-spacing: 0; color: var(--theme-text); }
+.app-shell[data-theme] .titlebar-breadcrumb { min-width: 0; overflow: hidden; color: var(--theme-muted); font-size: var(--fs-sm); text-overflow: ellipsis; white-space: nowrap; }
 
 /* Side container */
 .app-shell[data-theme] .tools-panel { background: var(--theme-surface); }
@@ -52,7 +52,7 @@
 .app-shell[data-theme] .tool-sidebar-autohide svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .app-shell[data-theme] .tool-sidebar-label {
   position: absolute; left: 0; right: 0; bottom: 2px; max-width: none;
-  font-size: 9px; line-height: 10px; text-align: center; color: inherit; white-space: nowrap;
+  font-size: var(--fs-xs); line-height: 10px; text-align: center; color: inherit; white-space: nowrap;
 }
 .app-shell[data-theme] .tool-sidebar-separator { width: 24px; height: 1px; flex: 0 0 1px; margin: 2px 0; background: var(--theme-border); }
 .app-shell[data-theme] .tool-sidebar-settings {
@@ -82,7 +82,7 @@
 .app-shell[data-theme] .workspace-name-select {
   appearance: none; -webkit-appearance: none; width: 100%; height: 36px; min-height: 36px; box-sizing: border-box; line-height: 1.3; min-width: 0; margin: 0;
   padding: 0 28px 0 10px; border: 1px solid var(--theme-border); border-radius: 6px;
-  background: var(--theme-raised); color: var(--theme-text); font: 13px/1.3 var(--font-ui);
+  background: var(--theme-raised); color: var(--theme-text); font: var(--fs-md)/1.3 var(--font-ui);
   text-overflow: ellipsis; cursor: pointer;
 }
 .app-shell[data-theme] .ws-chevron {
@@ -108,7 +108,7 @@
 .app-shell[data-theme] .shell-menu-item {
   width: 100%; height: 28px; display: flex; align-items: center; padding: 0 8px;
   border: 0; border-radius: 6px; background: transparent; color: var(--theme-text);
-  font: 13px/1.3 var(--font-ui); text-align: left; white-space: nowrap; cursor: pointer;
+  font: var(--fs-md)/1.3 var(--font-ui); text-align: left; white-space: nowrap; cursor: pointer;
 }
 .app-shell[data-theme] .shell-menu-item:hover:not(:disabled), .app-shell[data-theme] .shell-menu-item:focus-visible { background: var(--shell-hover); outline: none; }
 .app-shell[data-theme] .shell-menu-item:disabled { color: var(--theme-muted); opacity: .5; cursor: default; }
@@ -119,7 +119,7 @@
   height: 28px; flex: none; margin: 8px 0 2px; padding: 0 4px;
 }
 .app-shell[data-theme] .workspace-section-header h2 {
-  margin: 0; min-width: 0; color: var(--theme-muted); font-size: 12px; font-weight: 500;
+  margin: 0; min-width: 0; color: var(--theme-muted); font-size: var(--fs-sm); font-weight: 500;
   letter-spacing: 0; text-transform: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .app-shell[data-theme] .sec-acts { display: flex; align-items: center; gap: 2px; flex: none; }
@@ -132,16 +132,16 @@
 
 /* Explorer */
 .app-shell[data-theme] .workspace-explorer { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }
-.app-shell[data-theme] .workspace-explorer-tree { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0; color: var(--row-text); font-size: 13px; }
+.app-shell[data-theme] .workspace-explorer-tree { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0; color: var(--row-text); font-size: var(--fs-md); }
 .app-shell[data-theme] .workspace-root { margin: 0; border: 0; border-radius: 6px; background: transparent; }
 .app-shell[data-theme] .workspace-root.selected { background: transparent; border: 0; }
 .app-shell[data-theme] .workspace-root-row { display: flex; align-items: center; gap: 2px; min-height: 26px; height: 26px; border-radius: 6px; }
 .app-shell[data-theme] .workspace-root-row:hover { background: var(--shell-hover); }
 .app-shell[data-theme] .workspace-root-row > .workspace-folder-select { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--theme-text); text-align: left; }
-.app-shell[data-theme] .workspace-root-row[aria-expanded] .workspace-folder-label strong { font-size: 13px; font-weight: 500; color: var(--theme-text); }
+.app-shell[data-theme] .workspace-root-row[aria-expanded] .workspace-folder-label strong { font-size: var(--fs-md); font-weight: 500; color: var(--theme-text); }
 .app-shell[data-theme] .workspace-root-row .workspace-folder-label small,
 .app-shell[data-theme] .workspace-root-row .workspace-folder-label { display: block; min-width: 0; }
-.app-shell[data-theme] .workspace-folder-remove { width: 20px; height: 20px; flex: 0 0 20px; margin-right: 4px; opacity: 0; border: 0; border-radius: 6px; background: transparent; color: var(--theme-muted); font-size: 13px; }
+.app-shell[data-theme] .workspace-folder-remove { width: 20px; height: 20px; flex: 0 0 20px; margin-right: 4px; opacity: 0; border: 0; border-radius: 6px; background: transparent; color: var(--theme-muted); font-size: var(--fs-md); }
 .app-shell[data-theme] .workspace-root-row:hover .workspace-folder-remove, .app-shell[data-theme] .workspace-root-row:focus-within .workspace-folder-remove { opacity: 1; }
 .app-shell[data-theme] .workspace-folder-remove:hover { color: var(--theme-text); background: var(--theme-raised); }
 .app-shell[data-theme] .workspace-tree-children { min-width: 0; }
@@ -154,15 +154,15 @@
 .app-shell[data-theme] .workspace-tree-row > * { position: relative; z-index: 1; }
 .app-shell[data-theme] .workspace-tree-toggle, .app-shell[data-theme] .workspace-tree-toggle-spacer { width: 12px; height: 12px; flex: 0 0 12px; padding: 0; border: 0; background: transparent; color: var(--theme-muted); display: grid; place-items: center; }
 .app-shell[data-theme] .workspace-tree-toggle svg { width: 12px; height: 12px; stroke-width: 2; }
-.app-shell[data-theme] .workspace-tree-entry { min-width: 0; flex: 1 1 auto; height: 26px; display: flex; align-items: center; gap: 6px; padding: 0; border: 0; background: transparent; color: var(--row-text); font: 13px/1.3 var(--font-ui); text-align: left; }
+.app-shell[data-theme] .workspace-tree-entry { min-width: 0; flex: 1 1 auto; height: 26px; display: flex; align-items: center; gap: 6px; padding: 0; border: 0; background: transparent; color: var(--row-text); font: var(--fs-md)/1.3 var(--font-ui); text-align: left; }
 .app-shell[data-theme] .workspace-tree-entry:hover { color: var(--theme-text); }
 .app-shell[data-theme] .workspace-tree-file-icon { width: 14px; height: 14px; flex: 0 0 14px; display: grid; place-items: center; color: var(--theme-muted); font: inherit; }
 .app-shell[data-theme] .workspace-tree-file-icon svg { width: 14px; height: 14px; }
 .app-shell[data-theme] .workspace-tree-name { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell[data-theme] .workspace-tree-size { display: none; }
-.app-shell[data-theme] .workspace-tree-message, .app-shell[data-theme] .workspace-tree-error { min-height: 26px; display: flex; align-items: center; padding-right: 6px; color: var(--theme-muted); font-size: 12px; }
+.app-shell[data-theme] .workspace-tree-message, .app-shell[data-theme] .workspace-tree-error { min-height: 26px; display: flex; align-items: center; padding-right: 6px; color: var(--theme-muted); font-size: var(--fs-sm); }
 .app-shell[data-theme] .workspace-tree-error { color: color-mix(in srgb, #f87171 70%, var(--theme-text)); }
-.app-shell[data-theme] .workspace-explorer-footnote { flex: none; padding: 8px 4px; color: var(--theme-muted); font-size: 12px; border: 0; }
+.app-shell[data-theme] .workspace-explorer-footnote { flex: none; padding: 8px 4px; color: var(--theme-muted); font-size: var(--fs-sm); border: 0; }
 
 /* Terminal groups: flat tree */
 .app-shell[data-theme] .workspace-terminal-groups { display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; flex-direction: column; }
@@ -176,11 +176,11 @@
 .app-shell[data-theme] .workspace-terminal-group.selected > .workspace-terminal-group-header { background: var(--shell-hover); }
 .app-shell[data-theme] .workspace-terminal-group-select {
   flex: 1 1 auto; min-width: 0; height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 6px;
-  border: 0; border-radius: 6px; background: transparent; color: var(--theme-text); font: 500 13px var(--font-ui); text-align: left;
+  border: 0; border-radius: 6px; background: transparent; color: var(--theme-text); font: 500 var(--fs-md) var(--font-ui); text-align: left;
 }
 .app-shell[data-theme] .workspace-terminal-group-chevron { width: 12px; height: 12px; flex: none; color: var(--theme-muted); stroke-width: 2; }
 .app-shell[data-theme] .workspace-terminal-group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app-shell[data-theme] .workspace-terminal-group-count { margin-left: auto; flex: none; padding-left: 4px; color: var(--theme-muted); font-size: 11px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.app-shell[data-theme] .workspace-terminal-group-count { margin-left: auto; flex: none; padding-left: 4px; color: var(--theme-muted); font-size: var(--fs-xs); font-weight: 400; font-variant-numeric: tabular-nums; }
 .app-shell[data-theme] .workspace-terminal-group-acts { display: none; align-items: center; gap: 2px; flex: none; margin-left: 2px; padding-right: 2px; }
 .app-shell[data-theme] .workspace-terminal-group-header:hover .workspace-terminal-group-acts,
 .app-shell[data-theme] .workspace-terminal-group.selected .workspace-terminal-group-acts,
@@ -189,19 +189,19 @@
 .app-shell[data-theme] .workspace-terminal-group-acts .ib svg { width: 12px; height: 12px; }
 .app-shell[data-theme] .workspace-terminal-group-editor { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 2px; padding: 0 2px; }
 .app-shell[data-theme] .workspace-terminal-group-editor input { min-width: 0; width: 100%; height: 26px; flex: 1 1 auto; border: 1px solid var(--theme-border); border-radius: 6px; background: var(--theme-raised); color: var(--theme-text); padding: 0 6px; font: inherit; }
-.app-shell[data-theme] .workspace-terminal-group-save, .app-shell[data-theme] .workspace-terminal-group-cancel { width: 24px; height: 24px; flex: 0 0 24px; border: 0; border-radius: 6px; background: transparent; color: var(--theme-muted); font-size: 13px; }
+.app-shell[data-theme] .workspace-terminal-group-save, .app-shell[data-theme] .workspace-terminal-group-cancel { width: 24px; height: 24px; flex: 0 0 24px; border: 0; border-radius: 6px; background: transparent; color: var(--theme-muted); font-size: var(--fs-md); }
 .app-shell[data-theme] .workspace-terminal-group-save:hover, .app-shell[data-theme] .workspace-terminal-group-cancel:hover { color: var(--theme-text); background: var(--theme-raised); }
 .app-shell[data-theme] .workspace-terminal-select {
   display: flex; width: 100%; min-width: 0; height: 26px; align-items: center; gap: 8px;
   padding: 0 6px 0 26px; border: 0; border-radius: 6px; background: transparent; color: var(--row-text);
-  font: 13px/1.3 var(--font-ui); text-align: left;
+  font: var(--fs-md)/1.3 var(--font-ui); text-align: left;
 }
 .app-shell[data-theme] .workspace-terminal-select:hover { background: var(--shell-hover); color: var(--theme-text); }
 .app-shell[data-theme] .workspace-terminal-select.selected { background: var(--theme-raised); color: var(--bright); font-weight: 500; }
 .app-shell[data-theme] .workspace-terminal-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell[data-theme] .workspace-terminal-indicator { width: 8px; height: 8px; flex: 0 0 8px; box-sizing: border-box; border: 1px solid var(--theme-muted); border-radius: 50%; }
 .app-shell[data-theme] .workspace-terminal-select.selected .workspace-terminal-indicator { border-color: var(--theme-accent); background: var(--theme-accent); }
-.app-shell[data-theme] .workspace-terminal-empty { display: flex; align-items: center; height: 26px; padding-left: 26px; color: var(--theme-muted); font-size: 12px; }
+.app-shell[data-theme] .workspace-terminal-empty { display: flex; align-items: center; height: 26px; padding-left: 26px; color: var(--theme-muted); font-size: var(--fs-sm); }
 .app-shell[data-theme] .workspace-terminal-resource-button svg { width: 14px; height: 14px; }
 
 /* Bottom layout block */
@@ -209,7 +209,7 @@
   flex: none; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--theme-border);
   display: flex; flex-direction: column; gap: 6px;
 }
-.app-shell[data-theme] .workspace-layout-label { padding: 0 4px; color: var(--theme-muted); font-size: 12px; }
+.app-shell[data-theme] .workspace-layout-label { padding: 0 4px; color: var(--theme-muted); font-size: var(--fs-sm); }
 .app-shell[data-theme] .workspace-layout-label b { color: var(--theme-text); font-weight: 500; }
 .app-shell[data-theme] .workspace-layout-block .layout-mode-toggle,
 .app-shell[data-theme] .workspace-layout-block .floating-terminal-mode-toggle {
@@ -218,7 +218,7 @@
 }
 .app-shell[data-theme] .workspace-layout-block .layout-mode-toggle button {
   min-width: 0; height: 100%; padding: 0 8px; border: 0; border-radius: 6px; background: transparent;
-  color: var(--theme-muted); font-size: 12px; font-weight: 400;
+  color: var(--theme-muted); font-size: var(--fs-sm); font-weight: 400;
 }
 .app-shell[data-theme] .workspace-layout-block .layout-mode-toggle button:hover { color: var(--theme-text); }
 .app-shell[data-theme] .workspace-layout-block .layout-mode-toggle button[aria-pressed="true"] { background: var(--shell-pressed); color: var(--theme-text); font-weight: 600; }
@@ -226,7 +226,7 @@
 .app-shell[data-theme] .workspace-layout-block .editor-create-group {
   display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 30px; min-height: 30px;
   padding: 0; border: 1px solid var(--theme-border); border-radius: 6px; background: var(--theme-raised);
-  color: var(--theme-text); font: 13px/1.3 var(--font-ui);
+  color: var(--theme-text); font: var(--fs-md)/1.3 var(--font-ui);
 }
 .app-shell[data-theme] .workspace-layout-block .workspace-terminal-add-button:hover,
 .app-shell[data-theme] .workspace-layout-block .editor-create-group:hover { background: var(--shell-hover); }
@@ -260,7 +260,7 @@
 
 /* Terminal / Editor switch, sits under the workspace picker row */
 .app-shell[data-theme] .tool-primary-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 8px; padding: 3px; border: 1px solid var(--theme-border); border-radius: 8px; background: var(--theme-surface); }
-.app-shell[data-theme] .tool-primary-switch-item { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--theme-muted); font: inherit; font-size: 12px; cursor: pointer; }
+.app-shell[data-theme] .tool-primary-switch-item { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--theme-muted); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
 .app-shell[data-theme] .tool-primary-switch-item:hover { background: var(--shell-hover); color: var(--theme-text); }
 .app-shell[data-theme] .tool-primary-switch-item.selected { background: color-mix(in srgb, var(--theme-accent) 16%, var(--theme-surface)); color: var(--theme-text); }
 .app-shell[data-theme] .tool-primary-switch-item .tool-sidebar-icon { display: inline-flex; width: 14px; height: 14px; }

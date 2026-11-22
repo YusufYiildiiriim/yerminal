@@ -7,48 +7,48 @@
   background: var(--theme-surface);
 }
 .app-shell[data-theme] .terminal-tabs { min-width: 0; overflow-x: auto; }
-.app-shell[data-theme] .terminal-tab { font-size: 13px; }
+.app-shell[data-theme] .terminal-tab { font-size: var(--fs-md); }
 .app-shell[data-theme] .terminal-tab-item.selected { background: var(--theme-raised); box-shadow: inset 0 2px var(--theme-accent); }
 .app-shell[data-theme] .terminal-tab.selected { color: var(--theme-text); background: var(--theme-raised); }
-.app-shell[data-theme] .terminal-active-label { font-size: 10px; letter-spacing: 0; }
+.app-shell[data-theme] .terminal-active-label { font-size: var(--fs-xs); letter-spacing: 0; }
 .app-shell[data-theme] .terminal-tab-rename,
-.app-shell[data-theme] .tab-close { width: 26px; min-height: 28px; flex-basis: 26px; font-size: 13px; }
+.app-shell[data-theme] .tab-close { width: 26px; min-height: 28px; flex-basis: 26px; font-size: var(--fs-md); }
 .app-shell[data-theme] .toolbar-actions { min-width: 0; overflow-x: auto; }
 .app-shell[data-theme] .editor-groups-toolbar { height: 40px; flex-basis: 40px; gap: 8px; padding: 0 12px; }
-.app-shell[data-theme] .editor-groups-title { color: var(--theme-text); font-size: 12px; font-weight: 600; }
-.app-shell[data-theme] .editor-groups-count { font-size: 11px; }
-.app-shell[data-theme] .editor-create-group { min-height: 28px; padding: 4px 9px; font-size: 12px; }
-.app-shell[data-theme] .editor-group-title { color: var(--theme-text); font-size: 12px; }
-.app-shell[data-theme] .editor-group-count { color: var(--theme-muted); font-size: 11px; }
-.app-shell[data-theme] .editor-group-move { min-height: 24px; max-width: 150px; font-size: 11px; }
+.app-shell[data-theme] .editor-groups-title { color: var(--theme-text); font-size: var(--fs-sm); font-weight: 600; }
+.app-shell[data-theme] .editor-groups-count { font-size: var(--fs-xs); }
+.app-shell[data-theme] .editor-create-group { min-height: 28px; padding: 4px 9px; font-size: var(--fs-sm); }
+.app-shell[data-theme] .editor-group-title { color: var(--theme-text); font-size: var(--fs-sm); }
+.app-shell[data-theme] .editor-group-count { color: var(--theme-muted); font-size: var(--fs-xs); }
+.app-shell[data-theme] .editor-group-move { min-height: 24px; max-width: 150px; font-size: var(--fs-xs); }
 .app-shell[data-theme] .editor-file-tabs { height: 43px; flex-basis: 43px; background: var(--theme-surface); border-color: var(--theme-border); }
 .app-shell[data-theme] .editor-file-tab { min-width: 125px; max-width: 240px; border-color: var(--theme-border); }
-.app-shell[data-theme] .editor-file-tab-select { gap: 8px; padding: 0 11px; font-size: 13px; }
-.app-shell[data-theme] .editor-file-tab-icon { font-size: 11px; }
+.app-shell[data-theme] .editor-file-tab-select { gap: 8px; padding: 0 11px; font-size: var(--fs-md); }
+.app-shell[data-theme] .editor-file-tab-icon { font-size: var(--fs-xs); }
 .app-shell[data-theme] .editor-file-tab-dirty-mark,
-.app-shell[data-theme] .editor-file-tab-readonly-mark { font-size: 11px; }
+.app-shell[data-theme] .editor-file-tab-readonly-mark { font-size: var(--fs-xs); }
 .app-shell[data-theme] .editor-file-tab.selected { box-shadow: inset 0 2px var(--theme-accent); }
-.app-shell[data-theme] .editor-tabs-empty { color: var(--theme-muted); font-size: 12px; }
-.app-shell[data-theme] .code-editor-save { min-height: 28px; font-size: 12px; }
-.app-shell[data-theme] .code-editor-save kbd { font-size: 10px; }
-.app-shell[data-theme] .code-editor-message { color: var(--theme-muted); font-size: 13px; }
-.app-shell[data-theme] .code-editor-empty h2 { color: var(--theme-text); font-size: 15px; }
-.app-shell[data-theme] .code-editor-empty p { color: var(--theme-muted); font-size: 13px; }
-.app-shell[data-theme] .code-editor-statusbar { height: 28px; flex-basis: 28px; color: var(--theme-muted); font-size: 11px; }
-.app-shell[data-theme] .terminal-pane-title { color: var(--theme-text); font-size: 12px; }
+.app-shell[data-theme] .editor-tabs-empty { color: var(--theme-muted); font-size: var(--fs-sm); }
+.app-shell[data-theme] .code-editor-save { min-height: 28px; font-size: var(--fs-sm); }
+.app-shell[data-theme] .code-editor-save kbd { font-size: var(--fs-xs); }
+.app-shell[data-theme] .code-editor-message { color: var(--theme-muted); font-size: var(--fs-md); }
+.app-shell[data-theme] .code-editor-empty h2 { color: var(--theme-text); font-size: var(--fs-lg); }
+.app-shell[data-theme] .code-editor-empty p { color: var(--theme-muted); font-size: var(--fs-md); }
+.app-shell[data-theme] .code-editor-statusbar { height: 28px; flex-basis: 28px; color: var(--theme-muted); font-size: var(--fs-xs); }
+.app-shell[data-theme] .terminal-pane-title { color: var(--theme-text); font-size: var(--fs-sm); }
 .app-shell[data-theme] .terminal-pane-frame[data-active="true"] .terminal-pane-header { background: var(--theme-raised); border-color: var(--theme-accent); }
-.app-shell[data-theme] .terminal-status { color: var(--theme-text); font-size: 11px; }
-.app-shell[data-theme] .terminal-status strong { font-size: 11px; }
-.app-shell[data-theme] .terminal-status-active { font-size: 10px; letter-spacing: 0; }
-.app-shell[data-theme] .terminal-placeholder p { color: var(--theme-muted); font-size: 13px; }
-.app-shell[data-theme] .statusbar { height: 28px; flex-basis: 28px; color: var(--theme-muted); font-size: 11px; }
+.app-shell[data-theme] .terminal-status { color: var(--theme-text); font-size: var(--fs-xs); }
+.app-shell[data-theme] .terminal-status strong { font-size: var(--fs-xs); }
+.app-shell[data-theme] .terminal-status-active { font-size: var(--fs-xs); letter-spacing: 0; }
+.app-shell[data-theme] .terminal-placeholder p { color: var(--theme-muted); font-size: var(--fs-md); }
+.app-shell[data-theme] .statusbar { height: 28px; flex-basis: 28px; color: var(--theme-muted); font-size: var(--fs-xs); }
 .app-shell[data-theme] .terminal-resource-strip-header,
-.app-shell[data-theme] .terminal-resource-terminal-name strong { font-size: 12px; }
+.app-shell[data-theme] .terminal-resource-terminal-name strong { font-size: var(--fs-sm); }
 .app-shell[data-theme] .terminal-resource-terminal-name span,
 .app-shell[data-theme] .terminal-resource-session-count,
 .app-shell[data-theme] .terminal-resource-live,
 .app-shell[data-theme] .terminal-resource-state,
-.app-shell[data-theme] .terminal-resource-process-count { font-size: 11px; }
+.app-shell[data-theme] .terminal-resource-process-count { font-size: var(--fs-xs); }
 .app-shell[data-theme] :is(.editor-create-group, .editor-file-tab-select, .editor-file-tab-close, .code-editor-save, .terminal-tab, .terminal-tab-rename, .tab-close, .pane-rename, .pane-close):focus-visible {
   outline: 2px solid var(--theme-accent);
   outline-offset: -2px;
@@ -70,7 +70,7 @@
 
 /* Match the approved terminal-first layout. */
 .app-shell[data-theme] .titlebar { height: 48px; flex: 0 0 48px; gap: 14px; padding: 0 16px; }
-.app-shell[data-theme] .brand-name { font-size: 14px; font-weight: 600; }
+.app-shell[data-theme] .brand-name { font-size: var(--fs-lg); font-weight: 600; }
 .app-shell[data-theme] .terminal-tab-move:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 1px; }
 .app-shell[data-theme] .titlebar-new-terminal {
   width: 28px;
@@ -79,7 +79,7 @@
   border-color: var(--theme-border);
   background: var(--theme-surface);
   color: var(--theme-muted);
-  font-size: 16px;
+  font-size: var(--fs-xl);
 }
 .app-shell[data-theme] .titlebar-new-terminal:hover { border-color: var(--theme-accent); background: var(--theme-raised); color: var(--theme-text); }
 .app-shell[data-theme] .layout-mode-toggle {
@@ -101,7 +101,7 @@
   border-radius: 5px;
   background: transparent;
   color: var(--theme-muted);
-  font: 11px/1 var(--font-ui);
+  font: var(--fs-xs)/1 var(--font-ui);
 }
 .app-shell[data-theme] .layout-mode-toggle button:hover { color: var(--theme-text); background: var(--theme-raised); }
 .app-shell[data-theme] .layout-mode-toggle button[aria-pressed="true"] {
@@ -122,7 +122,7 @@
   border-radius: 5px;
   background: var(--theme-chrome);
   color: var(--theme-muted);
-  font: 11px/1 var(--font-ui);
+  font: var(--fs-xs)/1 var(--font-ui);
 }
 .app-shell[data-theme] .terminal-show-all:hover { border-color: var(--theme-accent); background: var(--theme-raised); color: var(--theme-text); }
 .app-shell[data-theme] .terminal-show-all:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 1px; }
@@ -146,7 +146,7 @@
 
 /* Keep the rename input usable when its tab normally sizes to its content. */
 .app-shell[data-theme] .terminal-tab-item.editing { flex: 0 0 220px; min-width: 220px; }
-.app-shell[data-theme] .terminal-tab-move { width: 74px; min-width: 74px; padding: 3px 4px; border: 1px solid var(--theme-border); border-radius: 4px; background: var(--theme-surface); color: var(--theme-muted); font-size: 10px; }
+.app-shell[data-theme] .terminal-tab-move { width: 74px; min-width: 74px; padding: 3px 4px; border: 1px solid var(--theme-border); border-radius: 4px; background: var(--theme-surface); color: var(--theme-muted); font-size: var(--fs-xs); }
 .app-shell[data-theme] .terminal-tab-item.editing .terminal-name-editor input { min-width: 0; }
 
 /* Keep the view switcher in the title bar like the Stitch workbench. */
@@ -183,9 +183,9 @@
 .app-shell[data-theme] .editor-group-heading { height: 27px; flex-basis: 27px; }
 .app-shell[data-theme] .editor-file-tabs { height: 36px; flex-basis: 36px; }
 .app-shell[data-theme] .editor-file-tab { min-width: 112px; }
-.app-shell[data-theme] .editor-file-tab-select { gap: 6px; padding-inline: 8px; font-size: 12px; }
-.app-shell[data-theme] .code-editor-save { min-height: 23px; gap: 5px; padding: 2px 7px; font-size: 10px; white-space: nowrap; }
-.app-shell[data-theme] .code-editor-save kbd { font-size: 8px; }
+.app-shell[data-theme] .editor-file-tab-select { gap: 6px; padding-inline: 8px; font-size: var(--fs-sm); }
+.app-shell[data-theme] .code-editor-save { min-height: 23px; gap: 5px; padding: 2px 7px; font-size: var(--fs-xs); white-space: nowrap; }
+.app-shell[data-theme] .code-editor-save kbd { font-size: var(--fs-xs); }
 .app-shell[data-theme] .code-editor-statusbar {
   height: 30px;
   flex-basis: 30px;
@@ -194,9 +194,9 @@
   border-color: var(--theme-border);
   background: color-mix(in srgb, var(--theme-raised) 88%, var(--theme-accent) 12%);
   color: var(--theme-muted);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
-.app-shell[data-theme] .code-editor-statusbar > .code-editor-path { flex: 1 1 auto; min-width: 0; color: color-mix(in srgb, var(--theme-text) 72%, var(--theme-muted)); font-size: 10px; }
+.app-shell[data-theme] .code-editor-statusbar > .code-editor-path { flex: 1 1 auto; min-width: 0; color: color-mix(in srgb, var(--theme-text) 72%, var(--theme-muted)); font-size: var(--fs-xs); }
 
 @media (max-width: 900px) {
   .app-shell[data-theme] .code-editor-statusbar { gap: 6px; }

@@ -30,7 +30,8 @@ function literalFontSizes(css: string): number[] {
     for (const px of match[1].matchAll(/(\d*\.?\d+)px/g)) sizes.push(Number(px[1]));
   }
   for (const match of css.matchAll(/(?<![\w-])font\s*:\s*([^;}]+)/g)) {
-    const px = match[1].match(/(\d*\.?\d+)px/);
+    // A px right after "/" is the line-height in `font: 12px/1.5`, not the font size.
+    const px = match[1].match(/(?<![\/\w.-])(\d*\.?\d+)px/);
     if (px) sizes.push(Number(px[1]));
   }
   return sizes;
@@ -76,5 +77,19 @@ describe("font family usage", () => {
   it("leaves no bare Inter family in src css", () => {
     const hits = cssText.flatMap(({ file, css }) => (css.match(/(?<![\w-])Inter(?![\w-])/g) ?? []).map(() => file));
     expect(hits).toEqual([]);
+  });
+});
+
+describe("font size scale", () => {
+  it("never sets a literal font-size below 11px", () => {
+    const small = cssText.flatMap(({ file, css }) => literalFontSizes(css).filter((px) => px < 11).map((px) => `${file}: ${px}px`));
+    expect(small).toEqual([]);
+  });
+
+  it("uses only the five scale steps for literal font sizes", () => {
+    const offScale = cssText.flatMap(({ file, css }) =>
+      literalFontSizes(css).filter((px) => !SCALE_PX.includes(px)).map((px) => `${file}: ${px}px`),
+    );
+    expect(offScale).toEqual([]);
   });
 });
