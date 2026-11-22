@@ -35,6 +35,7 @@ import { FolderContextMenu, type FolderContextMenuAction, type FolderContextMenu
 import { useTerminalGroupDrag } from "./features/terminal/useTerminalGroupDrag";
 import { appendTerminalToLayout, closeTerminalGroup as closeTerminalGroupState, createInitialTerminalGroups, createTerminalGroup, moveTerminalBetweenGroups, openFolderInNewTerminal, removeTerminalFromGroups, renameTerminalGroup as renameTerminalGroupState, selectTerminalGroup as selectTerminalGroupState, type TerminalGroup } from "./features/terminal/terminalWorkspaceActions";
 import { DEFAULT_LANGUAGES, normalizeEnabledLanguages } from "./features/editor/editorLanguages";
+import { BrandMark } from "./brand/BrandMark";
 import "@fontsource-variable/geist/index.css";
 import "@fontsource-variable/geist-mono/index.css";
 import "./styles/typography.css";
@@ -1505,7 +1506,7 @@ function App() {
     <main className="app-shell" data-theme={settings.theme} style={{ "--editor-font-family": settings.editorFontFamily, "--editor-font-size": settings.editorFontSize + "px", "--terminal-font-family": settings.terminalFontFamily, "--terminal-font-size": settings.terminalFontSize + "px" } as CSSProperties}>
       <header className="titlebar">
         <div className="brand">
-          <span className="brand-logo" aria-hidden="true">y</span>
+          <span className="brand-logo" aria-hidden="true"><BrandMark /></span>
           <span className="brand-name">yerminal</span>
         </div>
         <div className="titlebar-spacer" />
