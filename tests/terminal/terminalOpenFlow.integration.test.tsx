@@ -52,6 +52,12 @@ function storedGroups(): { id: string; name: string }[] {
   return stored.workspaces?.[0]?.groups ?? [];
 }
 
+/** Terminals saved for the first workspace by the debounced snapshot. */
+function savedWorkspaceSessions(): unknown[] {
+  const stored = JSON.parse(localStorage.getItem("yerminal.terminal-sessions.v1") ?? "{}");
+  return stored.workspaces?.["workspace-1"] ?? [];
+}
+
 afterEach(() => {
   cleanup();
 });
@@ -210,14 +216,14 @@ describe("terminal open settings persistence", () => {
       expect(stored.terminalUseDefaults).toBe(false);
       expect(stored.terminalDefaultGroup).toBe("API");
     });
-    // Let the debounced terminal save land before the restart, so the restored list is deterministic.
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    // Wait for the debounced terminal save to land before the restart, so the restored list is deterministic.
+    await waitFor(() => expect(savedWorkspaceSessions()).toHaveLength(1));
     first.unmount();
 
     tauri.invoke.mockClear();
     render(<App />);
     // Startup restores saved terminals without the open prompt (#43), even with the defaults switch off (#34).
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await waitFor(() => expect(createdDirectories()).toEqual([root]));
     expect(screen.queryByRole("dialog", { name: "Open terminal" })).toBeNull();
     expect(JSON.parse(localStorage.getItem("yerminal.app-settings.v1") ?? "{}").terminalUseDefaults).toBe(false);
   });

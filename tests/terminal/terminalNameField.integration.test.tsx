@@ -219,8 +219,8 @@ describe("optional terminal name in the open prompt (#45)", () => {
     await user.click(await screen.findByRole("button", { name: "Cancel" }));
     fireEvent.keyDown(window, { key: "t", ctrlKey: true, shiftKey: true });
     await typeInto(user, await screen.findByRole("textbox", { name: "Terminal name" }), "API{Enter}");
+    // The debounced save has written the name once the snapshot holds it; no extra wait is needed.
     await waitFor(() => expect(savedNames()).toEqual(["API"]));
-    await new Promise((resolve) => setTimeout(resolve, 400));
     first.unmount();
 
     tauri.invoke.mockClear();
