@@ -49,7 +49,7 @@ export function TerminalOpenDialog({ ask, folders, initialFolder, groups, active
 
   return <div className="terminal-open-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel(); }}>
     <section className="terminal-open-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={onKeyDown}>
-      <h2 id={titleId}>Open terminal</h2>
+      <h2 id={titleId}>{ask.folder && !ask.group ? "Terminal Folder" : "Open terminal"}</h2>
       {ask.folder && <fieldset className="terminal-open-group">
         <legend>Folder</legend>
         <div className="terminal-open-options">

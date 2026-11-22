@@ -41,7 +41,7 @@ import "@fontsource-variable/geist/index.css";
 import "@fontsource-variable/geist-mono/index.css";
 import "./styles/typography.css";
 import { TerminalOpenDialog } from "./features/terminal/TerminalOpenDialog";
-import { applyTerminalGroupChoice, folderChoices, readRecentTerminalFolders, rememberTerminalFolder, resolveTerminalOpenDefaults, type TerminalOpenAsk, type TerminalOpenChoice } from "./features/terminal/terminalOpenTarget";
+import { applyTerminalGroupChoice, type TerminalGroupChoice, folderChoices, readRecentTerminalFolders, rememberTerminalFolder, resolveTerminalOpenDefaults, type TerminalOpenAsk, type TerminalOpenChoice } from "./features/terminal/terminalOpenTarget";
 import { nextTerminalName, planRestore, readTerminalSessions, RESTORE_STAGGER_MS, SNAPSHOT_DEBOUNCE_MS, snapshotWorkspaceSessions, writeTerminalSessions, type PersistedTerminalSession, type PersistedTerminalSessions } from "./features/terminal/terminalSessionStore";
 import type { TerminalExitOptions } from "./features/terminal/TerminalPane";
 import "./styles/app.css";
@@ -1134,13 +1134,15 @@ function App() {
   }, [showToast]);
 
   /** Every entry point that opens a terminal goes through here: defaults or prompt, then the group, then the terminal. */
-  const startTerminal = useCallback(async (showInTabs = true, folder?: string, ask: TerminalOpenAsk = { folder: true, group: true }): Promise<TerminalSession | null> => {
+  const startTerminal = useCallback(async (showInTabs = true, folder?: string, ask: TerminalOpenAsk = { folder: true, group: true }, fixedGroupId?: string): Promise<TerminalSession | null> => {
     const workspace = activeTerminalWorkspace;
     const choice = await chooseTerminalTarget(folder, ask);
     if (!choice) return null;
+    // A group the entry point already knows (its row or the header) wins over the group choice.
+    const groupChoice: TerminalGroupChoice | null = fixedGroupId ? { kind: "existing", id: fixedGroupId } : choice.group;
     if (workspace) lastTerminalGroupRef.current = workspace.activeGroupId;
-    if (workspace && choice.group) {
-      const next = applyTerminalGroupChoice({ groups: workspace.groups, activeGroupId: workspace.activeGroupId }, choice.group);
+    if (workspace && groupChoice) {
+      const next = applyTerminalGroupChoice({ groups: workspace.groups, activeGroupId: workspace.activeGroupId }, groupChoice);
       lastTerminalGroupRef.current = next.activeGroupId;
       updateTerminalWorkspace(workspace.id, (current) => syncTerminalGroups(current, next.groups, next.activeGroupId));
     }
@@ -1337,16 +1339,29 @@ function App() {
     });
   }, [activeTerminalWorkspace, startTerminal, updateTerminalWorkspace]);
 
+  // A terminal for one group that the entry point already knows: with defaults off only the folder is asked (#44).
+  const addTerminalToGroup = useCallback(async (groupId: string) => {
+    const workspace = activeTerminalWorkspace;
+    if (!workspace) return;
+    const created = await startTerminal(false, undefined, { folder: true, group: false }, groupId);
+    if (!created) return;
+    updateTerminalWorkspace(workspace.id, (current) => updateActiveTerminalGroup(current, (group) => ({ ...group, layout: buildTerminalLayout(group.terminalIds) })));
+  }, [activeTerminalWorkspace, startTerminal, updateTerminalWorkspace]);
+
   const addTerminalToWorkspace = useCallback(async () => {
     const workspace = activeTerminalWorkspace;
     if (!workspace) {
       await startTerminal();
       return;
     }
+    if (settings.terminalUseDefaults === false) {
+      await addTerminalToGroup(workspace.activeGroupId);
+      return;
+    }
     const created = await startTerminal(false);
     if (!created) return;
     updateTerminalWorkspace(workspace.id, (current) => updateActiveTerminalGroup(current, (group) => ({ ...group, layout: buildTerminalLayout(group.terminalIds) })));
-  }, [activeTerminalWorkspace, startTerminal, updateTerminalWorkspace]);
+  }, [activeTerminalWorkspace, addTerminalToGroup, settings.terminalUseDefaults, startTerminal, updateTerminalWorkspace]);
 
   const moveTerminal = useCallback((sourceId: string, targetId: string) => {
     if (sourceId === targetId || !activeTerminalWorkspace) return;
@@ -1709,7 +1724,13 @@ function App() {
             </nav>
             <div className="workspace-sidebar-content">
             <section className="tool-content" aria-label={tools.find((tool) => tool.id === activeTool)?.label}>
-              {activeTool === "terminal" || activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} toolSwitch={primaryToolSwitch} mode={activeTool === "terminal" ? "terminal" : "files"} terminalLayoutMode={terminalLayoutMode} onChangeTerminalLayoutMode={changeTerminalLayoutMode} activeTerminalGroupName={activeTerminalGroup?.name ?? "Terminal"} editorLayoutMode={editorLayoutMode} onChangeEditorLayoutMode={changeEditorLayoutMode} onGoToFile={() => { if (!settingsOpen) setQuickOpenOpen(true); }} onCreateEditorGroup={createEditorGroup} workspaces={terminalWorkspaceState.workspaces} activeWorkspaceId={activeTerminalWorkspace?.id ?? ""} onActivateWorkspace={activateWorkspace} onCreateWorkspace={createWorkspace} onRenameWorkspace={renameWorkspace} onDeleteWorkspace={() => void deleteWorkspace()} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} onFolderContextAction={handleFolderContextAction} refreshRequest={workspaceFolderRefresh} terminalGroups={activeTerminalWorkspace?.groups ?? []} activeTerminalGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} activeTerminalId={activeTerminalId ?? ""} terminals={activeWorkspaceTerminals} onCreateTerminalGroup={addTerminalGroup} onCloseTerminalGroup={closeTerminalGroup} onDeleteTerminalGroup={deleteTerminalGroup} onRenameTerminalGroup={renameTerminalGroup} onSelectTerminalGroup={(groupId) => { chooseTerminalGroup(groupId); setActiveMainView("terminals"); }} onSelectTerminal={selectTerminalFromSidebar} onAddTerminal={() => { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToWorkspace(); }} agentUsageEnabled={settings.agentUsageEnabled} terminalUsageOpen={terminalUsageOpen} onToggleTerminalUsage={() => { setActiveMainView("terminals"); setTerminalUsageOpen((open) => !open); }} onRenameTerminal={(groupId, terminal) => { selectTerminalFromSidebar(groupId, terminal.id); beginRenameTerminal(terminal); }} onMoveTerminal={moveTerminalToGroup} onCloseTerminal={(terminalId) => void closeTerminal(terminalId)} /> : activeTool === "changes" ? <><div className="git-tool-switch">{primaryToolSwitch}</div><GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenFile={(root, relativePath) => { const absolute = joinRepoPath(root, relativePath); void openEditorFile({ id: `workspace:${root}:${absolute}`, root, path: absolute, name: relativePath.split("/").pop() ?? relativePath }); }} onOpenDiff={(root, change, staged) => void openEditorFile({ id: `gitdiff:${root}:${staged ? "index" : "worktree"}:${change.path}`, root, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onOpenCommitFile={(root, commit, file) => openCommitFileInEditor(commit, file, root)} onError={showToast} /></> : <><div className="git-tool-switch">{primaryToolSwitch}</div><GitGraphPanel key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} onOpenFile={openCommitFileInEditor} /></>}
+              {activeTool === "terminal" || activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} toolSwitch={primaryToolSwitch} mode={activeTool === "terminal" ? "terminal" : "files"} terminalLayoutMode={terminalLayoutMode} onChangeTerminalLayoutMode={changeTerminalLayoutMode} activeTerminalGroupName={activeTerminalGroup?.name ?? "Terminal"} editorLayoutMode={editorLayoutMode} onChangeEditorLayoutMode={changeEditorLayoutMode} onGoToFile={() => { if (!settingsOpen) setQuickOpenOpen(true); }} onCreateEditorGroup={createEditorGroup} workspaces={terminalWorkspaceState.workspaces} activeWorkspaceId={activeTerminalWorkspace?.id ?? ""} onActivateWorkspace={activateWorkspace} onCreateWorkspace={createWorkspace} onRenameWorkspace={renameWorkspace} onDeleteWorkspace={() => void deleteWorkspace()} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} onFolderContextAction={handleFolderContextAction} refreshRequest={workspaceFolderRefresh} terminalGroups={activeTerminalWorkspace?.groups ?? []} activeTerminalGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} activeTerminalId={activeTerminalId ?? ""} terminals={activeWorkspaceTerminals} onCreateTerminalGroup={addTerminalGroup} onCloseTerminalGroup={closeTerminalGroup} onDeleteTerminalGroup={deleteTerminalGroup} onRenameTerminalGroup={renameTerminalGroup} onSelectTerminalGroup={(groupId) => { chooseTerminalGroup(groupId); setActiveMainView("terminals"); }} onSelectTerminal={selectTerminalFromSidebar} onAddTerminal={() => { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToWorkspace(); }} onAddTerminalToGroup={(groupId) => {
+          // Defaults on: unchanged (the selected row adds with the defaults, another row only selects).
+          // Defaults off: the row's group is known, so only the folder is asked and the terminal lands in that group.
+          if (settings.terminalUseDefaults === false) { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToGroup(groupId); return; }
+          if (groupId === activeTerminalWorkspace?.activeGroupId) { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToWorkspace(); return; }
+          chooseTerminalGroup(groupId);
+        }} agentUsageEnabled={settings.agentUsageEnabled} terminalUsageOpen={terminalUsageOpen} onToggleTerminalUsage={() => { setActiveMainView("terminals"); setTerminalUsageOpen((open) => !open); }} onRenameTerminal={(groupId, terminal) => { selectTerminalFromSidebar(groupId, terminal.id); beginRenameTerminal(terminal); }} onMoveTerminal={moveTerminalToGroup} onCloseTerminal={(terminalId) => void closeTerminal(terminalId)} /> : activeTool === "changes" ? <><div className="git-tool-switch">{primaryToolSwitch}</div><GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenFile={(root, relativePath) => { const absolute = joinRepoPath(root, relativePath); void openEditorFile({ id: `workspace:${root}:${absolute}`, root, path: absolute, name: relativePath.split("/").pop() ?? relativePath }); }} onOpenDiff={(root, change, staged) => void openEditorFile({ id: `gitdiff:${root}:${staged ? "index" : "worktree"}:${change.path}`, root, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onOpenCommitFile={(root, commit, file) => openCommitFileInEditor(commit, file, root)} onError={showToast} /></> : <><div className="git-tool-switch">{primaryToolSwitch}</div><GitGraphPanel key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} onOpenFile={openCommitFileInEditor} /></>}
             </section>
             </div>
           </div>
@@ -1790,7 +1811,9 @@ function isWorkspaceItemMissing(reason: unknown): boolean {
   return String(reason).includes(WORKSPACE_ITEM_MISSING_MARKER);
 }
 
-function WorkspacePanel({ toolSwitch, mode, terminalLayoutMode, onChangeTerminalLayoutMode, activeTerminalGroupName, editorLayoutMode, onChangeEditorLayoutMode, onGoToFile, onCreateEditorGroup, workspaces, activeWorkspaceId, onActivateWorkspace, onCreateWorkspace, onRenameWorkspace, onDeleteWorkspace, folders, activePath, onAdd, onActivate, onRemove, onOpenFile, onFolderContextAction, refreshRequest, collapseOtherFolders, terminalGroups, activeTerminalGroupId, activeTerminalId, terminals, onCreateTerminalGroup, onCloseTerminalGroup, onDeleteTerminalGroup, onRenameTerminalGroup, onSelectTerminalGroup, onSelectTerminal, onAddTerminal, agentUsageEnabled, terminalUsageOpen, onToggleTerminalUsage, onRenameTerminal, onMoveTerminal, onCloseTerminal }: { toolSwitch: ReactElement; mode: "terminal" | "files"; terminalLayoutMode: TerminalLayoutMode; onChangeTerminalLayoutMode: (mode: TerminalLayoutMode) => void; activeTerminalGroupName: string; editorLayoutMode: EditorLayoutMode; onChangeEditorLayoutMode: (mode: EditorLayoutMode) => void; onGoToFile: () => void; onCreateEditorGroup: () => void; workspaces: TerminalWorkspace[]; activeWorkspaceId: string; onActivateWorkspace: (id: string) => void; onCreateWorkspace: () => void; onRenameWorkspace: () => void; onDeleteWorkspace: () => void; folders: string[]; activePath: string; onAdd: () => void; onActivate: (path: string) => void; onRemove: (path: string) => void; onOpenFile: (root: string, entry: WorkspaceEntry) => void; onFolderContextAction: (action: FolderContextMenuAction, target: { root: string; path: string; isWorkspaceRoot: boolean }) => void; refreshRequest: { root: string; path: string; nonce: number } | null; collapseOtherFolders: boolean; terminalGroups: TerminalGroup[]; activeTerminalGroupId: string; activeTerminalId: string; terminals: TerminalSession[]; onCreateTerminalGroup: () => void; onCloseTerminalGroup: (groupId: string) => void; onDeleteTerminalGroup: (groupId: string) => void; onRenameTerminalGroup: (workspaceId: string, groupId: string, name: string) => void; onSelectTerminalGroup: (groupId: string) => void; onSelectTerminal: (groupId: string, terminalId: string) => void; onAddTerminal: () => void; agentUsageEnabled: boolean; terminalUsageOpen: boolean; onToggleTerminalUsage: () => void; onRenameTerminal: (groupId: string, terminal: TerminalSession) => void; onMoveTerminal: (terminalId: string, groupId: string) => void; onCloseTerminal: (terminalId: string) => void }) {
+function WorkspacePanel({ toolSwitch, mode, terminalLayoutMode, onChangeTerminalLayoutMode, activeTerminalGroupName, editorLayoutMode, onChangeEditorLayoutMode, onGoToFile, onCreateEditorGroup, workspaces, activeWorkspaceId, onActivateWorkspace, onCreateWorkspace, onRenameWorkspace, onDeleteWorkspace, folders, activePath, onAdd, onActivate, onRemove, onOpenFile, onFolderContextAction, refreshRequest, collapseOtherFolders, terminalGroups, activeTerminalGroupId, activeTerminalId, terminals, onCreateTerminalGroup, onCloseTerminalGroup, onDeleteTerminalGroup, onRenameTerminalGroup, onSelectTerminalGroup, onSelectTerminal, onAddTerminal, onAddTerminalToGroup, agentUsageEnabled, terminalUsageOpen, onToggleTerminalUsage, onRenameTerminal, onMoveTerminal, onCloseTerminal }: { toolSwitch: ReactElement; mode: "terminal" | "files"; terminalLayoutMode: TerminalLayoutMode; onChangeTerminalLayoutMode: (mode: TerminalLayoutMode) => void; activeTerminalGroupName: string; editorLayoutMode: EditorLayoutMode; onChangeEditorLayoutMode: (mode: EditorLayoutMode) => void; onGoToFile: () => void; onCreateEditorGroup: () => void; workspaces: TerminalWorkspace[]; activeWorkspaceId: string; onActivateWorkspace: (id: string) => void; onCreateWorkspace: () => void; onRenameWorkspace: () => void; onDeleteWorkspace: () => void; folders: string[]; activePath: string; onAdd: () => void; onActivate: (path: string) => void; onRemove: (path: string) => void; onOpenFile: (root: string, entry: WorkspaceEntry) => void; onFolderContextAction: (action: FolderContextMenuAction, target: { root: string; path: string; isWorkspaceRoot: boolean }) => void; refreshRequest: { root: string; path: string; nonce: number } | null; collapseOtherFolders: boolean; terminalGroups: TerminalGroup[]; activeTerminalGroupId: string; activeTerminalId: string; terminals: TerminalSession[]; onCreateTerminalGroup: () => void; onCloseTerminalGroup: (groupId: string) => void; onDeleteTerminalGroup: (groupId: string) => void; onRenameTerminalGroup: (workspaceId: string, groupId: string, name: string) => void; onSelectTerminalGroup: (groupId: string) => void; onSelectTerminal: (groupId: string, terminalId: string) => void; onAddTerminal: () => void;
+  /** A group row's add button: the group is known, so only the folder is asked (defaults off). */
+  onAddTerminalToGroup: (groupId: string) => void; agentUsageEnabled: boolean; terminalUsageOpen: boolean; onToggleTerminalUsage: () => void; onRenameTerminal: (groupId: string, terminal: TerminalSession) => void; onMoveTerminal: (terminalId: string, groupId: string) => void; onCloseTerminal: (terminalId: string) => void }) {
   const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
   const [entriesByPath, setEntriesByPath] = useState<Record<string, WorkspaceEntry[]>>({});
   const [loadingPaths, setLoadingPaths] = useState<Record<string, boolean>>({});
@@ -2137,7 +2160,7 @@ function WorkspacePanel({ toolSwitch, mode, terminalLayoutMode, onChangeTerminal
                         <span className="workspace-terminal-group-count">{groupTerminals.length}</span>
                       </button>
                       <div className="workspace-terminal-group-acts">
-                        <button className="ib" type="button" aria-label={`New terminal in ${group.name}`} title={`New terminal in ${group.name}`} onClick={() => { if (selected) onAddTerminal(); else onSelectTerminalGroup(group.id); }}>
+                        <button className="ib" type="button" aria-label={`New terminal in ${group.name}`} title={`New terminal in ${group.name}`} onClick={() => onAddTerminalToGroup(group.id)}>
                           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
                         </button>
                         <ActionMenu label={`Group actions for ${group.name}`} title="Group actions" className="ib" items={groupMenuItems}>

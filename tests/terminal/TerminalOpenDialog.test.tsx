@@ -105,6 +105,9 @@ describe("TerminalOpenDialog", () => {
     const user = userEvent.setup();
     const props = renderDialog({ ask: { folder: true, group: false } });
 
+    // Folder-only prompts (split, group row add button) are titled for the folder and show no group choice.
+    expect(screen.getByRole("dialog", { name: "Terminal Folder" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Group" })).toBeNull();
     expect(screen.queryByRole("radio", { name: "API" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Open terminal" }));
     expect(props.onConfirm).toHaveBeenCalledWith({ folder: "C:\\repo", group: null });

@@ -119,13 +119,14 @@ describe("terminal open with defaults off (prompt)", () => {
     expect(screen.queryByTestId("mock-terminal")).toBeNull();
   });
 
-  it("New Terminal asks for folder and group, then opens the terminal in the chosen folder and a new group", async () => {
+  it("the global new-terminal shortcut asks for folder and group, then opens the terminal in the chosen folder and a new group", async () => {
     const user = userEvent.setup();
     seed({ terminalUseDefaults: false });
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Cancel" }));
 
-    await user.click(await screen.findByRole("button", { name: "New Terminal" }));
+    // The empty group's own "New Terminal" button asks only for the folder (#44); the global shortcut asks for both.
+    fireEvent.keyDown(window, { key: "t", ctrlKey: true, shiftKey: true });
     const dialog = await screen.findByRole("dialog", { name: "Open terminal" });
     await user.click(within(dialog).getByRole("radio", { name: apiFolder }));
     await user.click(within(dialog).getByRole("radio", { name: "New group" }));
@@ -171,12 +172,12 @@ describe("terminal open with defaults off (prompt)", () => {
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Cancel" }));
     await user.click(await screen.findByRole("button", { name: "New Terminal" }));
-    const first = await screen.findByRole("dialog", { name: "Open terminal" });
+    const first = await screen.findByRole("dialog", { name: "Terminal Folder" });
     await user.click(within(first).getByRole("button", { name: "Open terminal" }));
     await waitFor(() => expect(createdDirectories()).toHaveLength(1));
 
     fireEvent.keyDown(window, { key: "h", ctrlKey: true, shiftKey: true });
-    const splitDialog = await screen.findByRole("dialog", { name: "Open terminal" });
+    const splitDialog = await screen.findByRole("dialog", { name: "Terminal Folder" });
     expect(within(splitDialog).queryByRole("textbox", { name: "New group name" })).toBeNull();
     expect(within(splitDialog).getByRole("radio", { name: root })).toBeInTheDocument();
     await user.click(within(splitDialog).getByRole("button", { name: "Cancel" }));
@@ -209,6 +210,8 @@ describe("terminal open settings persistence", () => {
       expect(stored.terminalUseDefaults).toBe(false);
       expect(stored.terminalDefaultGroup).toBe("API");
     });
+    // Let the debounced terminal save land before the restart, so the restored list is deterministic.
+    await new Promise((resolve) => setTimeout(resolve, 400));
     first.unmount();
 
     tauri.invoke.mockClear();
@@ -217,5 +220,91 @@ describe("terminal open settings persistence", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(screen.queryByRole("dialog", { name: "Open terminal" })).toBeNull();
     expect(JSON.parse(localStorage.getItem("yerminal.app-settings.v1") ?? "{}").terminalUseDefaults).toBe(false);
+  });
+});
+
+describe("group row add button asks only for the folder (#44)", () => {
+  function seedTwoGroups(settings: Record<string, unknown>) {
+    localStorage.clear();
+    localStorage.setItem("yerminal.terminal-workspaces", JSON.stringify({
+      workspaces: [{
+        id: "workspace-1", name: "Workspace 1", rootPath: root, folderPaths: [root, apiFolder],
+        groups: [{ id: "g-one", name: "Terminal 1" }, { id: "g-two", name: "Logs" }], activeGroupId: "g-one",
+      }],
+      activeId: "workspace-1",
+    }));
+    localStorage.setItem("yerminal.app-settings.v1", JSON.stringify(settings));
+  }
+
+  function savedGroupIds(): string[] {
+    const stored = JSON.parse(localStorage.getItem("yerminal.terminal-sessions.v1") ?? "{}");
+    return (stored.workspaces?.["workspace-1"] ?? []).map((session: { groupId: string }) => session.groupId);
+  }
+
+  beforeEach(() => {
+    tauri.invoke.mockReset();
+    tauri.invoke.mockImplementation(async (command: string) => {
+      if (command === "list_workspace_directory") return [];
+      if (command === "terminal_output_snapshot") return { events: [] };
+      if (command === "terminal_resource_usage") return [];
+      return undefined;
+    });
+  });
+
+  it("asks only for the folder and starts the terminal in that row's group when defaults are off", async () => {
+    const user = userEvent.setup();
+    seedTwoGroups({ terminalUseDefaults: false });
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    await user.click(screen.getByRole("button", { name: "New terminal in Logs" }));
+    const dialog = await screen.findByRole("dialog", { name: "Terminal Folder" });
+    expect(within(dialog).queryByRole("radio", { name: /Logs|Terminal 1/ })).toBeNull();
+    expect(within(dialog).queryByRole("radio", { name: "New group" })).toBeNull();
+    await user.click(within(dialog).getByRole("radio", { name: apiFolder }));
+    await user.click(within(dialog).getByRole("button", { name: "Open terminal" }));
+
+    await waitFor(() => expect(createdDirectories()).toEqual([apiFolder]));
+    await waitFor(() => expect(savedGroupIds()).toEqual(["g-two"]));
+  });
+
+  it("cancel from the folder-only prompt opens nothing", async () => {
+    const user = userEvent.setup();
+    seedTwoGroups({ terminalUseDefaults: false });
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    await user.click(screen.getByRole("button", { name: "New terminal in Logs" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Terminal Folder" })).getByRole("button", { name: "Cancel" }));
+
+    expect(createdDirectories()).toEqual([]);
+    expect(savedGroupIds()).toEqual([]);
+  });
+
+  it("the header add button on the selected group asks only for the folder", async () => {
+    const user = userEvent.setup();
+    seedTwoGroups({ terminalUseDefaults: false });
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    await user.click(screen.getByRole("button", { name: "Add terminal to group" }));
+    const dialog = await screen.findByRole("dialog", { name: "Terminal Folder" });
+    expect(within(dialog).queryByRole("radio", { name: /Logs|Terminal 1/ })).toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Open terminal" }));
+
+    await waitFor(() => expect(createdDirectories()).toEqual([root]));
+    await waitFor(() => expect(savedGroupIds()).toEqual(["g-one"]));
+  });
+
+  it("with defaults on, the same row button asks nothing and only selects the group", async () => {
+    const user = userEvent.setup();
+    seedTwoGroups({ terminalUseDefaults: true });
+    render(<App />);
+    await waitFor(() => expect(createdDirectories()).toEqual([root]));
+
+    await user.click(screen.getByRole("button", { name: "New terminal in Logs" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.querySelector('[data-terminal-group-id="g-two"]')).toHaveClass("selected");
+    expect(createdDirectories()).toEqual([root]);
   });
 });
