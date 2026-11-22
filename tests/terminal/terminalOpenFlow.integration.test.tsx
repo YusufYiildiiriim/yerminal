@@ -213,7 +213,9 @@ describe("terminal open settings persistence", () => {
 
     tauri.invoke.mockClear();
     render(<App />);
-    expect(await screen.findByRole("dialog", { name: "Open terminal" })).toBeInTheDocument();
-    expect(createdDirectories()).toEqual([]);
+    // Startup restores saved terminals without the open prompt (#43), even with the defaults switch off (#34).
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(screen.queryByRole("dialog", { name: "Open terminal" })).toBeNull();
+    expect(JSON.parse(localStorage.getItem("yerminal.app-settings.v1") ?? "{}").terminalUseDefaults).toBe(false);
   });
 });

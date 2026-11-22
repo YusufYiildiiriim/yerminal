@@ -42,6 +42,8 @@ import "@fontsource-variable/geist-mono/index.css";
 import "./styles/typography.css";
 import { TerminalOpenDialog } from "./features/terminal/TerminalOpenDialog";
 import { applyTerminalGroupChoice, folderChoices, readRecentTerminalFolders, rememberTerminalFolder, resolveTerminalOpenDefaults, type TerminalOpenAsk, type TerminalOpenChoice } from "./features/terminal/terminalOpenTarget";
+import { nextTerminalName, planRestore, readTerminalSessions, RESTORE_STAGGER_MS, SNAPSHOT_DEBOUNCE_MS, snapshotWorkspaceSessions, writeTerminalSessions, type PersistedTerminalSession, type PersistedTerminalSessions } from "./features/terminal/terminalSessionStore";
+import type { TerminalExitOptions } from "./features/terminal/TerminalPane";
 import "./styles/app.css";
 import "./styles/themes.css";
 import "./styles/workbench-ux.css";
@@ -124,6 +126,11 @@ function mergeWorkspaceFolders(current: string[], additions: string[]): string[]
 function normalizeWorkspaceFolders(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return mergeWorkspaceFolders([], value.filter((folder): folder is string => typeof folder === "string" && folder.length > 0));
+}
+
+/** Resolves after `ms`, so restored terminals start one by one. */
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function syncTerminalGroups(workspace: TerminalWorkspace, groups: TerminalGroup[], activeGroupId: string): TerminalWorkspace {
@@ -352,7 +359,24 @@ function App() {
   const autoSaveQueuedRef = useRef(new Set<string>());
 
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
-  const handleTerminalExit = useCallback((id: string) => {
+  // Terminals restored at startup that could not start at all are dropped (the others keep the exited state).
+  const restoredTerminalIdsRef = useRef(new Set<string>());
+  const showToastRef = useRef<(message: string) => void>(() => {});
+  const handleTerminalExit = useCallback((id: string, options?: TerminalExitOptions) => {
+    if (options?.startFailed && restoredTerminalIdsRef.current.has(id)) {
+      restoredTerminalIdsRef.current.delete(id);
+      setTerminals((current) => current.filter((terminal) => terminal.id !== id));
+      setTerminalWorkspaceState((current) => ({
+        ...current,
+        workspaces: current.workspaces.map((workspace) => {
+          if (!workspace.terminalIds.includes(id)) return workspace;
+          const next = removeTerminalFromGroups({ groups: workspace.groups, activeGroupId: workspace.activeGroupId }, id);
+          return syncTerminalGroups(workspace, next.groups, next.activeGroupId);
+        }),
+      }));
+      showToastRef.current("A restored terminal could not start and was removed.");
+      return;
+    }
     setTerminals((current) => current.map((terminal) => terminal.id === id ? { ...terminal, exited: true, shellLabel: terminal.exited ? terminal.shellLabel : `${terminal.shellLabel} · exited` } : terminal));
   }, []);
 
@@ -1057,7 +1081,7 @@ function App() {
       const terminal: TerminalSession = {
         id,
         exited: false,
-        name: activeWorkspaceTerminalIds.length === 0 ? (shell === "powershell" ? "PowerShell" : shell) : `Terminal ${activeWorkspaceTerminalIds.length + 1}`,
+        name: activeWorkspaceTerminalIds.length === 0 ? (shell === "powershell" ? "PowerShell" : shell) : nextTerminalName(terminals.filter((item) => activeWorkspaceTerminalIds.includes(item.id)).map((item) => item.name), activeWorkspaceTerminalIds.length + 1),
         shell,
         shellLabel: shell === "powershell" ? "PowerShell" : shell,
         workingDirectory: workingDirectory ?? (repoPath || null),
@@ -1074,7 +1098,7 @@ function App() {
       showToast(String(reason));
       return null;
     }
-  }, [activeTerminalWorkspace, activeWorkspaceTerminalIds.length, dismissToast, repoPath, showToast, updateTerminalWorkspace]);
+  }, [activeTerminalWorkspace, activeWorkspaceTerminalIds.length, dismissToast, repoPath, showToast, terminals, updateTerminalWorkspace]);
 
   /** Folder and group for a new terminal. With defaults on nothing is asked; otherwise the prompt answers, and cancel gives null. */
   const chooseTerminalTarget = useCallback((folder: string | undefined, ask: TerminalOpenAsk): Promise<TerminalOpenChoice | null> => {
@@ -1125,9 +1149,94 @@ function App() {
     return created;
   }, [activeTerminalWorkspace, chooseTerminalTarget, createTerminal, updateTerminalWorkspace]);
 
+  // Startup restore: each saved terminal starts again in its folder, group and name. No folder or group
+  // question is asked, and the automatic first terminal does not run for a workspace that has saved terminals.
+  const restorePlannedRef = useRef<Set<string> | null>(null);
+  const restorePendingRef = useRef(new Set<string>());
+  const restoreDoneRef = useRef(false);
+  useEffect(() => {
+    showToastRef.current = showToast;
+    if (restorePlannedRef.current !== null) return;
+    const planned = new Map<string, { rootPath: string; items: PersistedTerminalSession[] }>();
+    const restoreOn = isTauri() && settings.terminalRestoreOnStartup !== false;
+    if (restoreOn) {
+      const saved = readTerminalSessions();
+      for (const workspace of terminalWorkspaceState.workspaces) {
+        const list = saved.workspaces[workspace.id] ?? [];
+        if (list.length === 0) continue;
+        planned.set(workspace.id, { rootPath: workspace.rootPath, items: planRestore(list, workspace.groups.map((group) => group.id), workspace.activeGroupId) });
+      }
+    }
+    restorePlannedRef.current = new Set(planned.keys());
+    restorePendingRef.current = new Set(planned.keys());
+    if (planned.size === 0) {
+      restoreDoneRef.current = true;
+      return;
+    }
+    const restoreOne = async (workspaceId: string, rootPath: string, item: PersistedTerminalSession): Promise<boolean> => {
+      let directory: string | null = item.workingDirectory ?? (rootPath || null);
+      let fellBack = false;
+      if (item.workingDirectory) {
+        try {
+          await invoke("check_terminal_directory", { path: item.workingDirectory });
+        } catch {
+          directory = rootPath || null;
+          fellBack = true;
+        }
+      }
+      const shell: ShellKind = item.shell === "bash" || item.shell === "zsh" ? item.shell : "powershell";
+      const id = crypto.randomUUID();
+      restoredTerminalIdsRef.current.add(id);
+      setTerminals((current) => [...current, { id, exited: false, name: item.name, shell, shellLabel: shell === "powershell" ? "PowerShell" : shell, workingDirectory: directory }]);
+      updateTerminalWorkspace(workspaceId, (workspace) => {
+        const group = workspace.groups.find((candidate) => candidate.id === item.groupId) ?? workspace.groups.find((candidate) => candidate.id === workspace.activeGroupId) ?? workspace.groups[0];
+        if (!group) return workspace;
+        return updateTerminalGroup(workspace, group.id, (current) => {
+          const terminalIds = [...current.terminalIds, id];
+          return { ...current, terminalIds, activeTerminalId: item.active || current.activeTerminalId === null ? id : current.activeTerminalId, layout: buildTerminalLayout(terminalIds) };
+        });
+      });
+      return fellBack;
+    };
+    void (async () => {
+      let fellBackCount = 0;
+      for (const [workspaceId, { rootPath, items }] of planned) {
+        for (const item of items) {
+          await wait(RESTORE_STAGGER_MS);
+          if (await restoreOne(workspaceId, rootPath, item)) fellBackCount += 1;
+        }
+        restorePendingRef.current.delete(workspaceId);
+      }
+      restoreDoneRef.current = true;
+      if (fellBackCount > 0) {
+        showToastRef.current(`${fellBackCount === 1 ? "A saved folder no longer exists" : `${fellBackCount} saved folders no longer exist`}; those terminals opened in the workspace root.`);
+      }
+    })();
+    // restoreOne reads only the state setters and the refs above, so the effect runs once per app start.
+  }, [settings.terminalRestoreOnStartup, terminalWorkspaceState.workspaces, showToast, updateTerminalWorkspace]);
+
+  // Saves the open terminals (names, groups, order, folders, active) after each change, debounced.
+  // Nothing is written before the startup restore has finished, so a half-started list cannot replace the saved one.
+  useEffect(() => {
+    if (!isTauri() || settings.terminalRestoreOnStartup === false) return;
+    const timer = window.setTimeout(() => {
+      if (!restoreDoneRef.current) return;
+      const workspaces: PersistedTerminalSessions["workspaces"] = {};
+      for (const workspace of terminalWorkspaceState.workspaces) {
+        workspaces[workspace.id] = snapshotWorkspaceSessions(
+          workspace.groups.map((group) => ({ id: group.id, terminalIds: group.terminalIds, activeTerminalId: group.activeTerminalId })),
+          terminals.map((terminal) => ({ id: terminal.id, name: terminal.name, shell: terminal.shell, workingDirectory: terminal.workingDirectory, exited: terminal.exited })),
+        );
+      }
+      writeTerminalSessions({ workspaces });
+    }, SNAPSHOT_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [terminals, terminalWorkspaceState, settings.terminalRestoreOnStartup]);
+
   useEffect(() => {
     const workspaceId = activeTerminalWorkspace?.id;
     if (!workspaceId || activeWorkspaceTerminalIds.length > 0 || initializedWorkspaceIdsRef.current.has(workspaceId)) return;
+    if (restorePlannedRef.current?.has(workspaceId)) return;
     initializedWorkspaceIdsRef.current.add(workspaceId);
     void startTerminal();
   }, [activeTerminalWorkspace?.id, activeWorkspaceTerminalIds.length, startTerminal]);
@@ -2361,7 +2470,7 @@ type TerminalWorkspaceLayoutProps = {
   activeTerminalId: string | null;
   onLinkHint?: (message: string) => void;
   onFocus: (sessionId: string) => void;
-  onExit: (sessionId: string) => void;
+  onExit: (sessionId: string, options?: TerminalExitOptions) => void;
   onClose: (sessionId: string) => void;
   onMove: (sourceId: string, targetId: string) => void;
   onResize: (splitId: string, ratio: number) => void;
