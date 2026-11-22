@@ -2292,6 +2292,11 @@ function useRepositoryEntries(repoPaths: string[], refreshNonce = 0): Repository
   const [results, setResults] = useState<Record<string, RepositoryInfo | null>>({});
   useEffect(() => {
     let cancelled = false;
+    // Forget results of folders that were removed, so a folder added back later waits for its own read.
+    setResults((current) => {
+      const kept = Object.keys(current).filter((path) => paths.includes(path));
+      return kept.length === Object.keys(current).length ? current : Object.fromEntries(kept.map((path) => [path, current[path]]));
+    });
     for (const path of paths) {
       void invoke<RepositoryInfo>("git_repository_info", { path })
         .catch((): null => null)
@@ -2304,12 +2309,20 @@ function useRepositoryEntries(repoPaths: string[], refreshNonce = 0): Repository
   return paths.map((path) => ({ path, info: results[path] }));
 }
 
-/** Entries to draw in order: loading folders keep their place, non-repositories and duplicate roots are dropped. */
+/**
+ * Entries to draw in order: loading folders keep their place, non-repositories and duplicate roots are dropped.
+ * A loading folder is also dropped when it sits at, or inside, a root that is already shown, since it will resolve to that card.
+ */
 function visibleRepositoryEntries(entries: RepositoryEntry[]): RepositoryEntry[] {
+  const shownRoots = entries.flatMap((entry) => (entry.info ? [repositoryKey(entry.info.root)] : []));
   const seen = new Set<string>();
   return entries.flatMap((entry) => {
     if (entry.info === null) return [];
-    if (entry.info === undefined) return [entry];
+    if (entry.info === undefined) {
+      const key = repositoryKey(entry.path);
+      const covered = shownRoots.some((root) => key === root || key.startsWith(root + "/"));
+      return covered ? [] : [entry];
+    }
     const key = repositoryKey(entry.info.root);
     if (seen.has(key)) return [];
     seen.add(key);
@@ -2341,6 +2354,8 @@ function GitGraphPanel({ repoPaths, onOpenRepository, onError, onOpenFile }: { r
   const loading = entries.some((entry) => entry.info === undefined);
   const [selectedRoot, setSelectedRoot] = useState("");
   const selected = repositories.find((info) => info.root === selectedRoot) ?? repositories[0] ?? null;
+  // Pin the repository shown by default, so one that resolves later cannot move the graph. Only a user pick or removing the shown repository changes it.
+  if (selected && selected.root !== selectedRoot) setSelectedRoot(selected.root);
   if (!selected && loading) return <LoadingState label="Loading repositories…" />;
   if (!selected) {
     return <div className="g-empty-repo">
