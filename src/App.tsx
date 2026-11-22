@@ -1910,7 +1910,7 @@ function WorkspacePanel({ toolSwitch, mode, terminalLayoutMode, onChangeTerminal
                 <button className="workspace-tree-toggle" aria-label={`${expanded ? "Collapse" : "Expand"} ${name}`} aria-expanded={expanded} onClick={() => toggleDirectory(folder, folder, null)} type="button"><ChevronGlyph open={expanded} /></button>
                 <button className="workspace-folder-select" onClick={() => { onActivate(folder); if (selected) toggleDirectory(folder, folder, null); }} type="button" aria-pressed={selected} title={folder}>
                   <span className="workspace-folder-icon" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M1.75 4.5a1 1 0 0 1 1-1h3.1l1.4 1.5h5.9a1 1 0 0 1 1 1v6.4H1.75z" /></svg></span>
-                  <span className="workspace-folder-label"><strong>{name}</strong><small>{folder}</small></span>
+                  <span className="workspace-folder-label"><strong>{name}</strong><small title={folder}>{folder}</small></span>
                 </button>
                 <button className="workspace-folder-remove" aria-label={`Remove ${name} from this workspace`} title="Remove folder" onClick={() => onRemove(folder)} type="button">×</button>
               </div>
