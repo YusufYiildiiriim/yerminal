@@ -2422,14 +2422,16 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenD
   const [branchCreateRequest, setBranchCreateRequest] = useState(0);
   /** False until this repository's own status has come back (success or failure): its card shows a loading line until then. */
   const [statusLoaded, setStatusLoaded] = useState(false);
+  /** The reason git_status failed, or null. A failed read shows an error line and a retry instead of counts. */
+  const [statusError, setStatusError] = useState<string | null>(null);
   const stagedChanges = changes.filter((change) => change.staged);
   const unstagedChanges = changes.filter((change) => change.unstaged);
   const conflictedPaths = changes.filter((change) => change.kind === "conflicted").map((change) => change.path);
 
   const refresh = useCallback(async () => {
     if (!repoPath || !repoInfo || !isTauri()) return;
-    try { setChanges(await invoke<FileChange[]>("git_status", { path: repoPath })); setSyncNonce((value) => value + 1); setStatusLoaded(true); }
-    catch (reason) { onError(String(reason)); setStatusLoaded(true); }
+    try { setChanges(await invoke<FileChange[]>("git_status", { path: repoPath })); setStatusError(null); setSyncNonce((value) => value + 1); setStatusLoaded(true); }
+    catch (reason) { setChanges([]); setStatusError(String(reason)); onError(String(reason)); setStatusLoaded(true); }
   }, [onError, repoInfo, repoPath]);
 
   const runFileAction = async (action: "stage" | "unstage" | "discard", filePath: string) => {
@@ -2536,7 +2538,7 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenD
       <button className="git-repository-toggle" aria-expanded={expanded} onClick={toggleExpanded} type="button" title={repoInfo.root}>
         <span className="git-repository-chevron" aria-hidden="true"><ChevronGlyph open={expanded} /></span>
         <span className="git-repository-name"><strong>{repoName}</strong></span>
-        {statusLoaded && <span className="git-repository-counts">{stagedChanges.length} staged · {unstagedChanges.length} changes{aheadCount > 0 ? ` · ↑${aheadCount}` : ""}</span>}
+        {statusLoaded && !statusError && <span className="git-repository-counts">{stagedChanges.length} staged · {unstagedChanges.length} changes{aheadCount > 0 ? ` · ↑${aheadCount}` : ""}</span>}
       </button>
     </header>
     <div className="git-repository-body" hidden={!expanded}>
@@ -2545,6 +2547,10 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenD
         <SyncBar repoPath={repoPath} refreshKey={syncNonce + refreshNonce} onChanged={onBranchChanged} onError={onError} onAheadChange={setAheadCount} onNewBranch={() => setBranchCreateRequest((value) => value + 1)} onRefresh={onBranchChanged} view={changeView} onViewChange={chooseChangeView} />
       </div>
       {!statusLoaded && <LoadingState label="Loading changes…" compact />}
+      {statusError && <div className="git-status-error" role="alert" title={statusError}>
+        <span>Could not read changes</span>
+        <button type="button" onClick={() => void refresh()}>Try again</button>
+      </div>}
       {statusLoaded && stagedChanges.length > 0 && <section className="git-commit-box" aria-label="Commit staged changes">
         <textarea aria-label="Commit message" placeholder="Message (required)" rows={2} maxLength={65536} value={commitMessage} onChange={(event) => setCommitMessage(event.currentTarget.value)} />
         <button className="git-commit-button" onClick={() => void commitStaged()} disabled={isCommitting || Boolean(fileAction) || stagedChanges.length === 0 || !commitMessage.trim()} type="button"><span aria-hidden="true">✓</span><span className="git-commit-label">{isCommitting ? "Committing…" : "Commit staged"}</span><small>{stagedChanges.length}</small></button>
