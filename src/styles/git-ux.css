@@ -362,6 +362,8 @@
   cursor: pointer;
 }
 .git-repository-toggle:hover { background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 7%, transparent); }
+/* A repository still loading shows its name in the same header, without a hover or pointer. */
+.git-repository-toggle.is-static, .git-repository-toggle.is-static:hover { background: transparent; cursor: default; }
 .git-repository-chevron {
   flex: 0 0 10px;
   width: 10px;

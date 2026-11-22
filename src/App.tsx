@@ -10,6 +10,7 @@ import type { DiffVersions } from "./features/git/diffEditorModel";
 import { BranchPicker } from "./features/git/BranchPicker";
 import { SyncBar } from "./features/git/SyncBar";
 import { GitCard } from "./features/git/GitCard";
+import { LoadingState } from "./components/LoadingState";
 import { OutgoingCommits } from "./features/git/OutgoingCommits";
 import { HistorySection } from "./features/git/HistorySection";
 import { readCollapsedRepos, repoExpansionKey, setRepoExpanded, writeCollapsedRepos } from "./features/git/repoExpansion";
@@ -2264,27 +2265,59 @@ function formatFileSize(size: number): string {
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
-function useRepositories(repoPaths: string[], refreshNonce = 0): RepositoryInfo[] {
-  const [repositories, setRepositories] = useState<RepositoryInfo[]>([]);
+/** One opened folder. `info` is undefined while its Git state is still being read, null when it is not inside a repository. */
+type RepositoryEntry = { path: string; info: RepositoryInfo | null | undefined };
+
+function repositoryKey(root: string): string {
+  return root.replaceAll("\\", "/").replace(/\/+$/, "").toLocaleLowerCase();
+}
+
+/**
+ * Every opened folder is read on its own, so each result lands as soon as it is ready instead of waiting
+ * for the slowest one. Results from earlier reads stay on screen during a refresh, so cards do not flash.
+ */
+function useRepositoryEntries(repoPaths: string[], refreshNonce = 0): RepositoryEntry[] {
   const pathsKey = [...new Set(repoPaths.filter(Boolean))].join("\n");
+  const paths = useMemo(() => (pathsKey && isTauri() ? pathsKey.split("\n") : []), [pathsKey]);
+  const [results, setResults] = useState<Record<string, RepositoryInfo | null>>({});
   useEffect(() => {
     let cancelled = false;
-    const paths = pathsKey ? pathsKey.split("\n") : [];
-    if (!isTauri() || paths.length === 0) { setRepositories([]); return; }
-    void Promise.all(paths.map((path) => invoke<RepositoryInfo>("git_repository_info", { path }).catch(() => null)))
-      .then((infos) => {
-        if (cancelled) return;
-        const unique = new Map<string, RepositoryInfo>();
-        for (const info of infos) {
-          if (!info?.root) continue;
-          const key = info.root.replaceAll("\\", "/").replace(/\/+$/, "").toLocaleLowerCase();
-          if (!unique.has(key)) unique.set(key, info);
-        }
-        setRepositories([...unique.values()]);
-      });
+    for (const path of paths) {
+      void invoke<RepositoryInfo>("git_repository_info", { path })
+        .catch((): null => null)
+        .then((info) => {
+          if (!cancelled) setResults((current) => ({ ...current, [path]: info?.root ? info : null }));
+        });
+    }
     return () => { cancelled = true; };
-  }, [refreshNonce, pathsKey]);
-  return repositories;
+  }, [paths, refreshNonce]);
+  return paths.map((path) => ({ path, info: results[path] }));
+}
+
+/** Entries to draw in order: loading folders keep their place, non-repositories and duplicate roots are dropped. */
+function visibleRepositoryEntries(entries: RepositoryEntry[]): RepositoryEntry[] {
+  const seen = new Set<string>();
+  return entries.flatMap((entry) => {
+    if (entry.info === null) return [];
+    if (entry.info === undefined) return [entry];
+    const key = repositoryKey(entry.info.root);
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [entry];
+  });
+}
+
+function readyRepositories(entries: RepositoryEntry[]): RepositoryInfo[] {
+  return visibleRepositoryEntries(entries).flatMap((entry) => (entry.info ? [entry.info] : []));
+}
+
+/** A repository folder whose Git state is still being read: its name and a loading line hold its place in the list. */
+function PendingRepositoryCard({ path }: { path: string }) {
+  const name = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+  return <section className="git-repository-section is-loading" aria-busy="true">
+    <header className="git-repository-heading"><div className="git-repository-toggle is-static" title={path}><span className="git-repository-name"><strong>{name}</strong></span></div></header>
+    <LoadingState label="Loading repository…" compact />
+  </section>;
 }
 
 function repoLabel(info: RepositoryInfo): string {
@@ -2293,9 +2326,12 @@ function repoLabel(info: RepositoryInfo): string {
 
 function GitGraphPanel({ repoPaths, onOpenRepository, onError, onOpenFile }: { repoPaths: string[]; onOpenRepository: () => void; onError: (message: string) => void; onOpenFile: (commit: CommitInfo, file: CommitFileChange, root: string) => void }) {
   const [refreshNonce, setRefreshNonce] = useState(0);
-  const repositories = useRepositories(repoPaths, refreshNonce);
+  const entries = useRepositoryEntries(repoPaths, refreshNonce);
+  const repositories = readyRepositories(entries);
+  const loading = entries.some((entry) => entry.info === undefined);
   const [selectedRoot, setSelectedRoot] = useState("");
   const selected = repositories.find((info) => info.root === selectedRoot) ?? repositories[0] ?? null;
+  if (!selected && loading) return <LoadingState label="Loading repositories…" />;
   if (!selected) {
     return <div className="g-empty-repo">
       <h2>{repoPaths.length ? "No Git repository found" : "History unavailable"}</h2>
@@ -2316,12 +2352,16 @@ function GitGraphPanel({ repoPaths, onOpenRepository, onError, onOpenFile }: { r
 
 function GitChanges({ repoPaths, onOpenRepository, onOpenDiff, onOpenFile, onOpenCommitFile, onError }: { repoPaths: string[]; onOpenRepository: () => void; onOpenDiff: (root: string, change: FileChange, staged: boolean) => void; onOpenFile: (root: string, relativePath: string) => void; onOpenCommitFile: (root: string, commit: CommitInfo, file: CommitFileChange) => void; onError: (message: string) => void }) {
   const [refreshNonce, setRefreshNonce] = useState(0);
-  const repositories = useRepositories(repoPaths, refreshNonce);
+  const entries = useRepositoryEntries(repoPaths, refreshNonce);
+  const repositories = readyRepositories(entries);
+  const loading = entries.some((entry) => entry.info === undefined);
 
   return <div className="tool-view git-changes-view">
-    <header className="tool-header"><div><h1>Git Changes</h1><p>{repositories.length > 0 ? `${repositories.length} ${repositories.length === 1 ? "repository" : "repositories"}` : repoPaths.length ? "Searching opened folders for Git repositories" : "Review your working trees"}</p></div><button className="icon-button refresh-button" aria-label="Refresh repositories and changes" onClick={() => setRefreshNonce((value) => value + 1)} type="button">↻</button></header>
-    {repositories.length === 0 ? <div className="empty-repository"><div className="empty-icon">⌂</div><h2>{repoPaths.length ? "No Git repository found" : "No repository opened"}</h2><p>{repoPaths.length ? "Add a folder that belongs to a Git repository to view its changes." : "Open a folder to view its changes."}</p><button className="primary-button" onClick={onOpenRepository} type="button">Open Folder</button></div> : <div className="git-repository-list" aria-label="Git repositories">
-      {repositories.map((repoInfo) => <GitRepositoryChanges key={repoInfo.root.replaceAll("\\", "/").replace(/\/+$/, "").toLocaleLowerCase()} repoInfo={repoInfo} refreshNonce={refreshNonce} onBranchChanged={() => setRefreshNonce((value) => value + 1)} onOpenDiff={onOpenDiff} onOpenFile={onOpenFile} onOpenCommitFile={onOpenCommitFile} onError={onError} />)}
+    <header className="tool-header"><div><h1>Git Changes</h1><p>{repositories.length > 0 ? `${repositories.length} ${repositories.length === 1 ? "repository" : "repositories"}` : loading ? "Loading repositories…" : repoPaths.length ? "Searching opened folders for Git repositories" : "Review your working trees"}</p></div><button className="icon-button refresh-button" aria-label="Refresh repositories and changes" onClick={() => setRefreshNonce((value) => value + 1)} type="button">↻</button></header>
+    {repositories.length === 0 && !loading ? <div className="empty-repository"><div className="empty-icon">⌂</div><h2>{repoPaths.length ? "No Git repository found" : "No repository opened"}</h2><p>{repoPaths.length ? "Add a folder that belongs to a Git repository to view its changes." : "Open a folder to view its changes."}</p><button className="primary-button" onClick={onOpenRepository} type="button">Open Folder</button></div> : <div className="git-repository-list" aria-label="Git repositories">
+      {visibleRepositoryEntries(entries).map((entry) => entry.info
+        ? <GitRepositoryChanges key={repositoryKey(entry.info.root)} repoInfo={entry.info} refreshNonce={refreshNonce} onBranchChanged={() => setRefreshNonce((value) => value + 1)} onOpenDiff={onOpenDiff} onOpenFile={onOpenFile} onOpenCommitFile={onOpenCommitFile} onError={onError} />
+        : <PendingRepositoryCard key={"pending:" + entry.path} path={entry.path} />)}
     </div>}
     <div className="panel-footnote"><span className="read-only-mark">◇</span> Stage, unstage, discard, and commit changes</div>
   </div>;
@@ -2343,14 +2383,16 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenD
   const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(() => new Set());
   const [aheadCount, setAheadCount] = useState(0);
   const [branchCreateRequest, setBranchCreateRequest] = useState(0);
+  /** False until this repository's own status has come back (success or failure): its card shows a loading line until then. */
+  const [statusLoaded, setStatusLoaded] = useState(false);
   const stagedChanges = changes.filter((change) => change.staged);
   const unstagedChanges = changes.filter((change) => change.unstaged);
   const conflictedPaths = changes.filter((change) => change.kind === "conflicted").map((change) => change.path);
 
   const refresh = useCallback(async () => {
     if (!repoPath || !repoInfo || !isTauri()) return;
-    try { setChanges(await invoke<FileChange[]>("git_status", { path: repoPath })); setSyncNonce((value) => value + 1); }
-    catch (reason) { onError(String(reason)); }
+    try { setChanges(await invoke<FileChange[]>("git_status", { path: repoPath })); setSyncNonce((value) => value + 1); setStatusLoaded(true); }
+    catch (reason) { onError(String(reason)); setStatusLoaded(true); }
   }, [onError, repoInfo, repoPath]);
 
   const runFileAction = async (action: "stage" | "unstage" | "discard", filePath: string) => {
@@ -2457,7 +2499,7 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenD
       <button className="git-repository-toggle" aria-expanded={expanded} onClick={toggleExpanded} type="button" title={repoInfo.root}>
         <span className="git-repository-chevron" aria-hidden="true"><ChevronGlyph open={expanded} /></span>
         <span className="git-repository-name"><strong>{repoName}</strong></span>
-        <span className="git-repository-counts">{stagedChanges.length} staged · {unstagedChanges.length} changes{aheadCount > 0 ? ` · ↑${aheadCount}` : ""}</span>
+        {statusLoaded && <span className="git-repository-counts">{stagedChanges.length} staged · {unstagedChanges.length} changes{aheadCount > 0 ? ` · ↑${aheadCount}` : ""}</span>}
       </button>
     </header>
     <div className="git-repository-body" hidden={!expanded}>
@@ -2465,15 +2507,16 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenD
         <div className="git-repository-branch-row"><span className="git-action-label">Branch</span><BranchPicker repoPath={repoPath} currentBranch={repoInfo.branch} onChanged={onBranchChanged} onError={onError} createRequest={branchCreateRequest} showCreate={false} /></div>
         <SyncBar repoPath={repoPath} refreshKey={syncNonce + refreshNonce} onChanged={onBranchChanged} onError={onError} onAheadChange={setAheadCount} onNewBranch={() => setBranchCreateRequest((value) => value + 1)} onRefresh={onBranchChanged} view={changeView} onViewChange={chooseChangeView} />
       </div>
-      {stagedChanges.length > 0 && <section className="git-commit-box" aria-label="Commit staged changes">
+      {!statusLoaded && <LoadingState label="Loading changes…" compact />}
+      {statusLoaded && stagedChanges.length > 0 && <section className="git-commit-box" aria-label="Commit staged changes">
         <textarea aria-label="Commit message" placeholder="Message (required)" rows={2} maxLength={65536} value={commitMessage} onChange={(event) => setCommitMessage(event.currentTarget.value)} />
         <button className="git-commit-button" onClick={() => void commitStaged()} disabled={isCommitting || Boolean(fileAction) || stagedChanges.length === 0 || !commitMessage.trim()} type="button"><span aria-hidden="true">✓</span><span className="git-commit-label">{isCommitting ? "Committing…" : "Commit staged"}</span><small>{stagedChanges.length}</small></button>
       </section>}
-      {stagedChanges.length === 0 && changes.length > 0 && <div className="git-commit-min">Stage a change to commit</div>}
-      <MergeConflicts repoPath={repoPath} merging={repoInfo.state === "merge in progress"} conflicts={conflictedPaths} onChanged={onBranchChanged} onError={onError} onOpenFile={(relativePath) => onOpenFile(repoInfo.root, relativePath)} />
+      {statusLoaded && stagedChanges.length === 0 && changes.length > 0 && <div className="git-commit-min">Stage a change to commit</div>}
+      {statusLoaded && <MergeConflicts repoPath={repoPath} merging={repoInfo.state === "merge in progress"} conflicts={conflictedPaths} onChanged={onBranchChanged} onError={onError} onOpenFile={(relativePath) => onOpenFile(repoInfo.root, relativePath)} />}
       <div className="git-cards">
-        {stagedChanges.length > 0 && <GitCard label="Staged changes" title="Staged Changes" count={stagedChanges.length}>{renderChangeGroup(stagedChanges, true)}</GitCard>}
-        {unstagedChanges.length > 0 && <GitCard label="Changes" title="Changes" count={unstagedChanges.length}>{renderChangeGroup(unstagedChanges, false)}</GitCard>}
+        {statusLoaded && stagedChanges.length > 0 && <GitCard label="Staged changes" title="Staged Changes" count={stagedChanges.length}>{renderChangeGroup(stagedChanges, true)}</GitCard>}
+        {statusLoaded && unstagedChanges.length > 0 && <GitCard label="Changes" title="Changes" count={unstagedChanges.length}>{renderChangeGroup(unstagedChanges, false)}</GitCard>}
         <OutgoingCommits repoPath={repoPath} refreshKey={syncNonce + refreshNonce} onError={onError} onOpenFile={(commit, file) => onOpenCommitFile(repoInfo.root, commit, file)} />
       </div>
       <HistorySection repoPath={repoPath} repoKey={expansionKey} branch={repoInfo.branch} refreshKey={syncNonce + refreshNonce} onError={onError} onOpenFile={(commit, file) => onOpenCommitFile(repoInfo.root, commit, file)} />
