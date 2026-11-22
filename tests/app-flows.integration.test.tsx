@@ -515,7 +515,7 @@ describe("Closing editor tabs", () => {
     expect(screen.queryByRole("tab", { name: /notes\.txt/ })).toBeNull();
     expect(screen.queryByRole("tab", { name: /main\.ts/ })).toBeNull();
     expect(screen.getByText("No open files")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Open a file in this group" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "No file open" })).toBeInTheDocument();
   });
 
   it("Close Others keeps the clicked tab active and asks before discarding the dirty tab it closes", async () => {

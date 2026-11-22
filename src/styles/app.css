@@ -115,7 +115,6 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .code-editor-error strong { color: #e1c5c8; }
 .code-editor-error > span:last-child { max-width: 480px; color: #9698a2; overflow-wrap: anywhere; }
 .code-editor-empty { min-height: 0; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px; color: #82848e; text-align: center; }
-.code-editor-empty-icon { width: 48px; height: 48px; display: grid; place-items: center; margin-bottom: 13px; border: 1px solid #37343d; border-radius: 14px; background: #1e1c23; color: var(--text-violet); font-size: var(--fs-xl); }
 .code-editor-empty h2 { margin: 0 0 7px; color: #d3d3db; font-size: var(--fs-md); font-weight: 600; }
 .code-editor-empty p { max-width: 360px; margin: 0; color: #81838d; font-size: var(--fs-xs); line-height: 1.6; }
 .code-editor-statusbar { height: 24px; flex: 0 0 24px; display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 0 12px; border-top: 1px solid #2a2b32; background: #191a20; color: #858791; font-size: var(--fs-xs); }

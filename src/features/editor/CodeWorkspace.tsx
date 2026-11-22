@@ -195,7 +195,7 @@ function EditorGroupPane({ enabledLanguages, fontFamily, fontSize, minimap, them
         <span className={activeTab.saveError ? "code-editor-save-error" : ""}>{activeTab.saveError ?? (activeTab.isSaving ? "Saving changes…" : isDirty ? "Unsaved changes" : isReadOnly ? activeTab.view === "diff" ? "Read-only diff" : "Read-only commit snapshot" : activeTab.status === "ready" ? "All changes saved" : activeTab.status === "loading" ? "Loading" : "Unavailable")}</span>
         <span>{activeTab.status === "ready" ? (activeTab.content?.split(/\r?\n/).length ?? 0) + " lines" : ""}</span><span>UTF-8</span>
       </footer>
-    </> : <div className="code-editor-empty"><div className="code-editor-empty-icon">⌘</div><h2>Open a file in this group</h2><p>Choose a file from the workspace explorer or Git history. It will open in this editor group.</p></div>}
+    </> : <div className="code-editor-empty"><h2>No file open</h2><p>Open a file from the explorer or Git history.</p></div>}
   </section>;
 }
 
