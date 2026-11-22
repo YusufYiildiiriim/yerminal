@@ -255,19 +255,27 @@
   stroke-linejoin: round;
 }
 
-/* Scrollbars follow the theme everywhere: thin, rounded, no arrow buttons. */
-.app-shell[data-theme] * { scrollbar-color: auto; scrollbar-width: auto; }
-.app-shell[data-theme] ::-webkit-scrollbar { width: 10px; height: 10px; }
-.app-shell[data-theme] ::-webkit-scrollbar-track,
-.app-shell[data-theme] ::-webkit-scrollbar-corner { background: transparent; }
-.app-shell[data-theme] ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-.app-shell[data-theme] ::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--theme-text) 16%, transparent) padding-box;
+/* Shared sidebar scrollbar: one thin, theme-coloured rule for the app chrome (lists, panels, dialogs).
+   Monaco (editor) and xterm (terminal) keep their own scrollbars and are excluded from this rule. */
+.app-shell[data-theme] {
+  --scroll-thumb: color-mix(in srgb, var(--theme-text) 22%, transparent);
+  --scroll-thumb-hover: color-mix(in srgb, var(--theme-text) 36%, transparent);
 }
-.app-shell[data-theme] ::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--theme-text) 28%, transparent); }
-.app-shell[data-theme] ::-webkit-scrollbar-thumb:active { background-color: color-mix(in srgb, var(--theme-accent) 45%, transparent); }
+.app-shell[data-theme] :where(*):not(.xterm, .xterm *, .monaco-editor, .monaco-editor *, .code-editor-content, .terminal-instance, .terminal-instance *, .terminal-layout-scrollport, .terminal-layout-scrollport *) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+.app-shell[data-theme] :where(*):not(.xterm, .xterm *, .monaco-editor, .monaco-editor *, .code-editor-content, .terminal-instance, .terminal-instance *, .terminal-layout-scrollport, .terminal-layout-scrollport *)::-webkit-scrollbar { width: 8px; height: 8px; }
+.app-shell[data-theme] :where(*):not(.xterm, .xterm *, .monaco-editor, .monaco-editor *, .code-editor-content, .terminal-instance, .terminal-instance *, .terminal-layout-scrollport, .terminal-layout-scrollport *)::-webkit-scrollbar-track,
+.app-shell[data-theme] :where(*):not(.xterm, .xterm *, .monaco-editor, .monaco-editor *, .code-editor-content, .terminal-instance, .terminal-instance *, .terminal-layout-scrollport, .terminal-layout-scrollport *)::-webkit-scrollbar-corner { background: transparent; }
+.app-shell[data-theme] :where(*):not(.xterm, .xterm *, .monaco-editor, .monaco-editor *, .code-editor-content, .terminal-instance, .terminal-instance *, .terminal-layout-scrollport, .terminal-layout-scrollport *)::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+.app-shell[data-theme] :where(*):not(.xterm, .xterm *, .monaco-editor, .monaco-editor *, .code-editor-content, .terminal-instance, .terminal-instance *, .terminal-layout-scrollport, .terminal-layout-scrollport *)::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background-color: var(--scroll-thumb);
+  background-clip: padding-box;
+}
+.app-shell[data-theme] :where(*):not(.xterm, .xterm *, .monaco-editor, .monaco-editor *, .code-editor-content, .terminal-instance, .terminal-instance *, .terminal-layout-scrollport, .terminal-layout-scrollport *)::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-thumb-hover); }
 
 /* Terminal / Editor switch, sits under the workspace picker row */
 .app-shell[data-theme] .tool-primary-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 8px; padding: 3px; border: 1px solid var(--theme-border); border-radius: 8px; background: var(--theme-surface); }
