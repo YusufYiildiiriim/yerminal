@@ -1,11 +1,13 @@
 /* Typography tokens: one UI family, one UI mono family, five type steps.
+   Each step is the design size times --ui-scale (Settings > Interface size: 0.92 / 1 / 1.1).
    Editor and terminal fonts are set separately (Settings) and are not tokenized here. */
 :root {
   --font-ui: "Geist Variable", Geist, "Segoe UI", sans-serif;
   --font-mono-ui: "Geist Mono Variable", "Geist Mono", Consolas, monospace;
-  --fs-xs: 11px;
-  --fs-sm: 12px;
-  --fs-md: 13px;
-  --fs-lg: 15px;
-  --fs-xl: 18px;
+  --ui-scale: 1;
+  --fs-xs: calc(11px * var(--ui-scale, 1));
+  --fs-sm: calc(12px * var(--ui-scale, 1));
+  --fs-md: calc(13px * var(--ui-scale, 1));
+  --fs-lg: calc(15px * var(--ui-scale, 1));
+  --fs-xl: calc(18px * var(--ui-scale, 1));
 }

@@ -50,11 +50,12 @@ describe("typography tokens", () => {
 
   it("defines the five type scale tokens", () => {
     const typography = cssText.find(({ file }) => file.endsWith("typography.css"));
-    expect(typography?.css).toMatch(/--fs-xs\s*:\s*11px/);
-    expect(typography?.css).toMatch(/--fs-sm\s*:\s*12px/);
-    expect(typography?.css).toMatch(/--fs-md\s*:\s*13px/);
-    expect(typography?.css).toMatch(/--fs-lg\s*:\s*15px/);
-    expect(typography?.css).toMatch(/--fs-xl\s*:\s*18px/);
+    // Each step is the design size multiplied by the Interface size factor (--ui-scale, default 1).
+    expect(typography?.css).toMatch(/--fs-xs\s*:\s*calc\(11px \* var\(--ui-scale, 1\)\)/);
+    expect(typography?.css).toMatch(/--fs-sm\s*:\s*calc\(12px \* var\(--ui-scale, 1\)\)/);
+    expect(typography?.css).toMatch(/--fs-md\s*:\s*calc\(13px \* var\(--ui-scale, 1\)\)/);
+    expect(typography?.css).toMatch(/--fs-lg\s*:\s*calc\(15px \* var\(--ui-scale, 1\)\)/);
+    expect(typography?.css).toMatch(/--fs-xl\s*:\s*calc\(18px \* var\(--ui-scale, 1\)\)/);
   });
 
   it("bundles Geist and Geist Mono as npm packages instead of loading them remotely", () => {
