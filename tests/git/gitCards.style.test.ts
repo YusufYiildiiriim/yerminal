@@ -115,3 +115,32 @@ describe("Git Changes section cards: text contrast in every theme", () => {
     });
   }
 });
+
+describe("Git Changes action row: spacing under the header and a shared inset with the cards", () => {
+  const horizontal = (body: string) => body.match(/padding:\s*[^;]*?(var\(--space-\d\)|\d+px)(?:\s+(?:var\(--space-\d\)|\d+px|0))*/)?.[0] ?? "";
+
+  it("keeps a token gap between the repository summary and the action row", () => {
+    expect(ruleBody(".git-action-row")).toMatch(/padding(?:-top)?:\s*var\(--space-3\)|padding:\s*var\(--space-3\)/);
+  });
+
+  it("keeps a token gap between the action row and the first card", () => {
+    expect(ruleBody(".git-action-row")).toMatch(/padding:\s*var\(--space-3\)|padding-bottom:\s*var\(--space-3\)/);
+  });
+
+  it("insets the action row by the same token as the card stack", () => {
+    const cards = ruleBody(".git-cards");
+    const row = ruleBody(".git-action-row");
+    expect(cards).toMatch(/padding:[^;]*var\(--space-3\)/);
+    expect(row).toMatch(/var\(--space-3\)/);
+    expect(horizontal(cards)).toMatch(/var\(--space-3\)/);
+    expect(row).not.toMatch(/padding:\s*\d+px/);
+  });
+
+  it("does not use a literal pixel inset for the card stack", () => {
+    expect(ruleBody(".git-cards")).not.toMatch(/padding:[^;]*\b\d+px\b/);
+  });
+
+  it("keeps the 32 px icon buttons in the action row", () => {
+    expect(allCss).toMatch(/\.sync-bar \.sync-more \{[^}]*width:\s*var\(--hit-icon\)/);
+  });
+});

@@ -2,7 +2,7 @@
    Tones are theme tokens (--git-card-band, --git-card-body, --git-card-rule in themes.css). */
 
 /* The card stack: cards are separated by 16 px and inset from the panel edges. */
-.git-cards { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 8px 10px 0; }
+.git-cards { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 0 var(--space-3) var(--space-2); }
 
 .git-card { display: flex; flex-direction: column; min-width: 0; }
 
@@ -32,9 +32,9 @@
 .git-card-body .gb-commits { max-height: none; overflow: visible; margin: 0; padding: 0; }
 
 /* The action row: branch picker and Push share one line. Labels drop out in a narrow panel; icons and counts stay. */
-.git-action-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; container-type: inline-size; }
+.git-action-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); min-width: 0; padding: var(--space-3); container-type: inline-size; }
 .git-action-label { flex: none; font-size: var(--fs-xs); color: var(--text-muted); }
-@container (max-width: 200px) {
+@container (max-width: 240px) {
   .git-action-label { display: none; }
   .git-action-row .sync-button:not(.sync-more) > span { display: none; }
 }
