@@ -1,0 +1,112 @@
+import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { TerminalOpenDialog } from "../../src/features/terminal/TerminalOpenDialog";
+
+afterEach(cleanup);
+
+const groups = [
+  { id: "g-default", name: "Terminal 1" },
+  { id: "g-api", name: "API" },
+];
+
+function renderDialog(overrides: Partial<Parameters<typeof TerminalOpenDialog>[0]> = {}) {
+  const props = {
+    ask: { folder: true, group: true },
+    folders: ["C:\\repo", "C:\\recent"],
+    initialFolder: "C:\\repo",
+    groups,
+    activeGroupId: "g-default",
+    onBrowse: vi.fn(async () => null),
+    onConfirm: vi.fn(),
+    onCancel: vi.fn(),
+    ...overrides,
+  };
+  render(<TerminalOpenDialog {...props} />);
+  return props;
+}
+
+describe("TerminalOpenDialog", () => {
+  it("asks for the folder and the group with the initial folder and active group selected", () => {
+    renderDialog();
+
+    expect(screen.getByRole("dialog", { name: "Open terminal" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "C:\\repo" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "C:\\recent" })).not.toBeChecked();
+    expect(screen.getByRole("radio", { name: /Terminal 1/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "API" })).not.toBeChecked();
+  });
+
+  it("confirms the chosen folder and an existing group", async () => {
+    const user = userEvent.setup();
+    const props = renderDialog();
+
+    await user.click(screen.getByRole("radio", { name: "C:\\recent" }));
+    await user.click(screen.getByRole("radio", { name: "API" }));
+    await user.click(screen.getByRole("button", { name: "Open terminal" }));
+
+    expect(props.onConfirm).toHaveBeenCalledWith({ folder: "C:\\recent", group: { kind: "existing", id: "g-api" } });
+  });
+
+  it("confirms a new group with the typed name", async () => {
+    const user = userEvent.setup();
+    const props = renderDialog();
+
+    await user.click(screen.getByRole("radio", { name: "New group" }));
+    await user.type(screen.getByRole("textbox", { name: "New group name" }), "Logs");
+    await user.click(screen.getByRole("button", { name: "Open terminal" }));
+
+    expect(props.onConfirm).toHaveBeenCalledWith({ folder: "C:\\repo", group: { kind: "new", name: "Logs" } });
+  });
+
+  it("cancel and Escape close without opening a terminal", async () => {
+    const user = userEvent.setup();
+    const props = renderDialog();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.keyboard("{Escape}");
+
+    expect(props.onCancel).toHaveBeenCalledTimes(2);
+    expect(props.onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("adds a browsed folder to the list and selects it", async () => {
+    const user = userEvent.setup();
+    const props = renderDialog({ onBrowse: vi.fn(async () => "D:\\picked") });
+
+    await user.click(screen.getByRole("button", { name: "Browse for a folder" }));
+
+    expect(screen.getByRole("radio", { name: "D:\\picked" })).toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Open terminal" }));
+    expect(props.onConfirm).toHaveBeenCalledWith(expect.objectContaining({ folder: "D:\\picked" }));
+  });
+
+  it("keeps the browse result selected when browsing is cancelled", async () => {
+    const user = userEvent.setup();
+    renderDialog({ onBrowse: vi.fn(async () => null) });
+
+    await user.click(screen.getByRole("button", { name: "Browse for a folder" }));
+
+    expect(screen.getByRole("radio", { name: "C:\\repo" })).toBeChecked();
+  });
+
+  it("asks only for the group when the folder is already known", async () => {
+    const user = userEvent.setup();
+    const props = renderDialog({ ask: { folder: false, group: true } });
+
+    expect(screen.queryByRole("radio", { name: "C:\\recent" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Browse for a folder" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Open terminal" }));
+    expect(props.onConfirm).toHaveBeenCalledWith({ folder: null, group: { kind: "existing", id: "g-default" } });
+  });
+
+  it("asks only for the folder when the group is not chosen here (split)", async () => {
+    const user = userEvent.setup();
+    const props = renderDialog({ ask: { folder: true, group: false } });
+
+    expect(screen.queryByRole("radio", { name: "API" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Open terminal" }));
+    expect(props.onConfirm).toHaveBeenCalledWith({ folder: "C:\\repo", group: null });
+  });
+});

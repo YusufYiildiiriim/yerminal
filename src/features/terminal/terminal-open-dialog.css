@@ -1,0 +1,16 @@
+/* Terminal open prompt: folder and group before a terminal opens. Sizes and spacing use the shared tokens. */
+.terminal-open-backdrop { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: var(--space-4); background: color-mix(in srgb, var(--theme-surface) 80%, transparent); }
+.terminal-open-dialog { display: flex; flex-direction: column; gap: var(--space-3); width: min(360px, 100%); max-height: 100%; overflow: auto; padding: var(--space-3) var(--space-4) var(--space-4); border: 1px solid var(--theme-border); border-radius: 8px; background: var(--theme-surface); color: var(--theme-text); font-family: var(--font-ui); font-size: var(--fs-md); }
+.terminal-open-dialog h2 { margin: 0; font-size: var(--fs-lg); font-weight: 600; }
+.terminal-open-group { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; margin: 0; padding: 0; border: 0; }
+.terminal-open-group legend { margin-bottom: var(--space-1); color: var(--text-muted); font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.terminal-open-options { display: flex; flex-direction: column; gap: var(--space-1); max-height: 180px; overflow-y: auto; }
+.terminal-open-option { display: flex; align-items: center; gap: var(--space-2); min-width: 0; min-height: 24px; font-size: var(--fs-sm); cursor: pointer; }
+.terminal-open-option span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.terminal-open-option input { flex: none; margin: 0; }
+.terminal-open-browse { align-self: flex-start; min-height: 24px; padding: var(--space-1) var(--space-2); border: 1px solid var(--theme-border); border-radius: 6px; background: var(--theme-raised); color: var(--theme-text); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.terminal-open-name { min-width: 0; min-height: 26px; padding: var(--space-1) var(--space-2); border: 1px solid var(--theme-border); border-radius: 6px; background: var(--theme-raised); color: var(--theme-text); font: inherit; font-size: var(--fs-sm); }
+.terminal-open-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.terminal-open-actions button { min-height: 26px; padding: var(--space-1) var(--space-3); border: 1px solid var(--theme-border); border-radius: 6px; background: var(--theme-raised); color: var(--theme-text); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.terminal-open-actions button:disabled { opacity: 0.5; cursor: default; }
+.terminal-open-actions button.is-primary { border-color: color-mix(in srgb, var(--theme-accent) 55%, var(--theme-border)); background: color-mix(in srgb, var(--theme-accent) 18%, transparent); }
