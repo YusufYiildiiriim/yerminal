@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import type { TerminalGroupChoice, TerminalOpenAsk, TerminalOpenChoice } from "./terminalOpenTarget";
+import { normalizeTerminalName, TERMINAL_NAME_MAX_LENGTH, type TerminalGroupChoice, type TerminalOpenAsk, type TerminalOpenChoice } from "./terminalOpenTarget";
 import "./terminal-open-dialog.css";
 
 type Props = {
@@ -8,6 +8,10 @@ type Props = {
   initialFolder: string | null;
   groups: readonly { id: string; name: string }[];
   activeGroupId: string;
+  /** The group the entry point already knows (folder-only prompts); null when the group is chosen here. */
+  fixedGroupId?: string | null;
+  /** The automatic name for a group (null = a new group), shown as the name field's placeholder. */
+  automaticNameFor: (groupId: string | null) => string;
   onBrowse: () => Promise<string | null>;
   onConfirm: (choice: TerminalOpenChoice) => void;
   onCancel: () => void;
@@ -16,12 +20,13 @@ type Props = {
 const NEW_GROUP = "__new__";
 
 /** Asked before a terminal opens when "Use defaults when opening a terminal" is off. Cancel opens nothing. */
-export function TerminalOpenDialog({ ask, folders, initialFolder, groups, activeGroupId, onBrowse, onConfirm, onCancel }: Props) {
+export function TerminalOpenDialog({ ask, folders, initialFolder, groups, activeGroupId, fixedGroupId = null, automaticNameFor, onBrowse, onConfirm, onCancel }: Props) {
   const titleId = useId();
   const [folderList, setFolderList] = useState<string[]>(() => [...folders]);
   const [folder, setFolder] = useState<string | null>(initialFolder ?? folders[0] ?? null);
   const [groupChoice, setGroupChoice] = useState<string>(activeGroupId);
   const [newName, setNewName] = useState("");
+  const [terminalName, setTerminalName] = useState("");
   const confirmRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => { confirmRef.current?.focus(); }, []);
@@ -37,7 +42,8 @@ export function TerminalOpenDialog({ ask, folders, initialFolder, groups, active
     const group: TerminalGroupChoice | null = !ask.group ? null
       : groupChoice === NEW_GROUP ? { kind: "new", name: newName.trim() }
       : { kind: "existing", id: groupChoice };
-    onConfirm({ folder: ask.folder ? folder : null, group });
+    const name = normalizeTerminalName(terminalName);
+    onConfirm({ folder: ask.folder ? folder : null, group, ...(name ? { name } : {}) });
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -46,6 +52,16 @@ export function TerminalOpenDialog({ ask, folders, initialFolder, groups, active
       onCancel();
     }
   };
+
+  // Enter in the name field confirms, as long as a folder is chosen when the prompt asks for one.
+  const onNameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    if (!ask.folder || folder) confirm();
+  };
+
+  // The group the new terminal will land in: the chosen one, the fixed one, or the active one. A new group has no terminals yet.
+  const targetGroupId = ask.group ? (groupChoice === NEW_GROUP ? null : groupChoice) : (fixedGroupId ?? activeGroupId);
 
   return <div className="terminal-open-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel(); }}>
     <section className="terminal-open-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={onKeyDown}>
@@ -74,6 +90,10 @@ export function TerminalOpenDialog({ ask, folders, initialFolder, groups, active
         </div>
         {groupChoice === NEW_GROUP && <input className="terminal-open-name" type="text" aria-label="New group name" placeholder="Terminal name" maxLength={80} value={newName} onChange={(event) => setNewName(event.currentTarget.value)} />}
       </fieldset>}
+      <label className="terminal-open-field">
+        <span>Name (optional)</span>
+        <input className="terminal-open-name" type="text" aria-label="Terminal name" placeholder={automaticNameFor(targetGroupId)} maxLength={TERMINAL_NAME_MAX_LENGTH} autoComplete="off" value={terminalName} onChange={(event) => setTerminalName(event.currentTarget.value)} onKeyDown={onNameKeyDown} />
+      </label>
       <footer className="terminal-open-actions">
         <button type="button" onClick={onCancel}>Cancel</button>
         <button ref={confirmRef} className="is-primary" type="button" onClick={confirm} disabled={ask.folder && !folder}>Open terminal</button>

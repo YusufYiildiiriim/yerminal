@@ -18,6 +18,7 @@ function renderDialog(overrides: Partial<Parameters<typeof TerminalOpenDialog>[0
     initialFolder: "C:\\repo",
     groups,
     activeGroupId: "g-default",
+    automaticNameFor: () => "Terminal 1",
     onBrowse: vi.fn(async () => null),
     onConfirm: vi.fn(),
     onCancel: vi.fn(),
@@ -111,5 +112,84 @@ describe("TerminalOpenDialog", () => {
     expect(screen.queryByRole("radio", { name: "API" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Open terminal" }));
     expect(props.onConfirm).toHaveBeenCalledWith({ folder: "C:\\repo", group: null });
+  });
+});
+
+describe("TerminalOpenDialog optional name (#45)", () => {
+  const automaticNameFor = (groupId: string | null) => (groupId ? `Auto ${groupId}` : "PowerShell");
+
+  function renderNamed(ask = { folder: true, group: true }) {
+    const props = {
+      ask,
+      folders: ["C:\repo"],
+      initialFolder: "C:\repo",
+      groups,
+      activeGroupId: "g-default",
+      fixedGroupId: null,
+      automaticNameFor,
+      onBrowse: vi.fn(async () => null),
+      onConfirm: vi.fn(),
+      onCancel: vi.fn(),
+    };
+    render(<TerminalOpenDialog {...props} />);
+    return props;
+  }
+
+  it("shows the name field in every prompt shape, with the automatic name as placeholder", () => {
+    for (const ask of [{ folder: true, group: true }, { folder: true, group: false }, { folder: false, group: true }]) {
+      cleanup();
+      renderNamed(ask);
+      const field = screen.getByRole("textbox", { name: "Terminal name" });
+      expect(field).toHaveAttribute("placeholder", "Auto g-default");
+    }
+  });
+
+  it("sends the typed name, trimmed, with the folder and group", async () => {
+    const user = userEvent.setup();
+    const props = renderNamed();
+    await user.type(screen.getByRole("textbox", { name: "Terminal name" }), "  API  ");
+    await user.click(screen.getByRole("button", { name: "Open terminal" }));
+    expect(props.onConfirm).toHaveBeenCalledWith(expect.objectContaining({ name: "API" }));
+  });
+
+  it("sends no name when the field is blank or only spaces", async () => {
+    const user = userEvent.setup();
+    const props = renderNamed();
+    await user.type(screen.getByRole("textbox", { name: "Terminal name" }), "   ");
+    await user.click(screen.getByRole("button", { name: "Open terminal" }));
+    expect(props.onConfirm.mock.calls[0][0].name).toBeUndefined();
+  });
+
+  it("caps a long name at 40 characters", async () => {
+    const user = userEvent.setup();
+    const props = renderNamed();
+    await user.type(screen.getByRole("textbox", { name: "Terminal name" }), "n".repeat(60));
+    await user.click(screen.getByRole("button", { name: "Open terminal" }));
+    expect(props.onConfirm.mock.calls[0][0].name).toHaveLength(40);
+  });
+
+  it("Enter in the name field confirms the prompt", async () => {
+    const user = userEvent.setup();
+    const props = renderNamed();
+    await user.type(screen.getByRole("textbox", { name: "Terminal name" }), "logs{Enter}");
+    expect(props.onConfirm).toHaveBeenCalledWith(expect.objectContaining({ name: "logs" }));
+  });
+
+  it("the placeholder follows the chosen group and falls back to the new-group name", async () => {
+    const user = userEvent.setup();
+    renderNamed();
+    await user.click(screen.getByRole("radio", { name: "API" }));
+    expect(screen.getByRole("textbox", { name: "Terminal name" })).toHaveAttribute("placeholder", "Auto g-api");
+    await user.click(screen.getByRole("radio", { name: "New group" }));
+    expect(screen.getByRole("textbox", { name: "Terminal name" })).toHaveAttribute("placeholder", "PowerShell");
+  });
+
+  it("cancel confirms nothing", async () => {
+    const user = userEvent.setup();
+    const props = renderNamed();
+    await user.type(screen.getByRole("textbox", { name: "Terminal name" }), "logs");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(props.onConfirm).not.toHaveBeenCalled();
+    expect(props.onCancel).toHaveBeenCalled();
   });
 });

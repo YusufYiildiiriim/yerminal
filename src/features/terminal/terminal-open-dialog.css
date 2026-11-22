@@ -14,3 +14,5 @@
 .terminal-open-actions button { min-height: 26px; padding: var(--space-1) var(--space-3); border: 1px solid var(--theme-border); border-radius: 6px; background: var(--theme-raised); color: var(--theme-text); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
 .terminal-open-actions button:disabled { opacity: 0.5; cursor: default; }
 .terminal-open-actions button.is-primary { border-color: color-mix(in srgb, var(--theme-accent) 55%, var(--theme-border)); background: color-mix(in srgb, var(--theme-accent) 18%, transparent); }
+.terminal-open-field { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; color: var(--text-muted); font-size: var(--fs-xs); }
+.terminal-open-field .terminal-open-name { width: 100%; }

@@ -8,6 +8,8 @@ import {
   RECENT_TERMINAL_FOLDER_LIMIT,
   RECENT_TERMINAL_FOLDERS_KEY,
   resolveTerminalOpenDefaults,
+  normalizeTerminalName,
+  TERMINAL_NAME_MAX_LENGTH,
 } from "../../src/features/terminal/terminalOpenTarget";
 import { createInitialTerminalGroups, createTerminalGroup } from "../../src/features/terminal/terminalWorkspaceActions";
 
@@ -91,5 +93,20 @@ describe("applyTerminalGroupChoice", () => {
     const next = applyTerminalGroupChoice(state, { kind: "new", name: "terminal 1" });
     expect(next.groups).toHaveLength(1);
     expect(next.activeGroupId).toBe(state.groups[0].id);
+  });
+});
+
+describe("normalizeTerminalName (#45)", () => {
+  it("trims the name and leaves a blank or whitespace-only name to the automatic one", () => {
+    expect(normalizeTerminalName("  API  ")).toBe("API");
+    expect(normalizeTerminalName("")).toBeUndefined();
+    expect(normalizeTerminalName("   \t ")).toBeUndefined();
+    expect(normalizeTerminalName(undefined)).toBeUndefined();
+  });
+
+  it("caps the name at the shared length limit", () => {
+    expect(TERMINAL_NAME_MAX_LENGTH).toBe(40);
+    expect(normalizeTerminalName("x".repeat(60))).toBe("x".repeat(40));
+    expect(normalizeTerminalName(`  ${"y".repeat(39)}z  `)?.length).toBe(40);
   });
 });

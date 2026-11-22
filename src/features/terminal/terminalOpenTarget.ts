@@ -2,7 +2,17 @@ import { createTerminalGroup, renameTerminalGroup, selectTerminalGroup, type Ter
 
 /** Where a new terminal goes: a folder (null = the workspace root, as before) and a group (null = the active group). */
 export type TerminalGroupChoice = { kind: "existing"; id: string } | { kind: "new"; name: string };
-export type TerminalOpenChoice = { folder: string | null; group: TerminalGroupChoice | null };
+/** Name typed in the prompt. Undefined means the automatic name ("Terminal N"). */
+export type TerminalOpenChoice = { folder: string | null; group: TerminalGroupChoice | null; name?: string };
+
+/** Longest terminal name, in characters. Longer names are cut when the prompt confirms. */
+export const TERMINAL_NAME_MAX_LENGTH = 40;
+
+/** Trims a typed terminal name and caps its length; blank or spaces-only input means "use the automatic name". */
+export function normalizeTerminalName(value: string | undefined): string | undefined {
+  const name = (value ?? "").trim().slice(0, TERMINAL_NAME_MAX_LENGTH).trim();
+  return name || undefined;
+}
 /** Which questions the prompt asks. Entry points that already know the folder skip the folder question. */
 export type TerminalOpenAsk = { folder: boolean; group: boolean };
 export type TerminalOpenDefaults = { terminalDefaultPath?: string; terminalDefaultGroup?: string };

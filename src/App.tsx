@@ -403,7 +403,7 @@ function App() {
   const [workspaceFolderRefresh, setWorkspaceFolderRefresh] = useState<{ root: string; path: string; nonce: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Open while the folder and group prompt is up (defaults switch off); resolved by the prompt's confirm or cancel.
-  const [terminalOpenPrompt, setTerminalOpenPrompt] = useState<{ ask: TerminalOpenAsk; folder: string | null } | null>(null);
+  const [terminalOpenPrompt, setTerminalOpenPrompt] = useState<{ ask: TerminalOpenAsk; folder: string | null; groupId: string | null } | null>(null);
   const terminalOpenResolveRef = useRef<((choice: TerminalOpenChoice | null) => void) | null>(null);
   const lastTerminalGroupRef = useRef<string | null>(null);
   const [settingsInitialSection, setSettingsInitialSection] = useState<SectionId>("appearance");
@@ -1069,7 +1069,7 @@ function App() {
     }
   }, [editingTerminalId]);
 
-  const createTerminal = useCallback(async (showInTabs = true, workingDirectory?: string): Promise<TerminalSession | null> => {
+  const createTerminal = useCallback(async (showInTabs = true, workingDirectory?: string, nameOverride?: string): Promise<TerminalSession | null> => {
     dismissToast();
     if (!isTauri()) {
       showToast("Install Rust/Cargo and launch the desktop app with npm run tauri dev.");
@@ -1081,7 +1081,7 @@ function App() {
       const terminal: TerminalSession = {
         id,
         exited: false,
-        name: activeWorkspaceTerminalIds.length === 0 ? (shell === "powershell" ? "PowerShell" : shell) : nextTerminalName(terminals.filter((item) => activeWorkspaceTerminalIds.includes(item.id)).map((item) => item.name), activeWorkspaceTerminalIds.length + 1),
+        name: nameOverride ?? (activeWorkspaceTerminalIds.length === 0 ? (shell === "powershell" ? "PowerShell" : shell) : nextTerminalName(terminals.filter((item) => activeWorkspaceTerminalIds.includes(item.id)).map((item) => item.name), activeWorkspaceTerminalIds.length + 1)),
         shell,
         shellLabel: shell === "powershell" ? "PowerShell" : shell,
         workingDirectory: workingDirectory ?? (repoPath || null),
@@ -1101,7 +1101,7 @@ function App() {
   }, [activeTerminalWorkspace, activeWorkspaceTerminalIds.length, dismissToast, repoPath, showToast, terminals, updateTerminalWorkspace]);
 
   /** Folder and group for a new terminal. With defaults on nothing is asked; otherwise the prompt answers, and cancel gives null. */
-  const chooseTerminalTarget = useCallback((folder: string | undefined, ask: TerminalOpenAsk): Promise<TerminalOpenChoice | null> => {
+  const chooseTerminalTarget = useCallback((folder: string | undefined, ask: TerminalOpenAsk, fixedGroupId?: string): Promise<TerminalOpenChoice | null> => {
     const workspace = activeTerminalWorkspace;
     const fixedFolder = folder ?? null;
     if (settings.terminalUseDefaults !== false) {
@@ -1111,10 +1111,19 @@ function App() {
     if (!workspace) return Promise.resolve({ folder: fixedFolder, group: null });
     terminalOpenResolveRef.current?.(null);
     return new Promise((resolve) => {
-      terminalOpenResolveRef.current = (choice) => resolve(choice === null ? null : { folder: ask.folder ? choice.folder : fixedFolder, group: choice.group });
-      setTerminalOpenPrompt({ ask, folder: fixedFolder });
+      terminalOpenResolveRef.current = (choice) => resolve(choice === null ? null : { folder: ask.folder ? choice.folder : fixedFolder, group: choice.group, name: choice.name });
+      setTerminalOpenPrompt({ ask, folder: fixedFolder, groupId: fixedGroupId ?? null });
     });
   }, [activeTerminalWorkspace, settings]);
+
+  /** The name a terminal gets when none is typed: "PowerShell"/"bash" in an empty group, else the next free "Terminal N". */
+  // Names are kept unique across the open terminals, so two groups never show the same label.
+  const automaticTerminalName = (groupTerminalIds: readonly string[]): string => {
+    const takenNames = terminalsRef.current.map((terminal) => terminal.name);
+    const shellLabel = navigator.userAgent.includes("Windows") ? "PowerShell" : "bash";
+    if (groupTerminalIds.length === 0) return takenNames.some((name) => name.toLocaleLowerCase() === shellLabel.toLocaleLowerCase()) ? nextTerminalName(takenNames, 1) : shellLabel;
+    return nextTerminalName(takenNames, groupTerminalIds.length + 1);
+  };
 
   const finishTerminalOpenPrompt = useCallback((choice: TerminalOpenChoice | null) => {
     const resolve = terminalOpenResolveRef.current;
@@ -1136,17 +1145,20 @@ function App() {
   /** Every entry point that opens a terminal goes through here: defaults or prompt, then the group, then the terminal. */
   const startTerminal = useCallback(async (showInTabs = true, folder?: string, ask: TerminalOpenAsk = { folder: true, group: true }, fixedGroupId?: string): Promise<TerminalSession | null> => {
     const workspace = activeTerminalWorkspace;
-    const choice = await chooseTerminalTarget(folder, ask);
+    const choice = await chooseTerminalTarget(folder, ask, fixedGroupId);
     if (!choice) return null;
     // A group the entry point already knows (its row or the header) wins over the group choice.
     const groupChoice: TerminalGroupChoice | null = fixedGroupId ? { kind: "existing", id: fixedGroupId } : choice.group;
     if (workspace) lastTerminalGroupRef.current = workspace.activeGroupId;
+    let targetTerminalIds = workspace?.groups.find((group) => group.id === workspace.activeGroupId)?.terminalIds ?? [];
     if (workspace && groupChoice) {
       const next = applyTerminalGroupChoice({ groups: workspace.groups, activeGroupId: workspace.activeGroupId }, groupChoice);
       lastTerminalGroupRef.current = next.activeGroupId;
+      targetTerminalIds = next.groups.find((group) => group.id === next.activeGroupId)?.terminalIds ?? [];
       updateTerminalWorkspace(workspace.id, (current) => syncTerminalGroups(current, next.groups, next.activeGroupId));
     }
-    const created = await createTerminal(showInTabs, choice.folder ?? undefined);
+    // The typed name wins; otherwise the automatic name is worked out for the group the terminal actually lands in.
+    const created = await createTerminal(showInTabs, choice.folder ?? undefined, choice.name ?? automaticTerminalName(targetTerminalIds));
     if (created && choice.folder) rememberTerminalFolder(choice.folder);
     return created;
   }, [activeTerminalWorkspace, chooseTerminalTarget, createTerminal, updateTerminalWorkspace]);
@@ -1784,7 +1796,7 @@ function App() {
           void openEditorFile({ id: `workspace:${file.root}:${file.path}`, root: file.root, path: file.path, name: file.name, size: file.size ?? undefined }, file.workspaceId);
         }}
       />}
-      {terminalOpenPrompt && <TerminalOpenDialog ask={terminalOpenPrompt.ask} folders={folderChoices(activeTerminalWorkspace?.rootPath ?? "", activeTerminalWorkspace?.folderPaths ?? [], readRecentTerminalFolders())} initialFolder={terminalOpenPrompt.folder ?? activeTerminalWorkspace?.rootPath ?? null} groups={activeTerminalWorkspace?.groups ?? []} activeGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} onBrowse={browseTerminalFolder} onConfirm={finishTerminalOpenPrompt} onCancel={() => finishTerminalOpenPrompt(null)} />}
+      {terminalOpenPrompt && <TerminalOpenDialog ask={terminalOpenPrompt.ask} folders={folderChoices(activeTerminalWorkspace?.rootPath ?? "", activeTerminalWorkspace?.folderPaths ?? [], readRecentTerminalFolders())} initialFolder={terminalOpenPrompt.folder ?? activeTerminalWorkspace?.rootPath ?? null} groups={activeTerminalWorkspace?.groups ?? []} activeGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} fixedGroupId={terminalOpenPrompt.groupId} automaticNameFor={(groupId) => groupId === null ? automaticTerminalName([]) : automaticTerminalName(activeTerminalWorkspace?.groups.find((group) => group.id === groupId)?.terminalIds ?? [])} onBrowse={browseTerminalFolder} onConfirm={finishTerminalOpenPrompt} onCancel={() => finishTerminalOpenPrompt(null)} />}
       {settingsOpen && <SettingsDialog initialSection={settingsInitialSection} settings={settings} shortcuts={HELP_SHORTCUTS} onSettingsChange={setSettings} onClose={closeSettings} />}
       {toast && <div className={`app-toast app-toast--${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"} aria-live={toast.kind === "error" ? "assertive" : "polite"} aria-atomic="true"><span>{toast.message}</span><button aria-label="Dismiss notification" onClick={dismissToast} type="button">×</button></div>}
     </main>
