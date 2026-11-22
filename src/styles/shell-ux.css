@@ -128,6 +128,11 @@
 }
 .app-shell[data-theme] .ib svg { width: 14px; height: 14px; }
 .app-shell[data-theme] .ib:hover, .app-shell[data-theme] .ib:active, .app-shell[data-theme] .ib[aria-pressed="true"], .app-shell[data-theme] .ib.active { color: var(--theme-text); background: var(--theme-raised); }
+/* Terminal groups header: a 28 px hit area, primary-colour icons, and visible hover and keyboard focus. The title truncates; the icons never wrap. */
+.app-shell[data-theme] .workspace-terminal-groups-header { flex-wrap: nowrap; }
+.app-shell[data-theme] .workspace-terminal-groups-header .ib { width: var(--hit-icon); height: var(--hit-icon); flex: 0 0 var(--hit-icon); border: 1px solid transparent; color: var(--theme-text); }
+.app-shell[data-theme] .workspace-terminal-groups-header .ib:hover { color: var(--theme-text); background: var(--theme-raised); border-color: var(--theme-border); }
+.app-shell[data-theme] .workspace-terminal-groups-header .ib:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }
 
 /* Explorer */
 .app-shell[data-theme] .workspace-explorer { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }

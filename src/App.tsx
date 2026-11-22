@@ -1998,7 +1998,7 @@ function WorkspacePanel({ toolSwitch, mode, terminalLayoutMode, onChangeTerminal
               <button className="ib workspace-terminal-group-create" type="button" aria-label="New terminal group" title="New terminal group" onClick={onCreateTerminalGroup}>
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
               </button>
-              <button className="ib workspace-terminal-groups-toggle" type="button" aria-label={(terminalGroupsCollapsed ? "Expand" : "Collapse") + " terminal groups"} aria-expanded={!terminalGroupsCollapsed} aria-controls="workspace-terminal-groups-list" onClick={() => setTerminalGroupsCollapsed((collapsed) => !collapsed)}>
+              <button className="ib workspace-terminal-groups-toggle" type="button" aria-label={(terminalGroupsCollapsed ? "Expand" : "Collapse") + " terminal groups"} aria-expanded={!terminalGroupsCollapsed} aria-controls="workspace-terminal-groups-list" title={terminalGroupsCollapsed ? "Expand terminal groups" : "Collapse terminal groups"} onClick={() => setTerminalGroupsCollapsed((collapsed) => !collapsed)}>
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d={terminalGroupsCollapsed ? "M9 6l6 6-6 6" : "M6 9l6 6 6-6"} /></svg>
               </button>
             </div>
