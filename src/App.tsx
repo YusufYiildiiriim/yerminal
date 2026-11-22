@@ -34,6 +34,9 @@ import { FolderContextMenu, type FolderContextMenuAction, type FolderContextMenu
 import { useTerminalGroupDrag } from "./features/terminal/useTerminalGroupDrag";
 import { appendTerminalToLayout, closeTerminalGroup as closeTerminalGroupState, createInitialTerminalGroups, createTerminalGroup, moveTerminalBetweenGroups, openFolderInNewTerminal, removeTerminalFromGroups, renameTerminalGroup as renameTerminalGroupState, selectTerminalGroup as selectTerminalGroupState, type TerminalGroup } from "./features/terminal/terminalWorkspaceActions";
 import { DEFAULT_LANGUAGES, normalizeEnabledLanguages } from "./features/editor/editorLanguages";
+import "@fontsource-variable/geist/index.css";
+import "@fontsource-variable/geist-mono/index.css";
+import "./styles/typography.css";
 import "./styles/app.css";
 import "./styles/themes.css";
 import "./styles/workbench-ux.css";

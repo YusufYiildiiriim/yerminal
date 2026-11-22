@@ -102,7 +102,7 @@
 
 /* Shared workspace visual language across presets. */
 .app-shell[data-theme] {
-  font-family: Inter, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   letter-spacing: .005em;
 }
 .app-shell[data-theme] .titlebar {

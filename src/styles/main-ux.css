@@ -38,7 +38,7 @@
 .app-shell[data-theme] .pane-cwd {
   flex: 0 1 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding: 1px 6px; border: 1px solid var(--theme-border); border-radius: 4px; background: var(--theme-chrome);
-  color: var(--theme-muted); font-family: "Cascadia Code", Consolas, monospace; font-size: 11px;
+  color: var(--theme-muted); font-family: var(--font-mono-ui); font-size: 11px;
 }
 .app-shell[data-theme] .pane-spacer { flex: 1 1 auto; min-width: 0; }
 .app-shell[data-theme] .pane-rename {
@@ -104,7 +104,7 @@
 .app-shell[data-theme] .terminal-resource-panel .terminal-resource-meter { display: block; height: 3px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--theme-text) 12%, transparent); }
 .app-shell[data-theme] .terminal-resource-panel .terminal-resource-meter > span { display: block; height: 100%; background: color-mix(in srgb, var(--theme-text) 45%, transparent); }
 .app-shell[data-theme] .terminal-resource-panel .terminal-resource-value {
-  font-family: "Cascadia Code", Consolas, monospace; font-size: 11px; color: var(--theme-muted); white-space: nowrap; font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono-ui); font-size: 11px; color: var(--theme-muted); white-space: nowrap; font-variant-numeric: tabular-nums;
 }
 
 /* Editor frame: 8px margin, 1px border, 8px radius, editor background. */

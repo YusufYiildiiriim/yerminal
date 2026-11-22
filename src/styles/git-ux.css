@@ -15,7 +15,7 @@
   border-radius: 6px;
   background: var(--theme-background, #141419);
   color: var(--theme-text, #efedf4);
-  font: 11px/1.4 "Segoe UI", sans-serif;
+  font: 11px/1.4 var(--font-ui);
 }
 .tool-content .git-commit-box textarea::placeholder { color: var(--theme-muted, #aaa8b4); opacity: 1; }
 .tool-content .git-commit-button {
@@ -65,7 +65,7 @@
   gap: 6px;
   padding-left: 10px;
   color: var(--theme-text, #e7e5ee);
-  font: 11px/1.3 "Segoe UI", sans-serif;
+  font: 11px/1.3 var(--font-ui);
 }
 .tool-content .change-path { min-width: 0; }
 .tool-content .change-kind { flex-basis: 14px; width: 14px; font-size: 10px; }
@@ -80,7 +80,7 @@
   border-color: var(--theme-border, #45434d);
   color: var(--theme-text, #e7e5ee);
   background: var(--theme-raised, #24242c);
-  font: 11px/1.2 "Segoe UI", sans-serif;
+  font: 11px/1.2 var(--font-ui);
 }
 .tool-content .change-action.discard { min-width: 20px; font-size: 12px; }
 .tool-content .change-action:disabled { opacity: .55; }
@@ -156,9 +156,9 @@
   padding: 3px 12px;
   border-bottom: 1px solid var(--theme-border, #34343c);
   background: var(--theme-surface, #19191f);
-  font: 11px/1.4 "Segoe UI", sans-serif;
+  font: 11px/1.4 var(--font-ui);
 }
-.app-shell[data-theme] .diff-view-details { flex: 0 0 auto; color: var(--theme-muted); font: 11px/1.5 "Segoe UI", sans-serif; }
+.app-shell[data-theme] .diff-view-details { flex: 0 0 auto; color: var(--theme-muted); font: 11px/1.5 var(--font-ui); }
 .app-shell[data-theme] .diff-view-details summary { width: max-content; padding: 4px 12px; cursor: pointer; }
 .app-shell[data-theme] .diff-view-details pre { margin: 0; padding: 4px 12px 8px; white-space: pre; font: 11px/1.5 var(--editor-font-family, monospace); }
 .app-shell[data-theme] .diff-view-details summary:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }
@@ -206,7 +206,7 @@
   border-bottom: 1px solid var(--theme-border, #34343c);
   background: var(--theme-surface, #19191f);
   color: var(--theme-muted, #85848e);
-  font: 10px/22px "Segoe UI", sans-serif;
+  font: 10px/22px var(--font-ui);
   text-transform: uppercase;
   letter-spacing: .04em;
 }
@@ -302,7 +302,7 @@
   color: var(--theme-muted);
 }
 .app-shell[data-theme] .diff-view-hidden {
-  font-family: Inter, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   font-size: 11px;
   letter-spacing: .01em;
   cursor: default;

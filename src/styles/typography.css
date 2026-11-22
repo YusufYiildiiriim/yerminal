@@ -1,0 +1,11 @@
+/* Typography tokens: one UI family, one UI mono family, five type steps.
+   Editor and terminal fonts are set separately (Settings) and are not tokenized here. */
+:root {
+  --font-ui: "Geist Variable", Geist, "Segoe UI", sans-serif;
+  --font-mono-ui: "Geist Mono Variable", "Geist Mono", Consolas, monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 18px;
+}

@@ -61,7 +61,7 @@
 
 .agent-usage-window {
   color: var(--theme-muted, #a7a8b1);
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--font-mono-ui);
   font-size: 10px;
 }
 
@@ -81,7 +81,7 @@
 
 .agent-usage-value {
   color: var(--theme-text, #e7e8eb);
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--font-mono-ui);
   font-size: 10px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -101,7 +101,7 @@
   gap: 12px;
   margin-top: 3px;
   color: var(--theme-muted, #a7a8b1);
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--font-mono-ui);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
@@ -109,7 +109,7 @@
 .agent-usage-breakdown {
   margin-top: 1px;
   color: var(--theme-muted, #a7a8b1);
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--font-mono-ui);
   font-size: 9px;
   font-variant-numeric: tabular-nums;
 }
@@ -142,7 +142,7 @@
 
 .agent-usage-model > span:last-child {
   color: var(--theme-text, #e7e8eb);
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--font-mono-ui);
   font-variant-numeric: tabular-nums;
 }
 
@@ -169,7 +169,7 @@
 .sidebar-agent-usage { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--theme-border); }
 .sidebar-agent-resize { flex: 0 0 8px; cursor: ns-resize; touch-action: none; }
 .sidebar-agent-resize:hover, .sidebar-agent-resize:focus-visible { background: var(--theme-accent); outline: none; }
-.sidebar-agent-toggle { flex: none; display: flex; gap: 8px; align-items: center; width: 100%; border: 0; padding: 8px 4px; background: transparent; color: var(--theme-text); text-align: left; font: 600 12px Inter, "Segoe UI", sans-serif; cursor: pointer; }
+.sidebar-agent-toggle { flex: none; display: flex; gap: 8px; align-items: center; width: 100%; border: 0; padding: 8px 4px; background: transparent; color: var(--theme-text); text-align: left; font: 600 12px var(--font-ui); cursor: pointer; }
 .sidebar-agent-toggle span { color: var(--theme-muted); }
 .sidebar-agent-toggle:hover { background: var(--hover); }
 .sidebar-agent-toggle:focus-visible { outline: 1px solid var(--theme-accent); }

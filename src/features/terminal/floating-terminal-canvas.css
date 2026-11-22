@@ -15,7 +15,7 @@
   border-radius: 5px;
   background: transparent;
   color: #858792;
-  font: 10px Inter, "Segoe UI", sans-serif;
+  font: 10px var(--font-ui);
   cursor: pointer;
 }
 

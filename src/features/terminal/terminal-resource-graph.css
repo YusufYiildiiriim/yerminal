@@ -165,7 +165,7 @@
 .terminal-resource-metric-row strong {
   overflow: hidden;
   color: var(--theme-text, #d9d7e2);
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--font-mono-ui);
   font-size: 8px;
   font-weight: 550;
   text-overflow: ellipsis;
@@ -412,7 +412,7 @@
 .app-shell[data-theme] .terminal-resource-panel .terminal-resource-metric-row strong {
   min-width: 0;
   color: var(--theme-text);
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--font-mono-ui);
   font-size: 10px;
   font-weight: 600;
 }
@@ -451,7 +451,7 @@
 }
 .app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel .terminal-resource-card.active .terminal-resource-terminal-name { color: var(--theme-text); font-weight: 600; }
 .app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel .terminal-resource-value {
-  grid-column: 2; grid-row: 1; font-family: "Cascadia Code", Consolas, monospace; font-size: 11px; color: var(--theme-muted); white-space: nowrap; font-variant-numeric: tabular-nums;
+  grid-column: 2; grid-row: 1; font-family: var(--font-mono-ui); font-size: 11px; color: var(--theme-muted); white-space: nowrap; font-variant-numeric: tabular-nums;
 }
 .app-shell[data-theme] .terminal-resource-panel.terminal-resource-panel .terminal-resource-meter {
   grid-column: 1 / -1; grid-row: 2; align-self: end; height: 3px; margin: 0 -12px; border-radius: 0; background: transparent;
