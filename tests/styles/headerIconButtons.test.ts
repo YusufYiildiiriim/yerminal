@@ -31,12 +31,34 @@ const HEADER_ICON_HOVER = ".app-shell[data-theme] .workspace-terminal-groups-hea
 const HEADER_ICON_FOCUS = ".app-shell[data-theme] .workspace-terminal-groups-header .ib:focus-visible";
 const HEADER = ".app-shell[data-theme] .workspace-terminal-groups-header";
 const PANE_ICON = ".app-shell[data-theme] .pane-icon-button";
+const HEADER_ICON_SVG = ".app-shell[data-theme] .workspace-terminal-groups-header .ib svg";
+const PANE_ICON_SVG = ".app-shell[data-theme] .pane-icon-button svg";
+const PANE_HEADER = ".app-shell[data-theme] .terminal-pane-frame.tiled-pane .terminal-pane-header";
 const PANE_ICON_FOCUS = ".app-shell[data-theme] .pane-icon-button:focus-visible";
 
 describe("terminal groups header icon buttons: size and colour", () => {
-  it("defines a 28 px icon hit size as a shared token", () => {
+  it("defines a 32 px icon hit size as a shared token", () => {
     const typography = readFileSync(join(srcDir, "styles", "typography.css"), "utf8");
-    expect(typography).toMatch(/--hit-icon:\s*28px/);
+    expect(typography).toMatch(/--hit-icon:\s*32px/);
+  });
+
+  it("uses the same hit-size token for the pane header icon buttons", () => {
+    const body = ruleBody(PANE_ICON);
+    expect(body).toMatch(/width:\s*var\(--hit-icon\)/);
+    expect(body).toMatch(/height:\s*var\(--hit-icon\)/);
+    expect(body).not.toMatch(/(?<![\w-])(?:width|height):\s*\d+px/);
+    expect(body).toMatch(/flex:\s*none/);
+  });
+
+  it("scales the glyph with the larger hit area (16 px svg in both headers)", () => {
+    expect(ruleBody(HEADER_ICON_SVG)).toMatch(/width:\s*16px/);
+    expect(ruleBody(HEADER_ICON_SVG)).toMatch(/height:\s*16px/);
+    expect(ruleBody(PANE_ICON_SVG)).toMatch(/width:\s*16px/);
+  });
+
+  it("keeps the 36 px pane header tall enough for the 32 px button", () => {
+    const height = Number(ruleBody(PANE_HEADER).match(/(?<![\w-])height:\s*(\d+)px/)?.[1] ?? 0);
+    expect(height).toBeGreaterThanOrEqual(32);
   });
 
   it("uses the hit-size token for width and height and never a fixed pixel size", () => {

@@ -47,10 +47,10 @@
   background: var(--theme-background); color: var(--theme-text); font: inherit; font-size: var(--fs-md);
 }
 .app-shell[data-theme] .pane-icon-button {
-  width: 24px; height: 24px; flex: none; padding: 0; display: grid; place-items: center;
+  width: var(--hit-icon); height: var(--hit-icon); flex: none; padding: 0; display: grid; place-items: center;
   border: 0; border-radius: 6px; background: transparent; color: var(--theme-text); cursor: pointer;
 }
-.app-shell[data-theme] .pane-icon-button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.app-shell[data-theme] .pane-icon-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .app-shell[data-theme] .pane-icon-button.pane-close svg { width: 16px; height: 16px; }
 .app-shell[data-theme] .pane-icon-button:hover,
 .app-shell[data-theme] .pane-icon-button[aria-expanded="true"] { color: var(--theme-text); background: color-mix(in srgb, var(--theme-text) 10%, transparent); }

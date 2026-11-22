@@ -16,5 +16,5 @@
   --space-3: 12px;
   --space-4: 16px;
   /* Hit area of a header icon button (px, not scaled by --ui-scale). */
-  --hit-icon: 28px;
+  --hit-icon: 32px;
 }
