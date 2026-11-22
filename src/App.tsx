@@ -294,7 +294,7 @@ const TOOL_GROUPS: { id: ToolGroupId; label: string; toolIds: ToolId[] }[] = [
 ];
 
 const SETTINGS_KEY = "yerminal.app-settings.v1";
-const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13, quickOpenScope: "active", collapseOtherFolders: false, autoSave: false, agentUsageEnabled: false, editorMinimap: true, enabledLanguages: DEFAULT_LANGUAGES, languageSetupComplete: false, interfaceSize: "default", terminalUseDefaults: true, terminalDefaultPath: "", terminalDefaultGroup: "" };
+const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13, quickOpenScope: "active", collapseOtherFolders: false, autoSave: false, agentUsageEnabled: false, editorMinimap: true, enabledLanguages: DEFAULT_LANGUAGES, languageSetupComplete: false, interfaceSize: "default", terminalUseDefaults: true, terminalDefaultPath: "", terminalDefaultGroup: "", terminalRestoreOnStartup: true };
 function readAppSettings(): AppSettings {
   try {
     const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}");
@@ -315,6 +315,7 @@ function readAppSettings(): AppSettings {
       terminalUseDefaults: raw.terminalUseDefaults !== false,
       terminalDefaultPath: typeof raw.terminalDefaultPath === "string" ? raw.terminalDefaultPath.trim().slice(0, 500) : "",
       terminalDefaultGroup: typeof raw.terminalDefaultGroup === "string" ? raw.terminalDefaultGroup.trim().slice(0, 80) : "",
+      terminalRestoreOnStartup: raw.terminalRestoreOnStartup !== false,
     };
   } catch { return DEFAULT_SETTINGS; }
 }
