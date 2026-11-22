@@ -8,7 +8,9 @@
 .bp-trigger svg { width: 12px; height: 12px; flex: none; }
 .bp-trigger .bp-chevron { margin-left: auto; opacity: .6; }
 .bp-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bp-popover { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0; display: flex; flex-direction: column; gap: 6px; max-height: 340px; padding: 8px; border: 1px solid var(--theme-border, #2c2c34); border-radius: 8px; background: var(--theme-surface, #19191f); box-shadow: 0 8px 24px rgb(0 0 0 / 35%); }
+/* Overlay: fixed-position over the content, placed inline from the trigger (branchPopoverPlacement.ts), so it
+   never changes the row layout and is not clipped by the repository block. */
+.bp-popover { position: fixed; z-index: 60; display: flex; flex-direction: column; gap: 6px; max-height: 340px; padding: 8px; border: 1px solid var(--theme-border, #2c2c34); border-radius: 8px; background: var(--theme-surface, #19191f); box-shadow: 0 8px 24px rgb(0 0 0 / 35%); }
 .bp-input { flex: none; width: 100%; height: 24px; padding: 0 8px; border: 1px solid var(--theme-border, #2c2c34); border-radius: 6px; background: transparent; color: var(--theme-text); font: inherit; font-size: var(--fs-xs); }
 .bp-input:focus { outline: 1px solid var(--theme-accent, #b3a3ee); }
 .bp-new { flex: none; height: 24px; padding: 0 6px; border: 1px dashed var(--theme-border, #2c2c34); border-radius: 6px; background: transparent; color: var(--text-muted); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

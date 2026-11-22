@@ -39,7 +39,8 @@ describe("History section stays inside the narrow Git Changes rail", () => {
     expect(box).toMatch(/overflow-x:\s*hidden/);
   });
 
-  it("flows the branch picker popover under its trigger so the repository block cannot clip it", () => {
-    expect(declarations(".git-repository-branch-row .bp-popover")).toMatch(/position:\s*static/);
+  it("lays the branch picker popover over the content as a fixed overlay, so the repository block cannot clip it or shift", () => {
+    expect(declarations(".bp-popover")).toMatch(/position:\s*fixed/);
+    expect(declarations(".git-repository-branch-row .bp-popover")).not.toMatch(/position:\s*static/);
   });
 });

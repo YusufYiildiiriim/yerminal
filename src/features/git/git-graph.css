@@ -92,6 +92,3 @@
 .more-wrap { padding: 4px 8px 6px 12px; }
 .up-note { margin: 6px 8px 8px 12px; padding: 8px; border: 1px dashed var(--theme-border); border-radius: 6px; color: var(--text-muted); font-size: var(--fs-xs); line-height: 1.5; }
 @media (prefers-reduced-motion: reduce) { .hist-chev svg { transition: none; } }
-
-/* The branch picker popover flows under its trigger in Git Changes, so the repository block's overflow:hidden cannot clip it. */
-.git-repository-branch-row .bp-popover { position: static; margin-top: 4px; }
