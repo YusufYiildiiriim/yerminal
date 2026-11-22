@@ -5,6 +5,8 @@
 .sync-button:hover:not(:disabled) { border-color: var(--theme-accent, #b3a3ee); }
 .sync-button:disabled { opacity: .45; cursor: default; }
 .sync-button.primary { border-color: color-mix(in srgb, var(--theme-accent, #b3a3ee) 55%, var(--theme-border, #2c2c34)); background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 16%, transparent); }
+/* The ⋯ menu button: the shared 32 px icon size, never stretched or shrunk by the toolbar row. */
+.sync-bar .sync-more { width: var(--hit-icon); height: var(--hit-icon); min-width: 0; flex: 0 0 var(--hit-icon); padding: 0; font-size: var(--fs-md); line-height: 1; }
 .sync-count { padding: 0 4px; border-radius: 8px; background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 24%, transparent); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 
 .change-view-bar { display: flex; align-items: center; justify-content: flex-end; padding: var(--space-1) var(--space-2) 0; }

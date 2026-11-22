@@ -32,16 +32,21 @@
   min-height: 20px;
   gap: 6px;
   padding: 2px 10px;
-  color: var(--theme-text, #e7e5ee);
+  color: var(--text-muted);
   font-size: var(--fs-xs);
+  font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
 }
 .tool-content .change-group-heading span:last-child {
   min-width: 16px;
   padding: 1px 4px;
+  background: transparent;
+  color: var(--text-muted);
   font-size: var(--fs-xs);
 }
+/* Commit box is closed until something is staged; this one-line hint takes its place (24 px). */
+.git-commit-min { display: flex; align-items: center; height: 24px; padding: 0 var(--space-2); color: var(--text-muted); font-size: var(--fs-xs); }
 .tool-content .change-empty {
   padding: 6px 10px;
   color: var(--text-muted);
@@ -70,7 +75,10 @@
 .tool-content .change-path { min-width: 0; }
 .tool-content .change-kind { flex-basis: 14px; width: 14px; font-size: var(--fs-xs); }
 .tool-content .change-badge { flex: 0 0 auto; padding: 1px 4px; font-size: var(--fs-xs); }
-.tool-content .change-row-actions { gap: 3px; opacity: 1; }
+/* Row actions appear on hover and while the row or one of its buttons has keyboard focus. */
+.tool-content .change-row-actions { gap: 3px; opacity: 0; transition: opacity .12s ease; }
+.tool-content .change-row:hover .change-row-actions,
+.tool-content .change-row:focus-within .change-row-actions { opacity: 1; }
 .tool-content .change-action {
   width: auto;
   min-width: 20px;

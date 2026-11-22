@@ -319,6 +319,10 @@ describe("App user flows", () => {
 
   it("renders the commit button label as its own element so it can truncate in a narrow rail", async () => {
     seedWorkspace();
+    invokeMock.mockImplementation(async (command: string, args?: InvokeArgs) => {
+      if (command === "git_status") return [{ path: "notes.txt", kind: "modified", staged: true, unstaged: false }];
+      return defaultInvokeResult(command, args);
+    });
     render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "Git" }));
@@ -341,7 +345,8 @@ describe("App user flows", () => {
 
     await user.click(screen.getByRole("button", { name: "Git" }));
     expect(await screen.findByText("src/ui/a.tsx")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Tree" }));
+    await user.click(screen.getByRole("button", { name: "More git actions" }));
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Tree view" }));
     expect(screen.queryByText("src/ui/a.tsx")).not.toBeInTheDocument();
     const folder = screen.getByRole("button", { name: "Collapse folder src/ui" });
     expect(screen.getByText("a.tsx")).toBeInTheDocument();

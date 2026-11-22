@@ -19,13 +19,15 @@ type Props = {
   currentBranch: string;
   onChanged: () => void;
   onError: (message: string) => void;
+  /** Bumped by the parent (the ⋯ menu's "New branch…") to open the picker straight in create mode. */
+  createRequest?: number;
 };
 
 /**
  * Branch switcher for one repository: search, switch (remote branches create a tracking branch),
  * create from the current branch, rename and delete. All Git work happens in the Rust commands.
  */
-export function BranchPicker({ repoPath, currentBranch, onChanged, onError }: Props) {
+export function BranchPicker({ repoPath, currentBranch, onChanged, onError, createRequest = 0 }: Props) {
   const [open, setOpen] = useState(false);
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [query, setQuery] = useState("");
@@ -55,6 +57,13 @@ export function BranchPicker({ repoPath, currentBranch, onChanged, onError }: Pr
     setRenaming(null);
     setConfirmForce(null);
   }, []);
+
+  // The ⋯ menu asks for create mode; the first render (request 0) does nothing.
+  useEffect(() => {
+    if (createRequest === 0) return;
+    setOpen(true);
+    setCreating("");
+  }, [createRequest]);
 
   useEffect(() => {
     if (!open) return;
