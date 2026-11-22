@@ -143,7 +143,7 @@ export function HistorySection({ repoPath, repoKey, branch, refreshKey = 0, onEr
     const isOpen = openId === commit.id;
     return <li key={commit.id} className={isOpen ? "open" : undefined}>
       <button type="button" className={`gb-commit${isOpen ? " on" : ""}`} aria-expanded={isOpen} aria-description={formatFullDate(commit.timestamp)} onClick={(event) => toggleCommit(commit, event)}>
-        <span className="gb-msg">{commit.message.split(/\r?\n/)[0]}</span>
+        <span className="gb-msg" title={commit.message.split(/\r?\n/)[0]}>{commit.message.split(/\r?\n/)[0]}</span>
         <span className="gb-sub"><span className="gb-hash">{commit.shortId.slice(0, 7)}</span><span aria-hidden="true">·</span><span className="gb-time">{formatRelativeTime(commit.timestamp)}</span></span>
       </button>
       {isOpen && <section className="gb-detail" aria-label={`Changed files for ${commit.shortId}`}>{renderFiles(commit)}</section>}

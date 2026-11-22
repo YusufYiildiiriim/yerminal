@@ -183,7 +183,7 @@ export function GitGraphBranches({ repoPath, currentBranch = "", reloadKey = 0, 
           const open = openCommit?.branch === branch.name && openCommit.id === commit.id;
           return <li key={commit.id} className={open ? "open" : undefined}>
             <button type="button" className={`gb-commit${open ? " on" : ""}`} aria-expanded={open} aria-description={formatFullDate(commit.timestamp)} onClick={(event) => toggleCommit(branch.name, commit, event)} onContextMenu={(event) => toggleCommit(branch.name, commit, event)}>
-              <span className="gb-msg">{commit.message.split(/\r?\n/)[0]}</span>
+              <span className="gb-msg" title={commit.message.split(/\r?\n/)[0]}>{commit.message.split(/\r?\n/)[0]}</span>
               <span className="gb-sub"><span className="gb-hash">{commit.shortId.slice(0, 7)}</span><span aria-hidden="true">·</span><span className="gb-time">{formatRelativeTime(commit.timestamp)}</span></span>
             </button>
             {open && renderDetails(commit)}

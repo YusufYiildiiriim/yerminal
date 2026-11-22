@@ -2199,7 +2199,7 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenD
   const renderChangeRow = (change: FileChange, staged: boolean, depth = -1) => <div className="change-row" key={`${staged ? "staged" : "unstaged"}:${change.path}`}>
     <button className="change-main-row" onClick={() => onOpenDiff(repoInfo.root, change, staged)} type="button" title={change.path} style={depth >= 0 ? { paddingLeft: 13 + depth * 12 } : undefined}>
       <span className={`change-kind ${change.kind}`}>{change.kind === "modified" ? "M" : change.kind === "deleted" ? "D" : change.kind === "untracked" ? "?" : change.kind === "renamed" ? "R" : "A"}</span>
-      <span className="change-path">{depth >= 0 ? baseName(change.path) : change.path}</span>
+      <span className="change-path" title={change.path}>{depth >= 0 ? baseName(change.path) : change.path}</span>
       {staged && <span className="change-badge">S</span>}
       {!staged && <span className="change-badge unstaged">U</span>}
     </button>
