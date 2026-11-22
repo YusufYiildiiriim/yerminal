@@ -93,4 +93,16 @@ describe("font size scale", () => {
     );
     expect(offScale).toEqual([]);
   });
+
+  it("keeps editor and terminal code sizes out of the Interface size scale", () => {
+    // Code surfaces follow Settings (editor/terminal font size) or fixed literals, never the UI type tokens.
+    // The terminal placeholder's own paragraphs are UI guidance text and still scale; only the placeholder body is code.
+    const codeSurface = /code-editor-(?:highlighted|plain|input)|\.diff-code\b|\.terminal-placeholder\s*$|diff-view-details pre\b/;
+    const scaled = cssText.flatMap(({ file, css }) =>
+      [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+        .filter(([, selector, body]) => codeSurface.test(selector) && /font[\w-]*\s*:[^;]*var\(--fs-/.test(body))
+        .map(([, selector]) => `${file}: ${selector.trim()}`),
+    );
+    expect(scaled).toEqual([]);
+  });
 });
