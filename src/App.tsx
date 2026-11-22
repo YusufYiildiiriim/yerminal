@@ -39,6 +39,8 @@ import { BrandMark } from "./brand/BrandMark";
 import "@fontsource-variable/geist/index.css";
 import "@fontsource-variable/geist-mono/index.css";
 import "./styles/typography.css";
+import { TerminalOpenDialog } from "./features/terminal/TerminalOpenDialog";
+import { applyTerminalGroupChoice, folderChoices, readRecentTerminalFolders, rememberTerminalFolder, resolveTerminalOpenDefaults, type TerminalOpenAsk, type TerminalOpenChoice } from "./features/terminal/terminalOpenTarget";
 import "./styles/app.css";
 import "./styles/themes.css";
 import "./styles/workbench-ux.css";
@@ -374,6 +376,10 @@ function App() {
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const [workspaceFolderRefresh, setWorkspaceFolderRefresh] = useState<{ root: string; path: string; nonce: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Open while the folder and group prompt is up (defaults switch off); resolved by the prompt's confirm or cancel.
+  const [terminalOpenPrompt, setTerminalOpenPrompt] = useState<{ ask: TerminalOpenAsk; folder: string | null } | null>(null);
+  const terminalOpenResolveRef = useRef<((choice: TerminalOpenChoice | null) => void) | null>(null);
+  const lastTerminalGroupRef = useRef<string | null>(null);
   const [settingsInitialSection, setSettingsInitialSection] = useState<SectionId>("appearance");
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [terminalUsageOpen, setTerminalUsageOpen] = useState(false);
@@ -1068,12 +1074,61 @@ function App() {
     }
   }, [activeTerminalWorkspace, activeWorkspaceTerminalIds.length, dismissToast, repoPath, showToast, updateTerminalWorkspace]);
 
+  /** Folder and group for a new terminal. With defaults on nothing is asked; otherwise the prompt answers, and cancel gives null. */
+  const chooseTerminalTarget = useCallback((folder: string | undefined, ask: TerminalOpenAsk): Promise<TerminalOpenChoice | null> => {
+    const workspace = activeTerminalWorkspace;
+    const fixedFolder = folder ?? null;
+    if (settings.terminalUseDefaults !== false) {
+      const defaults = resolveTerminalOpenDefaults(settings, workspace?.groups ?? []);
+      return Promise.resolve({ folder: fixedFolder ?? defaults.folder, group: ask.group ? defaults.group : null });
+    }
+    if (!workspace) return Promise.resolve({ folder: fixedFolder, group: null });
+    terminalOpenResolveRef.current?.(null);
+    return new Promise((resolve) => {
+      terminalOpenResolveRef.current = (choice) => resolve(choice === null ? null : { folder: ask.folder ? choice.folder : fixedFolder, group: choice.group });
+      setTerminalOpenPrompt({ ask, folder: fixedFolder });
+    });
+  }, [activeTerminalWorkspace, settings]);
+
+  const finishTerminalOpenPrompt = useCallback((choice: TerminalOpenChoice | null) => {
+    const resolve = terminalOpenResolveRef.current;
+    terminalOpenResolveRef.current = null;
+    setTerminalOpenPrompt(null);
+    resolve?.(choice);
+  }, []);
+
+  const browseTerminalFolder = useCallback(async (): Promise<string | null> => {
+    try {
+      const selection = await open({ directory: true, multiple: false, title: "Terminal Folder" });
+      return typeof selection === "string" ? selection : null;
+    } catch (reason) {
+      showToast(String(reason));
+      return null;
+    }
+  }, [showToast]);
+
+  /** Every entry point that opens a terminal goes through here: defaults or prompt, then the group, then the terminal. */
+  const startTerminal = useCallback(async (showInTabs = true, folder?: string, ask: TerminalOpenAsk = { folder: true, group: true }): Promise<TerminalSession | null> => {
+    const workspace = activeTerminalWorkspace;
+    const choice = await chooseTerminalTarget(folder, ask);
+    if (!choice) return null;
+    if (workspace) lastTerminalGroupRef.current = workspace.activeGroupId;
+    if (workspace && choice.group) {
+      const next = applyTerminalGroupChoice({ groups: workspace.groups, activeGroupId: workspace.activeGroupId }, choice.group);
+      lastTerminalGroupRef.current = next.activeGroupId;
+      updateTerminalWorkspace(workspace.id, (current) => syncTerminalGroups(current, next.groups, next.activeGroupId));
+    }
+    const created = await createTerminal(showInTabs, choice.folder ?? undefined);
+    if (created && choice.folder) rememberTerminalFolder(choice.folder);
+    return created;
+  }, [activeTerminalWorkspace, chooseTerminalTarget, createTerminal, updateTerminalWorkspace]);
+
   useEffect(() => {
     const workspaceId = activeTerminalWorkspace?.id;
     if (!workspaceId || activeWorkspaceTerminalIds.length > 0 || initializedWorkspaceIdsRef.current.has(workspaceId)) return;
     initializedWorkspaceIdsRef.current.add(workspaceId);
-    void createTerminal();
-  }, [activeTerminalWorkspace?.id, activeWorkspaceTerminalIds.length, createTerminal]);
+    void startTerminal();
+  }, [activeTerminalWorkspace?.id, activeWorkspaceTerminalIds.length, startTerminal]);
 
   const closeTerminal = useCallback(async (id: string, skipConfirm = false) => {
     if (pendingTerminalCloseIdsRef.current.has(id)) return;
@@ -1159,7 +1214,8 @@ function App() {
     const workspace = activeTerminalWorkspace;
     const activeId = terminalId ?? workspace?.activeTerminalId;
     if (!workspace || !activeId) return;
-    const created = await createTerminal(false);
+    // A split stays in the group of the terminal it splits, so the prompt asks only for the folder.
+    const created = await startTerminal(false, undefined, { folder: true, group: false });
     if (!created) return;
     updateTerminalWorkspace(workspace.id, (current) => {
       const group = current.groups.find((item) => item.id === current.activeGroupId);
@@ -1168,18 +1224,18 @@ function App() {
       const root = group.layout ?? buildTerminalLayout(existingIds);
       return updateTerminalGroup(current, group.id, (active) => ({ ...active, layout: splitTerminal(root, activeId, created.id, direction) }));
     });
-  }, [activeTerminalWorkspace, createTerminal, updateTerminalWorkspace]);
+  }, [activeTerminalWorkspace, startTerminal, updateTerminalWorkspace]);
 
   const addTerminalToWorkspace = useCallback(async () => {
     const workspace = activeTerminalWorkspace;
     if (!workspace) {
-      await createTerminal();
+      await startTerminal();
       return;
     }
-    const created = await createTerminal(false);
+    const created = await startTerminal(false);
     if (!created) return;
     updateTerminalWorkspace(workspace.id, (current) => updateActiveTerminalGroup(current, (group) => ({ ...group, layout: buildTerminalLayout(group.terminalIds) })));
-  }, [activeTerminalWorkspace, createTerminal, updateTerminalWorkspace]);
+  }, [activeTerminalWorkspace, startTerminal, updateTerminalWorkspace]);
 
   const moveTerminal = useCallback((sourceId: string, targetId: string) => {
     if (sourceId === targetId || !activeTerminalWorkspace) return;
@@ -1388,16 +1444,16 @@ function App() {
     void openFolderInNewTerminal({
       isDesktop: isTauri(),
       folderPath,
-      createTerminalAt: (path) => createTerminal(true, path),
+      createTerminalAt: (path) => startTerminal(true, path, { folder: false, group: true }),
       activateTerminal: (id) => {
-        setTerminalViews((current) => ({ ...current, [terminalViewKey(workspace.id, workspace.activeGroupId)]: id }));
+        setTerminalViews((current) => ({ ...current, [terminalViewKey(workspace.id, lastTerminalGroupRef.current ?? workspace.activeGroupId)]: id }));
         setActiveMainView("terminals");
       },
       onDesktopRequired: () => showToast("Install Rust/Cargo and launch the desktop app with npm run tauri dev."),
     }).catch((reason: unknown) => {
       showToast(`Could not open terminal: ${String(reason)}`);
     });
-  }, [activeTerminalWorkspace, createTerminal, showToast]);
+  }, [activeTerminalWorkspace, startTerminal, showToast]);
 
   const revealInFileExplorer = useCallback((root: string, folderPath: string) => {
     const workspace = activeTerminalWorkspace;
@@ -1474,7 +1530,8 @@ function App() {
         return;
       }
       if (!(event.ctrlKey || event.metaKey)) return;
-      if (event.shiftKey && key === "t") { consumeShortcut(); void createTerminal(); }
+      if (terminalOpenPrompt) { consumeShortcut(); return; }
+      if (event.shiftKey && key === "t") { consumeShortcut(); void startTerminal(); }
       else if (event.shiftKey && key === "w" && activeTerminalId) { consumeShortcut(); void closeTerminal(activeTerminalId); }
       else if (event.shiftKey && key === "h") { consumeShortcut(); void splitActiveTerminal("horizontal"); }
       else if (event.shiftKey && key === "v") { consumeShortcut(); void splitActiveTerminal("vertical"); }
@@ -1492,7 +1549,7 @@ function App() {
     };
     window.addEventListener("keydown", handleShortcut, true);
     return () => window.removeEventListener("keydown", handleShortcut, true);
-  }, [activeTerminalId, activeTerminalWorkspace, activeGroupTerminals, closeTerminal, createTerminal, focusTerminal, focusedTerminalView, quickOpenOpen, settingsOpen, splitActiveTerminal]);
+  }, [activeTerminalId, activeTerminalWorkspace, activeGroupTerminals, closeTerminal, focusTerminal, focusedTerminalView, quickOpenOpen, settingsOpen, splitActiveTerminal, startTerminal, terminalOpenPrompt]);
 
   const activeTerminal = useMemo(
     () => terminals.find((terminal) => terminal.id === activeTerminalId),
@@ -1595,6 +1652,7 @@ function App() {
           void openEditorFile({ id: `workspace:${file.root}:${file.path}`, root: file.root, path: file.path, name: file.name, size: file.size ?? undefined }, file.workspaceId);
         }}
       />}
+      {terminalOpenPrompt && <TerminalOpenDialog ask={terminalOpenPrompt.ask} folders={folderChoices(activeTerminalWorkspace?.rootPath ?? "", activeTerminalWorkspace?.folderPaths ?? [], readRecentTerminalFolders())} initialFolder={terminalOpenPrompt.folder ?? activeTerminalWorkspace?.rootPath ?? null} groups={activeTerminalWorkspace?.groups ?? []} activeGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} onBrowse={browseTerminalFolder} onConfirm={finishTerminalOpenPrompt} onCancel={() => finishTerminalOpenPrompt(null)} />}
       {settingsOpen && <SettingsDialog initialSection={settingsInitialSection} settings={settings} shortcuts={HELP_SHORTCUTS} onSettingsChange={setSettings} onClose={closeSettings} />}
       {toast && <div className={`app-toast app-toast--${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"} aria-live={toast.kind === "error" ? "assertive" : "polite"} aria-atomic="true"><span>{toast.message}</span><button aria-label="Dismiss notification" onClick={dismissToast} type="button">×</button></div>}
     </main>
