@@ -43,7 +43,7 @@ import "@fontsource-variable/geist-mono/index.css";
 import "./styles/typography.css";
 import { TerminalOpenDialog } from "./features/terminal/TerminalOpenDialog";
 import { GroupHeaderAddButton, GroupRowAddButton } from "./features/terminal/TerminalGroupAddButtons";
-import { TerminalSidebarName } from "./features/terminal/TerminalSidebarName";
+import { TerminalSidebarName, TerminalSidebarNameEditor } from "./features/terminal/TerminalSidebarName";
 import { applyTerminalGroupChoice, type TerminalGroupChoice, folderChoices, readRecentTerminalFolders, rememberTerminalFolder, resolveTerminalOpenDefaults, terminalOpenAsk, type TerminalOpenAsk, type TerminalOpenChoice } from "./features/terminal/terminalOpenTarget";
 import { nextTerminalName, planRestore, readTerminalSessions, RESTORE_STAGGER_MS, SNAPSHOT_DEBOUNCE_MS, snapshotWorkspaceSessions, writeTerminalSessions, type PersistedTerminalSession, type PersistedTerminalSessions } from "./features/terminal/terminalSessionStore";
 import type { TerminalExitOptions } from "./features/terminal/TerminalPane";
@@ -1845,6 +1845,8 @@ function WorkspacePanel({ toolSwitch, mode, terminalLayoutMode, onChangeTerminal
   const [entriesByPath, setEntriesByPath] = useState<Record<string, WorkspaceEntry[]>>({});
   const [loadingPaths, setLoadingPaths] = useState<Record<string, boolean>>({});
   const [errorsByPath, setErrorsByPath] = useState<Record<string, string>>({});
+  /** The sidebar terminal whose name is being edited; its row is drawn without a button around the field. */
+  const [renamingTerminalId, setRenamingTerminalId] = useState<string | null>(null);
   const [contextTarget, setContextTarget] = useState<FolderContextMenuTarget | null>(null);
   const [terminalGroupsCollapsed, setTerminalGroupsCollapsed] = useState(false);
   const [agentUsageOpen, setAgentUsageOpen] = useState(false);
@@ -2195,13 +2197,23 @@ function WorkspacePanel({ toolSwitch, mode, terminalLayoutMode, onChangeTerminal
                       </div>
                     </>}
                   </div>
-                  {groupTerminals.map((terminal) => <button className={"workspace-terminal-select" + (terminal.id === activeTerminalId ? " selected" : "") + (terminalGroupDrag.dragTerminalId === terminal.id ? " dragging" : "")} type="button" key={terminal.id} aria-label={"Select terminal " + terminal.name} aria-pressed={terminal.id === activeTerminalId} title={terminal.name} {...terminalGroupDrag.rowProps(terminal.id, group.id)} onClick={() => { if (terminalGroupDrag.consumeSuppressedClick()) return; onSelectTerminal(group.id, terminal.id); }} onContextMenu={(event) => {
-                    event.preventDefault();
-                    setTerminalMenu({ x: event.clientX, y: event.clientY, label: `${terminal.name} actions`, items: terminalMenuItems(terminalGroups.filter((other) => other.id !== group.id), { onRename: () => onRenameTerminal(group.id, terminal), onMove: (groupId) => onMoveTerminal(terminal.id, groupId), onClose: () => onCloseTerminal(terminal.id) }) });
-                  }}>
-                    <span className="workspace-terminal-indicator" aria-hidden="true" />
-                    <TerminalSidebarName name={terminal.name} onRename={(name) => onRenameTerminalName(terminal.id, name)} />
-                  </button>)}
+                  {groupTerminals.map((terminal) => {
+                    const renaming = renamingTerminalId === terminal.id;
+                    const className = "workspace-terminal-select" + (terminal.id === activeTerminalId ? " selected" : "") + (terminalGroupDrag.dragTerminalId === terminal.id ? " dragging" : "");
+                    const openMenu = (event: { preventDefault: () => void; clientX: number; clientY: number }) => {
+                      event.preventDefault();
+                      setTerminalMenu({ x: event.clientX, y: event.clientY, label: `${terminal.name} actions`, items: terminalMenuItems(terminalGroups.filter((other) => other.id !== group.id), { onRename: () => onRenameTerminal(group.id, terminal), onMove: (groupId) => onMoveTerminal(terminal.id, groupId), onClose: () => onCloseTerminal(terminal.id) }) });
+                    };
+                    const contents = <>
+                      <span className="workspace-terminal-indicator" aria-hidden="true" />
+                      {renaming
+                        ? <TerminalSidebarNameEditor name={terminal.name} onRename={(name) => onRenameTerminalName(terminal.id, name)} onDone={() => setRenamingTerminalId(null)} />
+                        : <TerminalSidebarName name={terminal.name} onEdit={() => setRenamingTerminalId(terminal.id)} />}
+                    </>;
+                    // While a name is being edited the row is a plain div: a button must not contain the input.
+                    if (renaming) return <div className={className} key={terminal.id} onClick={() => onSelectTerminal(group.id, terminal.id)} onContextMenu={openMenu}>{contents}</div>;
+                    return <button className={className} type="button" key={terminal.id} aria-label={"Select terminal " + terminal.name} aria-pressed={terminal.id === activeTerminalId} title={terminal.name} {...terminalGroupDrag.rowProps(terminal.id, group.id)} onClick={() => { if (terminalGroupDrag.consumeSuppressedClick()) return; onSelectTerminal(group.id, terminal.id); }} onContextMenu={openMenu}>{contents}</button>;
+                  })}
                   {groupTerminals.length === 0 && <div className="workspace-terminal-empty">No terminals</div>}
                 </div>;
               })}

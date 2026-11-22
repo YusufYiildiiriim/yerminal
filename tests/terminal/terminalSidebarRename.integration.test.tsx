@@ -143,8 +143,9 @@ describe("sidebar terminal name rename (double-click)", () => {
 
     expect(input.value).toBe("A B");
     expect(leaked).toEqual([]);
-    expect(sidebarRows()[0]).toHaveAttribute("aria-pressed", "true");
-    expect(sidebarRows()[1]).toHaveAttribute("aria-pressed", "false");
+    // The editing row is a div (no aria-pressed), so selection is read from the class both row forms share.
+    expect(sidebarRows()[0]).toHaveClass("selected");
+    expect(sidebarRows()[1]).not.toHaveClass("selected");
   });
 
   it("a single click on a sidebar row still selects that terminal and opens no field", async () => {
