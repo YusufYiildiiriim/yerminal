@@ -21,13 +21,15 @@ type Props = {
   onError: (message: string) => void;
   /** Bumped by the parent (the ⋯ menu's "New branch…") to open the picker straight in create mode. */
   createRequest?: number;
+  /** Shows the inline "+" create button. The Git Changes action row turns it off; New branch is in its ⋯ menu. */
+  showCreate?: boolean;
 };
 
 /**
  * Branch switcher for one repository: search, switch (remote branches create a tracking branch),
  * create from the current branch, rename and delete. All Git work happens in the Rust commands.
  */
-export function BranchPicker({ repoPath, currentBranch, onChanged, onError, createRequest = 0 }: Props) {
+export function BranchPicker({ repoPath, currentBranch, onChanged, onError, createRequest = 0, showCreate = true }: Props) {
   const [open, setOpen] = useState(false);
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [query, setQuery] = useState("");
@@ -162,9 +164,9 @@ export function BranchPicker({ repoPath, currentBranch, onChanged, onError, crea
       <span className="bp-label">{label}</span>
       <svg className="bp-chevron" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
     </button>
-    <button type="button" className="bp-add" aria-label="Create new branch" title={`New branch from ${label}`} onClick={() => { setOpen(true); setCreating(""); }}>
+    {showCreate && <button type="button" className="bp-add" aria-label="Create new branch" title={`New branch from ${label}`} onClick={() => { setOpen(true); setCreating(""); }}>
       <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-    </button>
+    </button>}
     </div>
     {open && <div className="bp-popover" role="dialog" aria-label="Branches">
       <input className="bp-input" aria-label="Search branches" placeholder="Search branches" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} />

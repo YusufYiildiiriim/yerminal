@@ -58,10 +58,11 @@ describe("SyncBar", () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
-  it("disables push when there is nothing to push, and fetch/pull from the menu report their result", async () => {
+  it("hides push when there is nothing to push, and fetch/pull from the menu report their result", async () => {
     const user = userEvent.setup();
     const { onError } = setup({ branch: "main", upstream: "origin/main", ahead: 0, behind: 1, hasRemote: true }, { git_fetch: () => "Already up to date", git_pull: () => "Fast-forward" });
-    expect(await screen.findByRole("button", { name: "Push to remote" })).toBeDisabled();
+    await screen.findByRole("button", { name: "More git actions" });
+    expect(screen.queryByRole("button", { name: "Push to remote" })).toBeNull();
     await user.click(await menuItem(user, /Fetch/));
     await waitFor(() => expect(onError).toHaveBeenCalledWith("Fetch: Already up to date"));
     await user.click(await menuItem(user, /Pull/));

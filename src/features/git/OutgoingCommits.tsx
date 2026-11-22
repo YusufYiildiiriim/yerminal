@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { CommitFileChange, CommitInfo } from "./gitTypes";
 import { changeKindLetter, formatFullDate, formatRelativeTime } from "./gitGraphFormat";
+import { GitCard } from "./GitCard";
 import "./git-graph.css";
 
 type Props = {
@@ -96,8 +97,7 @@ export function OutgoingCommits({ repoPath, refreshKey = 0, onError, onOpenFile 
     </ul></div>;
   };
 
-  return <section className="outgoing-commits" aria-label="Outgoing commits">
-    <div className="gb-sec"><span>Outgoing commits</span><span className="gb-count">{commits.length}</span></div>
+  return <GitCard label="Outgoing commits" title="Outgoing commits" count={commits.length} className="outgoing-commits">
     <ul className="gb-commits" aria-label="Commits not pushed yet">
       {commits.map((commit) => {
         const open = openId === commit.id;
@@ -110,5 +110,5 @@ export function OutgoingCommits({ repoPath, refreshKey = 0, onError, onOpenFile 
         </li>;
       })}
     </ul>
-  </section>;
+  </GitCard>;
 }

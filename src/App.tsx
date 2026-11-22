@@ -9,6 +9,7 @@ import { GitGraphBranches } from "./features/git/GitGraphBranches";
 import type { DiffVersions } from "./features/git/diffEditorModel";
 import { BranchPicker } from "./features/git/BranchPicker";
 import { SyncBar } from "./features/git/SyncBar";
+import { GitCard } from "./features/git/GitCard";
 import { OutgoingCommits } from "./features/git/OutgoingCommits";
 import { HistorySection } from "./features/git/HistorySection";
 import { readCollapsedRepos, repoExpansionKey, setRepoExpanded, writeCollapsedRepos } from "./features/git/repoExpansion";
@@ -2311,32 +2312,25 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenD
       <button className="git-repository-toggle" aria-expanded={expanded} onClick={toggleExpanded} type="button" title={repoInfo.root}>
         <span className="git-repository-chevron" aria-hidden="true"><ChevronGlyph open={expanded} /></span>
         <span className="git-repository-name"><strong>{repoName}</strong></span>
-        <span className="git-repository-branch" title="Current branch">{repoInfo.branch || "Detached HEAD"}</span>
         <span className="git-repository-counts">{stagedChanges.length} staged · {unstagedChanges.length} changes{aheadCount > 0 ? ` · ↑${aheadCount}` : ""}</span>
       </button>
     </header>
     <div className="git-repository-body" hidden={!expanded}>
-      <div className="git-repository-branch-row"><BranchPicker repoPath={repoPath} currentBranch={repoInfo.branch} onChanged={onBranchChanged} onError={onError} createRequest={branchCreateRequest} /></div>
-      <SyncBar repoPath={repoPath} refreshKey={syncNonce + refreshNonce} onChanged={onBranchChanged} onError={onError} onAheadChange={setAheadCount} onNewBranch={() => setBranchCreateRequest((value) => value + 1)} onRefresh={onBranchChanged} view={changeView} onViewChange={chooseChangeView} />
+      <div className="git-action-row">
+        <div className="git-repository-branch-row"><span className="git-action-label">Branch</span><BranchPicker repoPath={repoPath} currentBranch={repoInfo.branch} onChanged={onBranchChanged} onError={onError} createRequest={branchCreateRequest} showCreate={false} /></div>
+        <SyncBar repoPath={repoPath} refreshKey={syncNonce + refreshNonce} onChanged={onBranchChanged} onError={onError} onAheadChange={setAheadCount} onNewBranch={() => setBranchCreateRequest((value) => value + 1)} onRefresh={onBranchChanged} view={changeView} onViewChange={chooseChangeView} />
+      </div>
       {stagedChanges.length > 0 && <section className="git-commit-box" aria-label="Commit staged changes">
         <textarea aria-label="Commit message" placeholder="Message (required)" rows={2} maxLength={65536} value={commitMessage} onChange={(event) => setCommitMessage(event.currentTarget.value)} />
         <button className="git-commit-button" onClick={() => void commitStaged()} disabled={isCommitting || Boolean(fileAction) || stagedChanges.length === 0 || !commitMessage.trim()} type="button"><span aria-hidden="true">✓</span><span className="git-commit-label">{isCommitting ? "Committing…" : "Commit staged"}</span><small>{stagedChanges.length}</small></button>
       </section>}
       {stagedChanges.length === 0 && changes.length > 0 && <div className="git-commit-min">Stage a change to commit</div>}
       <MergeConflicts repoPath={repoPath} merging={repoInfo.state === "merge in progress"} conflicts={conflictedPaths} onChanged={onBranchChanged} onError={onError} onOpenFile={(relativePath) => onOpenFile(repoInfo.root, relativePath)} />
-      <div className="change-list" aria-label="Repository changes">
-        {changes.length === 0 ? <div className="change-empty">Working tree clean</div> : <>
-          {stagedChanges.length > 0 && <section className="change-group" aria-label="Staged changes">
-            <header className="change-group-heading"><span>Staged Changes</span><span>{stagedChanges.length}</span></header>
-            {renderChangeGroup(stagedChanges, true)}
-          </section>}
-          {unstagedChanges.length > 0 && <section className="change-group" aria-label="Changes">
-            <header className="change-group-heading"><span>Changes</span><span>{unstagedChanges.length}</span></header>
-            {renderChangeGroup(unstagedChanges, false)}
-          </section>}
-        </>}
+      <div className="git-cards">
+        {stagedChanges.length > 0 && <GitCard label="Staged changes" title="Staged Changes" count={stagedChanges.length}>{renderChangeGroup(stagedChanges, true)}</GitCard>}
+        {unstagedChanges.length > 0 && <GitCard label="Changes" title="Changes" count={unstagedChanges.length}>{renderChangeGroup(unstagedChanges, false)}</GitCard>}
+        <OutgoingCommits repoPath={repoPath} refreshKey={syncNonce + refreshNonce} onError={onError} onOpenFile={(commit, file) => onOpenCommitFile(repoInfo.root, commit, file)} />
       </div>
-      <OutgoingCommits repoPath={repoPath} refreshKey={syncNonce + refreshNonce} onError={onError} onOpenFile={(commit, file) => onOpenCommitFile(repoInfo.root, commit, file)} />
       <HistorySection repoPath={repoPath} repoKey={expansionKey} branch={repoInfo.branch} refreshKey={syncNonce + refreshNonce} onError={onError} onOpenFile={(commit, file) => onOpenCommitFile(repoInfo.root, commit, file)} />
       {discardTarget && createPortal(
         <div className="git-confirm-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDiscardTarget(null); }}>

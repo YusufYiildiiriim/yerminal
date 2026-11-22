@@ -1,0 +1,44 @@
+/* Git Changes sections as cards: a header band above a recessed body with its own scroll (GitCard.tsx).
+   Tones are theme tokens (--git-card-band, --git-card-body, --git-card-rule in themes.css). */
+
+/* The card stack: cards are separated by 16 px and inset from the panel edges. */
+.git-cards { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 8px 10px 0; }
+
+.git-card { display: flex; flex-direction: column; min-width: 0; }
+
+.git-card-band {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: 30px;
+  padding: 6px 8px; border: 0; border-bottom: 1px solid var(--git-card-rule); border-radius: 8px 8px 0 0;
+  background: var(--git-card-band); color: var(--theme-text); font: inherit; text-align: left; cursor: pointer;
+}
+.git-card-band:hover { background: var(--hover); }
+.git-card-band:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }
+
+.git-card-title {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--fs-sm); font-weight: 600; color: var(--theme-text);
+}
+.git-card-count { flex: none; font-size: var(--fs-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.git-card-chev { flex: none; font-size: var(--fs-xs); color: var(--text-muted); transition: transform .12s ease; }
+.git-card.is-collapsed .git-card-chev { transform: rotate(-90deg); }
+
+/* The recessed body is bounded (about six and a half rows) and scrolls on its own when its content overflows. */
+.git-card-body {
+  min-width: 0; max-height: 198px; overflow-y: auto; overflow-x: hidden; padding: 8px;
+  border-radius: 8px; background: var(--git-card-body);
+}
+.git-card-body[hidden] { display: none; }
+.git-card-body .change-list,
+.git-card-body .gb-commits { max-height: none; overflow: visible; margin: 0; padding: 0; }
+
+/* The action row: branch picker and Push share one line. Labels drop out in a narrow panel; icons and counts stay. */
+.git-action-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; container-type: inline-size; }
+.git-action-label { flex: none; font-size: var(--fs-xs); color: var(--text-muted); }
+@container (max-width: 200px) {
+  .git-action-label { display: none; }
+  .git-action-row .sync-button:not(.sync-more) > span { display: none; }
+}
+
+/* Inside the action row the toolbar and the branch picker sit on one line without their own top padding. */
+.git-action-row > .sync-bar { padding: 0; }
+.git-action-row > .git-repository-branch-row { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 0; }

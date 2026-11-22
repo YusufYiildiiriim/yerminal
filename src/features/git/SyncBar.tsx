@@ -92,7 +92,8 @@ export function SyncBar({ repoPath, refreshKey, onChanged, onError, onAheadChang
   const published = state?.upstream != null;
 
   return <div className="sync-bar" role="group" aria-label="Remote sync">
-    {hasRemote && <button type="button" className={`sync-button${published && state?.ahead === 0 ? "" : " primary"}`} aria-label={published ? "Push to remote" : "Publish branch"} title={published ? `Push to ${state?.upstream}` : "Publish this branch to the remote"} disabled={busy !== null || detached || (published && state?.ahead === 0)} onClick={() => void run("push")}>
+    {/* Push appears only when something is waiting to be pushed; Publish stays while there is no upstream. */}
+    {hasRemote && (!published || (state?.ahead ?? 0) > 0) && <button type="button" className="sync-button primary" aria-label={published ? "Push to remote" : "Publish branch"} title={published ? `Push to ${state?.upstream}` : "Publish this branch to the remote"} disabled={busy !== null || detached} onClick={() => void run("push")}>
       <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20V7M6 12l6-6 6 6" /></svg>
       <span>{busy === "push" ? (published ? "Pushing…" : "Publishing…") : published ? "Push" : "Publish"}</span>
       {(state?.ahead ?? 0) > 0 && <small className="sync-count" aria-label={`${state?.ahead} commits to push`}>{state?.ahead}</small>}

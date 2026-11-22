@@ -290,3 +290,10 @@
 @media (max-width: 1000px) {
   .app-shell[data-theme] .titlebar-resource-button { display: none; }
 }
+
+/* Git Changes section cards: band = repository surface, body = recessed background; one definition for all themes. */
+.app-shell[data-theme] {
+  --git-card-band: var(--theme-surface);
+  --git-card-body: var(--theme-background);
+  --git-card-rule: color-mix(in srgb, var(--theme-text) 16%, var(--theme-surface));
+}
