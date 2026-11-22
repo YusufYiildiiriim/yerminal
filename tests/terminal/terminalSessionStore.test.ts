@@ -96,3 +96,10 @@ describe("terminal session store: names", () => {
     expect(nextTerminalName(["terminal 1", "Terminal 2"])).toBe("Terminal 3");
   });
 });
+
+describe("terminal session store: numbering keeps the group-size start", () => {
+  it("starts from the given ordinal and skips names that are taken", () => {
+    expect(nextTerminalName(["powershell"], 2)).toBe("Terminal 2");
+    expect(nextTerminalName(["Terminal 2", "api"], 2)).toBe("Terminal 3");
+  });
+});

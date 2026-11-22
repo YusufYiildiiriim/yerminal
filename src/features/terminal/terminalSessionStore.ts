@@ -80,10 +80,10 @@ export function planRestore(saved: readonly PersistedTerminalSession[], groupIds
   return saved.map((session) => ({ ...session, groupId: groupIds.includes(session.groupId) ? session.groupId : activeGroupId }));
 }
 
-/** The lowest "Terminal N" that no name in use takes, compared without case. */
-export function nextTerminalName(taken: readonly string[]): string {
+/** The first "Terminal N" at or after `start` that no name in use takes, compared without case. */
+export function nextTerminalName(taken: readonly string[], start = 1): string {
   const used = new Set(taken.map((name) => name.trim().toLocaleLowerCase()));
-  let ordinal = 1;
+  let ordinal = start;
   while (used.has(`terminal ${ordinal}`)) ordinal += 1;
   return `Terminal ${ordinal}`;
 }

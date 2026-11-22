@@ -10,7 +10,9 @@ import "@xterm/xterm/css/xterm.css";
 type TerminalOutput = { sessionId: string; sequence: number; data: string };
 type TerminalOutputSnapshot = { throughSequence: number; events: TerminalOutput[] };
 type ShellKind = "powershell" | "bash" | "zsh";
-type TerminalPaneProps = { sessionId: string; shell: ShellKind; profileId?: string; workingDirectory: string | null; active: boolean; visible: boolean; onLinkHint?: (message: string) => void; onFocus: (sessionId: string) => void; onExit: (sessionId: string) => void };
+type TerminalPaneProps = { sessionId: string; shell: ShellKind; profileId?: string; workingDirectory: string | null; active: boolean; visible: boolean; onLinkHint?: (message: string) => void; onFocus: (sessionId: string) => void; onExit: (sessionId: string, options?: TerminalExitOptions) => void };
+/** startFailed: the shell could not start at all (not a process that ran and ended). */
+export type TerminalExitOptions = { startFailed?: boolean };
 
 export function TerminalPane({ sessionId, shell, profileId, workingDirectory, active, visible, onLinkHint, onFocus, onExit }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
