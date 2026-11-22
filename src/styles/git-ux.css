@@ -318,8 +318,8 @@
   overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 6px 6px 8px;
+  gap: var(--space-2);
+  padding: var(--space-2);
 }
 .git-repository-section {
   flex: none;
@@ -343,10 +343,10 @@
   flex: 1;
   flex-wrap: wrap;
   align-items: center;
-  column-gap: 5px;
-  row-gap: 2px;
+  column-gap: var(--space-1);
+  row-gap: var(--space-1);
   min-width: 0;
-  padding: 4px 8px 4px 6px;
+  padding: var(--space-1) var(--space-2);
   border: 0;
   color: var(--theme-text, #efedf4);
   background: transparent;

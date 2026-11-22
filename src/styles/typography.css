@@ -10,4 +10,9 @@
   --fs-md: calc(13px * var(--ui-scale, 1));
   --fs-lg: calc(15px * var(--ui-scale, 1));
   --fs-xl: calc(18px * var(--ui-scale, 1));
+  /* Spacing steps for dense lists and panels (px, not scaled by --ui-scale). */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
 }

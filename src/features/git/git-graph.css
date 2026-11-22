@@ -5,7 +5,7 @@
 
 /* Branch side panel */
 .gb-panel { display: flex; flex-direction: column; min-height: 0; }
-.gb-sec { display: flex; align-items: center; justify-content: space-between; height: 22px; margin: 6px 0 1px; padding: 0 4px; color: var(--text-muted); font-size: var(--fs-sm); font-weight: 500; }
+.gb-sec { display: flex; align-items: center; justify-content: space-between; min-height: 24px; margin: var(--space-3) 0 var(--space-1); padding: 0 var(--space-1); color: var(--text-muted); font-size: var(--fs-sm); font-weight: 500; }
 .gb-count { font-size: var(--fs-xs); color: var(--text-muted); }
 .gb-row { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; height: 22px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--row-text); font: inherit; font-size: var(--fs-md); text-align: left; cursor: pointer; }
 .gb-row:hover, .gb-row:focus-visible { background: var(--hover); outline: none; }
@@ -20,8 +20,8 @@
 .gb-branch { display: flex; flex-direction: column; min-width: 0; }
 .gb-row > svg.gb-chev { width: 12px; height: 12px; transition: transform 140ms ease; }
 .gb-row > svg.gb-chev.open { transform: rotate(90deg); }
-.gb-commits { margin: 2px 0 8px 12px; padding: 0 0 0 6px; border-left: 1px solid var(--theme-border); list-style: none; }
-.gb-commit { display: flex; flex-direction: column; justify-content: center; gap: 1px; width: 100%; min-width: 0; height: 34px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--row-text); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.gb-commits { margin: var(--space-1) 0 var(--space-2) var(--space-3); padding: 0 0 0 var(--space-2); border-left: 1px solid var(--theme-border); list-style: none; }
+.gb-commit { display: flex; flex-direction: column; justify-content: center; gap: var(--space-1); width: 100%; min-width: 0; min-height: 36px; padding: var(--space-1) var(--space-2); border: 0; border-radius: 6px; background: transparent; color: var(--row-text); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
 .gb-commit:hover, .gb-commit:focus-visible { background: var(--hover); outline: none; }
 .gb-commit.on { background: var(--theme-raised); color: var(--bright); }
 .gb-hash { color: var(--text-muted); font-family: var(--font-mono-ui); font-size: var(--fs-xs); }
@@ -31,13 +31,13 @@
 .gb-time { color: var(--text-muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gb-note { padding: 4px 6px; color: var(--text-muted); font-size: var(--fs-sm); }
 .gb-error { color: var(--theme-text); overflow-wrap: anywhere; }
-.gb-more { width: 100%; height: 26px; margin-top: 2px; border: 1px solid var(--theme-border); border-radius: 6px; background: var(--theme-raised); color: var(--theme-text); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.gb-more { width: 100%; min-height: 26px; margin-top: var(--space-1); border: 1px solid var(--theme-border); border-radius: 6px; background: var(--theme-raised); color: var(--theme-text); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
 .gb-more:hover, .gb-more:focus-visible { background: var(--hover); outline: none; }
 @media (prefers-reduced-motion: reduce) { .gb-row > svg.gb-chev { transition: none; } }
 
 /* Commit details open in place, under the commit row. */
 .gb-commits > li.open { margin: 2px 0 6px; border-radius: 8px; background: color-mix(in srgb, var(--theme-raised) 70%, transparent); }
-.gb-detail { padding: 4px 10px 10px; }
+.gb-detail { padding: var(--space-1) var(--space-3) var(--space-3); }
 .gb-detail-body { margin: 2px 0 8px; color: var(--row-text); font-size: var(--fs-sm); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .gb-detail-meta { display: grid; gap: 4px; margin: 4px 0 8px; font-size: var(--fs-sm); }
 .gb-detail-meta div { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 8px; }
@@ -48,10 +48,10 @@
 .gb-files { margin: 0; padding: 0; list-style: none; }
 /* Outgoing commits: an opened commit lists its files in a capped box that scrolls itself, so the panel does not grow with the file count. */
 .outgoing-commits { flex: none; }
-.outgoing-commits > .gb-sec { position: relative; z-index: 1; overflow: visible; height: auto; min-height: 22px; margin-top: 8px; line-height: 16px; }
+.outgoing-commits > .gb-sec { position: relative; z-index: 1; overflow: visible; height: auto; min-height: 24px; margin-top: var(--space-2); line-height: 16px; }
 .gb-files-scroll { max-height: 240px; overflow-y: auto; overflow-x: hidden; }
 .gb-files-scroll .gb-file { max-width: 100%; }
-.gb-file { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; height: 26px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--row-text); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.gb-file { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0; min-height: 26px; padding: var(--space-1) var(--space-2); border: 0; border-radius: 6px; background: transparent; color: var(--row-text); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
 .gb-file:hover, .gb-file:focus-visible { background: var(--hover); color: var(--bright); outline: none; }
 .gb-file .k { flex: none; width: 12px; text-align: center; font-size: var(--fs-xs); font-weight: 700; }
 .gb-file .k.A { color: var(--text-green); }
@@ -78,8 +78,8 @@
 .gg-repo-picker select { width: 100%; height: 26px; padding: 0 6px; color: var(--theme-text); background: var(--theme-surface, #19191f); border: 1px solid var(--theme-border, rgba(255,255,255,.14)); border-radius: 6px; font: inherit; font-size: var(--fs-sm); }
 
 /* History: a collapsible section under Outgoing commits in each Git Changes repository (HistorySection.tsx). */
-.hist-section { display: flex; flex-direction: column; min-width: 0; margin-top: 4px; }
-.hist-toggle { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; height: 26px; margin-top: 6px; padding: 0 4px; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); font: inherit; font-size: var(--fs-sm); font-weight: 500; text-align: left; cursor: pointer; }
+.hist-section { display: flex; flex-direction: column; min-width: 0; margin-top: var(--space-1); }
+.hist-toggle { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0; min-height: 26px; margin-top: var(--space-3); padding: var(--space-1) var(--space-2); border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); font: inherit; font-size: var(--fs-sm); font-weight: 500; text-align: left; cursor: pointer; }
 .hist-toggle:hover, .hist-toggle:focus-visible { background: var(--hover); color: var(--theme-text); outline: none; }
 .hist-toggle > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hist-toggle .gb-count { margin-left: auto; }
