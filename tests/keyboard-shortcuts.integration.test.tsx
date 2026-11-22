@@ -31,7 +31,12 @@ vi.mock("../src/features/terminal/TerminalPane", () => ({
         event.stopPropagation();
       };
       input.addEventListener("keydown", handleTerminalKey, true);
-      return () => input.removeEventListener("keydown", handleTerminalKey, true);
+      // Marks the moment the listener is attached: the effect can run after the textarea is already in the DOM.
+      input.dataset.keyListener = "attached";
+      return () => {
+        delete input.dataset.keyListener;
+        input.removeEventListener("keydown", handleTerminalKey, true);
+      };
     }, []);
     return React.createElement("textarea", { ref: inputRef, className: "xterm-helper-textarea", "aria-label": "Mock terminal input" });
   },
@@ -48,6 +53,14 @@ function seedWorkspace() {
 
 function terminalCount() {
   return document.querySelectorAll(".terminal-pane-frame").length;
+}
+
+/** Renders the app and waits until the terminal exists and its key listener is attached, not just its textarea. */
+async function renderWithTerminal() {
+  render(<App />);
+  await waitFor(() => expect(terminalCount()).toBe(1));
+  await waitFor(() => expect(screen.getByRole("textbox", { name: "Mock terminal input" })).toHaveAttribute("data-key-listener", "attached"));
+  return screen.getByRole("textbox", { name: "Mock terminal input" });
 }
 
 beforeEach(() => {
@@ -74,9 +87,7 @@ afterEach(() => {
 
 describe("global keyboard shortcuts", () => {
   it("runs an application shortcut while the xterm helper textarea is focused", async () => {
-    render(<App />);
-    const terminalInput = await screen.findByRole("textbox", { name: "Mock terminal input" });
-    await waitFor(() => expect(terminalCount()).toBe(1));
+    const terminalInput = await renderWithTerminal();
     terminalInput.focus();
 
     fireEvent.keyDown(terminalInput, { key: "g", ctrlKey: true, shiftKey: true });
@@ -130,9 +141,7 @@ describe("global keyboard shortcuts", () => {
   });
 
   it("ignores repeated keydown events so holding the shortcut does not create more terminals", async () => {
-    render(<App />);
-    const terminalInput = await screen.findByRole("textbox", { name: "Mock terminal input" });
-    await waitFor(() => expect(terminalCount()).toBe(1));
+    const terminalInput = await renderWithTerminal();
     terminalInput.focus();
 
     fireEvent.keyDown(terminalInput, { key: "t", ctrlKey: true, shiftKey: true });
@@ -144,8 +153,7 @@ describe("global keyboard shortcuts", () => {
   });
 
   it("still lets ordinary terminal control keys reach the terminal", async () => {
-    render(<App />);
-    const terminalInput = await screen.findByRole("textbox", { name: "Mock terminal input" });
+    const terminalInput = await renderWithTerminal();
     terminalInput.focus();
 
     fireEvent.keyDown(terminalInput, { key: "c", ctrlKey: true });
