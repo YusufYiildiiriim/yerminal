@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { BranchInfo, CommitFileChange, CommitInfo } from "./gitTypes";
 import { changeKindLetter, formatFullDate, formatRelativeTime } from "./gitGraphFormat";
+import { LoadingState } from "../../components/LoadingState";
 import "./git-graph.css";
 
 export type { BranchInfo };
@@ -149,7 +150,7 @@ export function GitGraphBranches({ repoPath, currentBranch = "", reloadKey = 0, 
         <div><dt>Commit</dt><dd><code>{commit.shortId}</code></dd></div>
       </dl>
       <div className="gb-detail-files-head"><span>Changed files</span><span>{state?.loading ? "…" : state?.files.length ?? 0}</span></div>
-      {!state || state.loading ? <div className="gb-note" role="status">Loading changed files…</div>
+      {!state || state.loading ? <LoadingState label="Loading changed files…" centered />
         : state.error ? <div className="gb-note gb-error" role="alert"><span>{state.error}</span> <button type="button" className="gb-retry" onClick={() => void loadDetails(commit)}>Retry</button></div>
         : state.files.length === 0 ? <div className="gb-note">No files changed in this commit.</div>
         : <ul className="gb-files" aria-label={`Changed files in ${commit.shortId}`}>
@@ -189,7 +190,7 @@ export function GitGraphBranches({ repoPath, currentBranch = "", reloadKey = 0, 
             {open && renderDetails(commit)}
           </li>;
         })}
-        {state.loading && <li className="gb-note" role="status">Loading commits…</li>}
+        {state.loading && <li><LoadingState label="Loading commits…" centered /></li>}
         {state.error && <li className="gb-note gb-error" role="alert">{state.error}</li>}
         {!state.loading && !state.error && state.commits.length === 0 && <li className="gb-note">No commits</li>}
         {!state.loading && state.hasMore && state.commits.length > 0 && <li><button type="button" className="gb-more" onClick={() => void loadBranch(branch.name, true)}>Load more</button></li>}

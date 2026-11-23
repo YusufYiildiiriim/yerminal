@@ -3,6 +3,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { CommitFileChange, CommitInfo } from "./gitTypes";
 import { changeKindLetter, formatFullDate, formatRelativeTime } from "./gitGraphFormat";
 import { readOpenHistory, setHistoryOpen, writeOpenHistory } from "./historyExpansion";
+import { LoadingState } from "../../components/LoadingState";
 import "./git-graph.css";
 
 export const HISTORY_PAGE_SIZE = 20;
@@ -120,7 +121,7 @@ export function HistorySection({ repoPath, repoKey, branch, refreshKey = 0, onEr
 
   const renderFiles = (commit: CommitInfo) => {
     const state = details[commit.id];
-    if (!state || state.loading) return <div className="gb-note" role="status">Loading changed files…</div>;
+    if (!state || state.loading) return <LoadingState label="Loading changed files…" centered />;
     if (state.error) return <div className="gb-note gb-error" role="alert"><span>{state.error}</span> <button type="button" className="gb-retry" onClick={() => void loadDetails(commit)}>Retry</button></div>;
     if (state.files.length === 0) return <div className="gb-note">No files changed in this commit.</div>;
     return <div className="gb-files-scroll"><ul className="gb-files" aria-label={`Changed files in ${commit.shortId}`}>
@@ -152,7 +153,7 @@ export function HistorySection({ repoPath, repoKey, branch, refreshKey = 0, onEr
 
   const renderBody = () => {
     if (list.status === "idle") return null;
-    if (list.status === "loading" && list.commits.length === 0) return <div className="gb-note" role="status">Loading history…</div>;
+    if (list.status === "loading" && list.commits.length === 0) return <LoadingState label="Loading history…" centered />;
     if (list.status === "error" && list.commits.length === 0) return <div className="gb-note gb-error" role="alert"><span>{list.error}</span> <button type="button" className="gb-retry" onClick={() => void requestPage(0)}>Retry</button></div>;
     if (list.upstream === null) return <div className="up-note">No upstream for this branch. Publish it from the sync bar to start tracking; pushed history shows here after that.</div>;
     if (list.commits.length === 0) return <div className="gb-note">No pushed commits on {list.upstream}.</div>;
