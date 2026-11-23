@@ -128,7 +128,7 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .workspace-switcher { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 0 1 auto; }
 .workspace-switcher-icon { color: var(--accent); font-size: var(--fs-sm); }
 .workspace-name-select, .workspace-root-picker select { min-width: 0; border: 1px solid transparent; border-radius: 4px; background: #1b1c21; color: #d3d2dc; font: inherit; font-size: var(--fs-xs); }
-.workspace-name-select { width: 150px; max-width: 18vw; padding: 4px 18px 4px 7px; font-weight: 600; }
+.workspace-name-select { width: 150px; max-width: 100%; padding: 4px 18px 4px 7px; font-weight: 600; }
 .workspace-name-select:hover, .workspace-root-picker select:hover { border-color: #3a3b45; background: #222329; }
 .workspace-action { width: 24px; height: 24px; flex: 0 0 24px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #92949e; font-size: var(--fs-md); }
 .workspace-action:hover:not(:disabled) { border-color: #373841; background: #24252b; color: #e4e3eb; }
