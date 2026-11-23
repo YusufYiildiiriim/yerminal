@@ -447,5 +447,5 @@
 
 /* Git Changes / Git Graph switch: icon-less labels so both stay readable in a narrow rail. */
 .app-shell[data-theme] .git-tool-switch .tool-primary-switch { margin: 6px 8px; padding: 2px; }
-.app-shell[data-theme] .git-tool-switch .tool-primary-switch-item { height: 24px; padding: 0 4px; font-size: var(--fs-xs); }
+.app-shell[data-theme] .git-tool-switch .tool-primary-switch-item { height: var(--control-h-md); padding: 0 4px; font-size: var(--fs-xs); }
 .app-shell[data-theme] .git-tool-switch .tool-sidebar-icon { display: none; }

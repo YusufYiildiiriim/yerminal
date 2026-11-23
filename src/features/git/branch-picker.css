@@ -1,11 +1,11 @@
 .branch-picker { position: relative; min-width: 0; }
-.bp-bar { display: flex; align-items: center; gap: 4px; }
-.bp-add { display: grid; place-items: center; flex: none; width: 24px; height: 24px; padding: 0; border: 1px solid color-mix(in srgb, var(--theme-accent, #b3a3ee) 55%, var(--theme-border, #2c2c34)); border-radius: 6px; background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 16%, transparent); color: var(--theme-text); cursor: pointer; }
+.bp-bar { display: flex; align-items: center; gap: var(--space-1); }
+.bp-add { display: grid; place-items: center; flex: none; width: var(--control-h-md); height: var(--control-h-md); padding: 0; border: 1px solid color-mix(in srgb, var(--theme-accent, #b3a3ee) 55%, var(--theme-border, #2c2c34)); border-radius: 6px; background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 16%, transparent); color: var(--theme-text); cursor: pointer; }
 .bp-add:hover { background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 30%, transparent); }
-.bp-add svg { width: 13px; height: 13px; }
-.bp-trigger { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; height: 24px; padding: 0 6px; border: 1px solid var(--theme-border, rgba(255,255,255,.14)); border-radius: 6px; background: var(--theme-surface, #19191f); color: var(--theme-text); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.bp-add svg { width: 16px; height: 16px; }
+.bp-trigger { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; height: var(--control-h-md); padding: 0 6px; border: 1px solid var(--theme-border, rgba(255,255,255,.14)); border-radius: 6px; background: var(--theme-surface, #19191f); color: var(--theme-text); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
 .bp-trigger:hover { border-color: color-mix(in srgb, var(--theme-accent, #b3a3ee) 45%, var(--theme-border, #2c2c34)); }
-.bp-trigger svg { width: 12px; height: 12px; flex: none; }
+.bp-trigger svg { width: 14px; height: 14px; flex: none; }
 .bp-trigger .bp-chevron { margin-left: auto; opacity: .6; }
 .bp-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Overlay: fixed-position over the content, placed inline from the trigger (branchPopoverPlacement.ts), so it

@@ -7,8 +7,8 @@
 .git-card { display: flex; flex-direction: column; min-width: 0; }
 
 .git-card-band {
-  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: 30px;
-  padding: 6px 8px; border: 0; border-bottom: 1px solid var(--git-card-rule); border-radius: 8px 8px 0 0;
+  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: var(--control-h-md);
+  padding: var(--space-1) var(--space-2); border: 0; border-bottom: 1px solid var(--git-card-rule); border-radius: 8px 8px 0 0;
   background: var(--git-card-band); color: var(--theme-text); font: inherit; text-align: left; cursor: pointer;
 }
 .git-card-band:hover { background: var(--hover); }
@@ -35,7 +35,7 @@
 .git-repository-body { container-type: inline-size; }
 /* The action row: branch picker and sync toolbar share one line in a wide rail. In a narrow rail (the sidebar minimum)
    they stack: the picker takes the full width on its own line and the toolbar sits under it at full width. */
-.git-action-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); min-width: 0; padding: var(--space-3); container-type: inline-size; }
+.git-action-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); min-width: 0; padding: var(--space-3) var(--space-3) var(--space-2); container-type: inline-size; }
 .git-action-label { flex: none; font-size: var(--fs-xs); color: var(--text-muted); }
 @container (max-width: 260px) {
   .git-action-label { display: none; }

@@ -76,11 +76,11 @@
 .gg-repo-picker { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--theme-border, rgba(255,255,255,.08)); }
 .gg-repo-picker span { color: var(--text-muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; }
 .gg-repo-picker select option { background: var(--theme-surface, #19191f); color: var(--theme-text); }
-.gg-repo-picker select { width: 100%; height: 26px; padding: 0 6px; color: var(--theme-text); background: var(--theme-surface, #19191f); border: 1px solid var(--theme-border, rgba(255,255,255,.14)); border-radius: 6px; font: inherit; font-size: var(--fs-sm); }
+.gg-repo-picker select { width: 100%; height: var(--control-h-lg); padding: 0 6px; color: var(--theme-text); background: var(--theme-surface, #19191f); border: 1px solid var(--theme-border, rgba(255,255,255,.14)); border-radius: 6px; font: inherit; font-size: var(--fs-sm); }
 
 /* History: a collapsible section under Outgoing commits in each Git Changes repository (HistorySection.tsx). */
 .hist-section { display: flex; flex-direction: column; min-width: 0; margin-top: var(--space-1); }
-.hist-toggle { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0; min-height: 26px; margin-top: var(--space-3); padding: var(--space-1) var(--space-2); border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); font: inherit; font-size: var(--fs-sm); font-weight: 500; text-align: left; cursor: pointer; }
+.hist-toggle { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0; min-height: 26px; margin-top: var(--space-2); padding: var(--space-1) var(--space-2); border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); font: inherit; font-size: var(--fs-sm); font-weight: 500; text-align: left; cursor: pointer; }
 .hist-toggle:hover, .hist-toggle:focus-visible { background: var(--hover); color: var(--theme-text); outline: none; }
 .hist-toggle > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hist-toggle .gb-count { margin-left: auto; }
