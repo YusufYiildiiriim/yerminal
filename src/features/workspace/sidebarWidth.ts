@@ -1,5 +1,5 @@
 /** Pixel limits for the workspace tools sidebar (the Panel that holds the rail and its content). */
-export const SIDEBAR_MIN_PX = 240;
+export const SIDEBAR_MIN_PX = 320;
 export const SIDEBAR_MAX_PX = 560;
 
 /** Clamps a sidebar width in px to the allowed range. Non-finite input falls back to the minimum. */
