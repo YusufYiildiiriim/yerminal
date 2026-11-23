@@ -46,7 +46,7 @@
   font-size: var(--fs-xs);
 }
 /* Commit box is closed until something is staged; this one-line hint takes its place (24 px). */
-.git-commit-min { display: flex; align-items: center; min-width: 0; height: 24px; padding: 0 var(--space-2); color: var(--text-muted); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.git-commit-min { display: block; line-height: 24px; min-width: 0; height: 24px; padding: 0 var(--space-2); color: var(--text-muted); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* At the sidebar minimum width the commit label truncates on one line instead of wrapping into the count. */
 .git-commit-button .git-commit-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* A failed git_status read: one line with a retry, in place of the change counts. */
@@ -59,6 +59,7 @@
   line-height: 1.5;
 }
 .tool-content .change-row {
+  position: relative;
   min-width: 0;
   min-height: 22px;
   gap: 3px;
@@ -81,9 +82,9 @@
 .tool-content .change-kind { flex-basis: 14px; width: 14px; font-size: var(--fs-xs); }
 .tool-content .change-badge { flex: 0 0 auto; padding: 1px 4px; font-size: var(--fs-xs); }
 /* Row actions appear on hover and while the row or one of its buttons has keyboard focus. */
-.tool-content .change-row-actions { gap: 3px; opacity: 0; transition: opacity .12s ease; }
+.tool-content .change-row-actions { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); gap: 3px; padding-left: 4px; border-radius: 6px; background: var(--git-card-body); opacity: 0; pointer-events: none; transition: opacity .12s ease; }
 .tool-content .change-row:hover .change-row-actions,
-.tool-content .change-row:focus-within .change-row-actions { opacity: 1; }
+.tool-content .change-row:focus-within .change-row-actions { opacity: 1; pointer-events: auto; }
 .tool-content .change-action {
   width: auto;
   min-width: 20px;
