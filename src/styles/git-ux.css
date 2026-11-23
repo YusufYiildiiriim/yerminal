@@ -46,7 +46,9 @@
   font-size: var(--fs-xs);
 }
 /* Commit box is closed until something is staged; this one-line hint takes its place (24 px). */
-.git-commit-min { display: flex; align-items: center; height: 24px; padding: 0 var(--space-2); color: var(--text-muted); font-size: var(--fs-xs); }
+.git-commit-min { display: flex; align-items: center; min-width: 0; height: 24px; padding: 0 var(--space-2); color: var(--text-muted); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* At the sidebar minimum width the commit label truncates on one line instead of wrapping into the count. */
+.git-commit-button .git-commit-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* A failed git_status read: one line with a retry, in place of the change counts. */
 .git-status-error { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 24px; padding: 0 var(--space-2); color: var(--text-muted); font-size: var(--fs-xs); }
 .git-status-error button { padding: 0 var(--space-2); border: 0; background: transparent; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }

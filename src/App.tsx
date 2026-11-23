@@ -33,6 +33,7 @@ import { ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle } from "rea
 import { clampFontSize, SettingsDialog, type AppSettings, type SectionId } from "./features/settings/SettingsDialog";
 import { applyInterfaceSize, normalizeInterfaceSize } from "./features/settings/interfaceSize";
 import { WorkspaceViewLayout } from "./features/workspace/WorkspaceViewLayout";
+import { SIDEBAR_MAX_PX, SIDEBAR_MIN_PX, sidebarLimitPercent } from "./features/workspace/sidebarWidth";
 import { FolderContextMenu, type FolderContextMenuAction, type FolderContextMenuTarget } from "./features/explorer/FolderContextMenu";
 import { useTerminalGroupDrag } from "./features/terminal/useTerminalGroupDrag";
 import { appendTerminalToLayout, closeTerminalGroup as closeTerminalGroupState, createInitialTerminalGroups, createTerminalGroup, moveTerminalBetweenGroups, openFolderInNewTerminal, removeTerminalFromGroups, renameTerminalGroup as renameTerminalGroupState, selectTerminalGroup as selectTerminalGroupState, type TerminalGroup } from "./features/terminal/terminalWorkspaceActions";
@@ -1728,7 +1729,7 @@ function App() {
       </header>
 
       <PanelGroup direction="horizontal" className="workspace">
-        <Panel ref={toolsPanelRef} defaultSize={25} minSize={20} maxSize={38} collapsible collapsedSize={5000 / Math.max(920, viewportWidth)} className="tools-panel" data-autohide-collapsed={toolsPanelCollapsed ? "true" : "false"} onBlurCapture={(event) => {
+        <Panel ref={toolsPanelRef} defaultSize={25} minSize={sidebarLimitPercent(SIDEBAR_MIN_PX, viewportWidth)} maxSize={sidebarLimitPercent(SIDEBAR_MAX_PX, viewportWidth)} collapsible collapsedSize={5000 / Math.max(920, viewportWidth)} className="tools-panel" data-autohide-collapsed={toolsPanelCollapsed ? "true" : "false"} onBlurCapture={(event) => {
           if (!toolPanelAutoHide || event.currentTarget.contains(event.relatedTarget as Node | null)) return;
           toolsPanelRef.current?.collapse();
           setToolsPanelCollapsed(true);
