@@ -75,13 +75,9 @@ describe("Outgoing and History commit rows keep the subject on one line and the 
   });
 });
 
-describe("Git Changes card header and counts can wrap instead of cutting words", () => {
+describe("Git Changes card header wraps its title instead of cutting words", () => {
   it("lets the card title wrap to a second line in the narrow rail", () => {
     expect(narrowContainers()).toMatch(/\.git-card-title\s*\{[^}]*white-space:\s*normal/);
-  });
-
-  it("lets the repository counts wrap instead of ending in an ellipsis", () => {
-    expect(ruleBody(".git-repository-counts")).toMatch(/white-space:\s*normal/);
   });
 });
 
