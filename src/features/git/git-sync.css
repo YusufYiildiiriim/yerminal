@@ -1,5 +1,5 @@
 .sync-bar { display: flex; flex-wrap: wrap; gap: var(--space-1); padding: var(--space-2) var(--space-2) 0; }
-.sync-button { display: inline-flex; flex: 1 1 auto; align-items: center; justify-content: center; gap: var(--space-1); min-width: 72px; min-height: 24px; padding: var(--space-1) var(--space-2); border: 1px solid var(--theme-border, #2c2c34); border-radius: 5px; background: transparent; color: var(--theme-text); font: inherit; font-size: var(--fs-xs); cursor: pointer; white-space: nowrap; }
+.sync-button { display: inline-flex; flex: 1 1 auto; align-items: center; justify-content: center; gap: var(--space-1); min-width: 72px; min-height: var(--control-h-md); padding: var(--space-1) var(--space-2); border: 1px solid var(--theme-border, #2c2c34); border-radius: 5px; background: transparent; color: var(--theme-text); font: inherit; font-size: var(--fs-xs); cursor: pointer; white-space: nowrap; }
 .sync-button span { overflow: hidden; text-overflow: ellipsis; }
 .sync-button svg { width: 12px; height: 12px; flex: none; }
 .sync-button:hover:not(:disabled) { border-color: var(--theme-accent, #b3a3ee); }

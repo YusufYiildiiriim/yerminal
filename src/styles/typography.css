@@ -18,7 +18,7 @@
   /* Hit area of a header icon button (px, not scaled by --ui-scale). */
   --hit-icon: 32px;
   /* Control height ladder for the Git panels (px, not scaled): 32 px for buttons, tabs and the branch trigger,
-     36 px for the repository select. --control-h-md equals --hit-icon. */
-  --control-h-md: 32px;
+     36 px for the repository select. --control-h-md is the same token as --hit-icon. */
+  --control-h-md: var(--hit-icon);
   --control-h-lg: 36px;
 }
