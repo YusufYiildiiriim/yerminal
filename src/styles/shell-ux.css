@@ -192,7 +192,7 @@
 .app-shell[data-theme] .workspace-terminal-group-acts { display: none; align-items: center; gap: 2px; flex: none; margin-left: 2px; padding-right: 2px; }
 .app-shell[data-theme] .workspace-terminal-group-header:hover .workspace-terminal-group-acts,
 .app-shell[data-theme] .workspace-terminal-group.selected .workspace-terminal-group-acts,
-.app-shell[data-theme] .workspace-terminal-group-acts:focus-within { display: flex; }
+.app-shell[data-theme] .workspace-terminal-group-acts:focus-within { display: flex; position: absolute; top: 0; right: 2px; bottom: 0; background: var(--shell-hover); }
 /* Row action icons share the header icon button size: a 32 px hit area, 16 px glyph, primary text colour. */
 .app-shell[data-theme] .workspace-terminal-group-acts .ib { width: var(--hit-icon); height: var(--hit-icon); flex: 0 0 var(--hit-icon); border: 1px solid transparent; color: var(--theme-text); }
 .app-shell[data-theme] .workspace-terminal-group-acts .ib svg { width: 16px; height: 16px; }
