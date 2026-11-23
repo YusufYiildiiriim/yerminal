@@ -1,0 +1,51 @@
+/* Git Changes sections as cards: a header band above a recessed body with its own scroll (GitCard.tsx).
+   Tones are theme tokens (--git-card-band, --git-card-body, --git-card-rule in themes.css). */
+
+/* The card stack: cards are separated by 16 px and inset from the panel edges. */
+.git-cards { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 0 var(--space-3) var(--space-2); }
+
+.git-card { display: flex; flex-direction: column; min-width: 0; }
+
+.git-card-band {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: var(--control-h-md);
+  padding: var(--space-1) var(--space-2); border: 0; border-bottom: 1px solid var(--git-card-rule); border-radius: 8px 8px 0 0;
+  background: var(--git-card-band); color: var(--theme-text); font: inherit; text-align: left; cursor: pointer;
+}
+.git-card-band:hover { background: var(--hover); }
+.git-card-band:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }
+
+.git-card-title {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--fs-sm); font-weight: 600; color: var(--theme-text);
+}
+.git-card-count { flex: none; font-size: var(--fs-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.git-card-chev { flex: none; font-size: var(--fs-xs); color: var(--text-muted); transition: transform .12s ease; }
+.git-card.is-collapsed .git-card-chev { transform: rotate(-90deg); }
+
+/* The recessed body is bounded (about six and a half rows) and scrolls on its own when its content overflows. */
+.git-card-body {
+  min-width: 0; max-height: 198px; overflow-y: auto; overflow-x: hidden; padding: 8px;
+  border-radius: 8px; background: var(--git-card-body);
+}
+.git-card-body[hidden] { display: none; }
+.git-card-body .change-list,
+.git-card-body .gb-commits { max-height: none; overflow: visible; margin: 0; padding: 0; }
+
+/* The repository body is the size container: the rail width (not the window) decides when the action row stacks. */
+.git-repository-body { container-type: inline-size; }
+/* The action row: branch picker and sync toolbar share one line in a wide rail. In a narrow rail (the sidebar minimum)
+   they stack: the picker takes the full width on its own line and the toolbar sits under it at full width. */
+.git-action-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); min-width: 0; padding: var(--space-3) var(--space-3) var(--space-2); container-type: inline-size; }
+.git-action-label { flex: none; font-size: var(--fs-xs); color: var(--text-muted); }
+@container (max-width: 260px) {
+  .git-action-label { display: none; }
+  .git-action-row { grid-template-columns: minmax(0, 1fr); }
+  .git-action-row .git-repository-branch-row .branch-picker { flex: 1 1 auto; }
+  /* Narrow rail: a card title wraps onto a second line instead of cutting its words, and commit metadata drops its dot separators. */
+  .git-card-title { white-space: normal; }
+  .gb-sub > [aria-hidden="true"] { display: none; }
+}
+
+/* Inside the action row the toolbar and the branch picker sit on one line without their own top padding. */
+.git-action-row > .sync-bar { padding: 0; }
+.git-action-row > .git-repository-branch-row { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 0; }

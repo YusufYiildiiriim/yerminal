@@ -80,8 +80,11 @@ describe("AgentUsagePanel", () => {
     expect(within(codex).getByText("50% left")).toBeInTheDocument();
     expect(within(codex).getByText("5h")).toBeInTheDocument();
     expect(within(codex).getByText("7d")).toBeInTheDocument();
-    expect(within(codex).getByText(/Today 500/)).toBeInTheDocument();
-    expect(within(codex).getByText(/Week 1\.5K/)).toBeInTheDocument();
+    expect(within(codex).getByText("Today")).toBeInTheDocument();
+    expect(within(codex).getByText("500")).toBeInTheDocument();
+    expect(within(codex).getByText("Week")).toBeInTheDocument();
+    expect(within(codex).getByText("1.5")).toBeInTheDocument();
+    expect(within(codex).getByText("K")).toBeInTheDocument();
     expect(within(codex).getByText("in 1K · out 500 · cache 0")).toBeInTheDocument();
     expect(within(codex).getByText("Totals include cache tokens.")).toBeInTheDocument();
     expect(tauri.invoke).toHaveBeenCalledWith("agent_usage_snapshot", { enabled: true });
@@ -121,7 +124,8 @@ describe("AgentUsagePanel", () => {
 
     const claude = screen.getByRole("region", { name: "Claude Code usage" });
     expect(within(claude).getByText("Limit percentage can't be read locally for this tool.")).toBeInTheDocument();
-    expect(within(claude).getByText(/Today 15/)).toBeInTheDocument();
+    expect(within(claude).getByText("Today")).toBeInTheDocument();
+    expect(claude.querySelector(".agent-usage-stat dd")).toHaveTextContent("15");
     expect(within(claude).getByText("opus")).toBeInTheDocument();
     expect(within(claude).getByText("sonnet")).toBeInTheDocument();
   });

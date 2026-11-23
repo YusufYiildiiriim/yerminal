@@ -5,14 +5,31 @@
   overflow-y: auto;
   overflow-x: hidden;
   color: var(--theme-text, #e7e8eb);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   scrollbar-width: thin;
   scrollbar-color: var(--theme-border, #45434f) transparent;
 }
 
 .agent-usage-row {
-  padding: 5px 10px 6px;
+  padding: 8px 10px 9px;
   border-bottom: 1px solid var(--theme-border, #24242a);
+}
+
+/* Short muted heading above each group (Limits, Tokens, Models). */
+.agent-usage-group {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+.agent-usage-group-title {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .agent-usage-row:last-child {
@@ -32,7 +49,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 600;
 }
 
@@ -41,15 +58,15 @@
   padding: 0 5px;
   border: 1px solid var(--theme-border, #303139);
   border-radius: 6px;
-  color: var(--theme-muted, #a7a8b1);
-  font-size: 9px;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
   line-height: 14px;
 }
 
 .agent-usage-limits {
   display: grid;
-  gap: 3px;
-  margin-top: 4px;
+  gap: 4px;
+  min-width: 0;
 }
 
 .agent-usage-limit {
@@ -60,9 +77,9 @@
 }
 
 .agent-usage-window {
-  color: var(--theme-muted, #a7a8b1);
-  font-family: "Cascadia Code", Consolas, monospace;
-  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono-ui);
+  font-size: var(--fs-xs);
 }
 
 .agent-usage-meter {
@@ -81,8 +98,8 @@
 
 .agent-usage-value {
   color: var(--theme-text, #e7e8eb);
-  font-family: "Cascadia Code", Consolas, monospace;
-  font-size: 10px;
+  font-family: var(--font-mono-ui);
+  font-size: var(--fs-xs);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -92,25 +109,70 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--theme-muted, #a7a8b1);
-  font-size: 9px;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
 }
 
-.agent-usage-totals {
-  display: flex;
-  gap: 12px;
-  margin-top: 3px;
-  color: var(--theme-muted, #a7a8b1);
-  font-family: "Cascadia Code", Consolas, monospace;
-  font-size: 10px;
+/* Label on the left, value in a right-aligned column. dl/dt/dd reset keeps the grid exact. */
+.agent-usage-stats,
+.agent-usage-models {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+}
+
+.agent-usage-stat,
+.agent-usage-model {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.agent-usage-stat dt,
+.agent-usage-stat dd,
+.agent-usage-model dt,
+.agent-usage-model dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.agent-usage-stat dt,
+.agent-usage-model dt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+
+.agent-usage-stat dd,
+.agent-usage-model dd {
+  text-align: right;
+  white-space: nowrap;
+  color: var(--theme-text);
+  font-family: var(--font-mono-ui);
+  font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
+}
+
+.agent-usage-model dt {
+  color: var(--theme-text);
+}
+
+/* The K / M suffix is muted so the digits read first. */
+.agent-usage-unit {
+  margin-left: 1px;
+  color: var(--text-muted);
 }
 
 .agent-usage-breakdown {
   margin-top: 1px;
-  color: var(--theme-muted, #a7a8b1);
-  font-family: "Cascadia Code", Consolas, monospace;
-  font-size: 9px;
+  color: var(--text-muted);
+  font-family: var(--font-mono-ui);
+  font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -119,31 +181,11 @@
 }
 
 .agent-usage-limit.is-ended .agent-usage-value {
-  color: var(--theme-muted, #a7a8b1);
+  color: var(--text-muted);
 }
 
 .agent-usage-limit.is-ended .agent-usage-reset {
   grid-column: 2;
-}
-
-.agent-usage-models {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  margin-top: 3px;
-}
-
-.agent-usage-model {
-  display: inline-flex;
-  gap: 5px;
-  color: var(--theme-muted, #a7a8b1);
-  font-size: 10px;
-}
-
-.agent-usage-model > span:last-child {
-  color: var(--theme-text, #e7e8eb);
-  font-family: "Cascadia Code", Consolas, monospace;
-  font-variant-numeric: tabular-nums;
 }
 
 .agent-usage-empty,
@@ -151,8 +193,8 @@
 .agent-usage-error {
   margin: 0;
   padding-top: 3px;
-  color: var(--theme-muted, #a7a8b1);
-  font-size: 10px;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
   line-height: 1.4;
 }
 
@@ -166,11 +208,13 @@
 }
 
 /* Agent usage is independent from the compact resource strip. */
-.sidebar-agent-usage { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--theme-border); }
+/* The section keeps its full header height; the terminal groups list above it absorbs any shortage of room. */
+.sidebar-agent-usage { flex: 0 0 auto; min-height: auto; display: flex; flex-direction: column; border-top: 1px solid var(--theme-border); }
 .sidebar-agent-resize { flex: 0 0 8px; cursor: ns-resize; touch-action: none; }
 .sidebar-agent-resize:hover, .sidebar-agent-resize:focus-visible { background: var(--theme-accent); outline: none; }
-.sidebar-agent-toggle { flex: none; display: flex; gap: 8px; align-items: center; width: 100%; border: 0; padding: 8px 4px; background: transparent; color: var(--theme-text); text-align: left; font: 600 12px Inter, "Segoe UI", sans-serif; cursor: pointer; }
-.sidebar-agent-toggle span { color: var(--theme-muted); }
+/* The header is an opaque row above any neighbouring line, so no border can cross its text. */
+.sidebar-agent-toggle { position: relative; z-index: 1; flex: 0 0 auto; min-height: 32px; display: flex; gap: 8px; align-items: center; width: 100%; border: 0; padding: 8px 4px; background: var(--theme-surface); color: var(--theme-text); text-align: left; font: 600 var(--fs-sm) var(--font-ui); cursor: pointer; }
+.sidebar-agent-toggle span { color: var(--text-muted); }
 .sidebar-agent-toggle:hover { background: var(--hover); }
 .sidebar-agent-toggle:focus-visible { outline: 1px solid var(--theme-accent); }
 .sidebar-agent-content { min-height: 0; max-height: 55vh; overflow: hidden; }

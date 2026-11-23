@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -417,7 +417,8 @@ describe("remembered terminal view per group", () => {
 
     await user.click(groups.getByRole("button", { name: "Delete terminal group Terminal 2" }));
     expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('Delete terminal group "Terminal 2"'));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    // A rejected confirmation resolves through promises only; one macrotask flushes that chain before the negative checks.
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
     expect(groups.getAllByRole("button", { name: /^Select terminal group/ })).toHaveLength(2);
     expect(invoke).not.toHaveBeenCalledWith("close_terminal", expect.anything());
 

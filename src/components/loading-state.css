@@ -1,0 +1,11 @@
+/* Generic loading indicator (LoadingState.tsx). Tones are theme tokens; motion stops under reduced-motion. */
+.loading-state { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px; color: var(--text-muted); font-size: var(--fs-xs); }
+.loading-state.is-compact { padding: 4px 0; }
+.loading-state.is-centered { display: flex; align-items: center; justify-content: center; width: 100%; box-sizing: border-box; padding: 12px 8px; }
+.loading-state-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loading-state-spinner {
+  flex: none; width: 11px; height: 11px; border: 1px solid var(--git-card-rule); border-top-color: var(--theme-accent);
+  border-radius: 50%; animation: loading-state-spin .8s linear infinite;
+}
+@keyframes loading-state-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .loading-state-spinner { animation: none; } }

@@ -72,37 +72,56 @@ function AgentRow({ agent }: { agent: AgentUsage }) {
       {agent.limitsSupported
         ? agent.limits ? <LimitBars limits={agent.limits} /> : <div className="agent-usage-empty">No limit data yet</div>
         : <div className="agent-usage-note">Limit percentage can&apos;t be read locally for this tool.</div>}
-      <div className="agent-usage-totals">
-        <span>Today {formatTokens(agent.today.total)}</span>
-        <span>Week {formatTokens(agent.week.total)}</span>
+      <div className="agent-usage-group">
+        <div className="agent-usage-group-title">Tokens</div>
+        <dl className="agent-usage-stats">
+          <div className="agent-usage-stat"><dt>Today</dt><dd><TokenValue value={agent.today.total} /></dd></div>
+          <div className="agent-usage-stat"><dt>Week</dt><dd><TokenValue value={agent.week.total} /></dd></div>
+        </dl>
+        <div className="agent-usage-breakdown" title="Week, by token kind">{formatBreakdown(agent.week)}</div>
+        <div className="agent-usage-note">Totals include cache tokens.</div>
       </div>
-      <div className="agent-usage-note">Totals include cache tokens.</div>
-      <div className="agent-usage-breakdown" title="Week, by token kind">{formatBreakdown(agent.week)}</div>
-      {agent.models.length > 0 && <div className="agent-usage-models">
-        {agent.models.slice(0, 4).map((model) => <span className="agent-usage-model" key={model.model}>
-          <span>{model.model}</span>
-          <span>{formatTokens(model.total)}</span>
-        </span>)}
+      {agent.models.length > 0 && <div className="agent-usage-group">
+        <div className="agent-usage-group-title">Models</div>
+        <dl className="agent-usage-models">
+          {agent.models.slice(0, 4).map((model) => <div className="agent-usage-model" key={model.model}>
+            <dt>{model.model}</dt>
+            <dd><TokenValue value={model.total} /></dd>
+          </div>)}
+        </dl>
       </div>}
       {agent.error && <div className="agent-usage-error">{agent.error}</div>}
     </>}
   </div>;
 }
 
+/** Token count as number and unit, so the K / M suffix can be styled apart from the digits. */
+function TokenValue({ value }: { value: number }) {
+  const text = formatTokens(value);
+  const unit = text.match(/[KM]$/)?.[0] ?? "";
+  return <>
+    <span className="agent-usage-num">{unit ? text.slice(0, -1) : text}</span>
+    {unit && <span className="agent-usage-unit">{unit}</span>}
+  </>;
+}
+
 function LimitBars({ limits }: { limits: LimitSnapshot }) {
   const windows = [limits.primary, limits.secondary].filter((window): window is LimitWindow => window !== null);
-  return <div className="agent-usage-limits">
-    {windows.map((window) => window.ended || window.remainingPercent === null
-      ? <div className="agent-usage-limit is-ended" key={window.windowMinutes}>
-        <span className="agent-usage-window">{windowLabel(window.windowMinutes)}</span>
-        <span className="agent-usage-value">Window ended</span>
-        <span className="agent-usage-reset">Waiting for next Codex run</span>
-      </div>
-      : <div className="agent-usage-limit" key={window.windowMinutes}>
-        <span className="agent-usage-window">{windowLabel(window.windowMinutes)}</span>
-        <span className="agent-usage-meter" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.max(0, window.remainingPercent))}%` }} /></span>
-        <span className="agent-usage-value">{formatPercentLeft(window.remainingPercent)}</span>
-        <span className="agent-usage-reset">{limitResetLabel(window.resetsAtMs)}</span>
-      </div>)}
+  return <div className="agent-usage-group">
+    <div className="agent-usage-group-title">Limits</div>
+    <div className="agent-usage-limits">
+      {windows.map((window) => window.ended || window.remainingPercent === null
+        ? <div className="agent-usage-limit is-ended" key={window.windowMinutes}>
+          <span className="agent-usage-window">{windowLabel(window.windowMinutes)}</span>
+          <span className="agent-usage-value">Window ended</span>
+          <span className="agent-usage-reset">Waiting for next Codex run</span>
+        </div>
+        : <div className="agent-usage-limit" key={window.windowMinutes}>
+          <span className="agent-usage-window">{windowLabel(window.windowMinutes)}</span>
+          <span className="agent-usage-meter" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.max(0, window.remainingPercent))}%` }} /></span>
+          <span className="agent-usage-value">{formatPercentLeft(window.remainingPercent)}</span>
+          <span className="agent-usage-reset">{limitResetLabel(window.resetsAtMs)}</span>
+        </div>)}
+    </div>
   </div>;
 }

@@ -190,6 +190,23 @@ describe("App user flows", () => {
     expect(await screen.findByText("All changes saved")).toBeInTheDocument();
   });
 
+  it("persists the interface size across restarts without changing the editor font size", async () => {
+    const user = userEvent.setup();
+    seedWorkspace({ editorFontSize: 14 });
+    const first = render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Help & Settings" }));
+    await user.click(within(screen.getByRole("group", { name: "Interface size" })).getByRole("button", { name: "Large" }));
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("yerminal.app-settings.v1") ?? "{}").interfaceSize).toBe("large"));
+    expect(document.documentElement.style.getPropertyValue("--ui-scale")).toBe("1.1");
+    expect(document.documentElement.style.getPropertyValue("--editor-font-size")).toBe("14px");
+    first.unmount();
+
+    render(<App />);
+    await waitFor(() => expect(document.documentElement.style.getPropertyValue("--ui-scale")).toBe("1.1"));
+    expect(document.documentElement.style.getPropertyValue("--editor-font-size")).toBe("14px");
+  });
+
   it("persists the selected theme and enforces the 1 MiB diff limit", async () => {
     const user = userEvent.setup();
     seedWorkspace();
@@ -302,6 +319,10 @@ describe("App user flows", () => {
 
   it("renders the commit button label as its own element so it can truncate in a narrow rail", async () => {
     seedWorkspace();
+    invokeMock.mockImplementation(async (command: string, args?: InvokeArgs) => {
+      if (command === "git_status") return [{ path: "notes.txt", kind: "modified", staged: true, unstaged: false }];
+      return defaultInvokeResult(command, args);
+    });
     render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "Git" }));
@@ -324,7 +345,8 @@ describe("App user flows", () => {
 
     await user.click(screen.getByRole("button", { name: "Git" }));
     expect(await screen.findByText("src/ui/a.tsx")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Tree" }));
+    await user.click(screen.getByRole("button", { name: "More git actions" }));
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Tree view" }));
     expect(screen.queryByText("src/ui/a.tsx")).not.toBeInTheDocument();
     const folder = screen.getByRole("button", { name: "Collapse folder src/ui" });
     expect(screen.getByText("a.tsx")).toBeInTheDocument();
@@ -498,7 +520,7 @@ describe("Closing editor tabs", () => {
     expect(screen.queryByRole("tab", { name: /notes\.txt/ })).toBeNull();
     expect(screen.queryByRole("tab", { name: /main\.ts/ })).toBeNull();
     expect(screen.getByText("No open files")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Open a file in this group" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "No file open" })).toBeInTheDocument();
   });
 
   it("Close Others keeps the clicked tab active and asks before discarding the dirty tab it closes", async () => {

@@ -14,12 +14,11 @@
 }
 .app-shell[data-theme] .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .app-shell[data-theme] .brand-logo {
-  width: 24px; height: 24px; flex: none; display: grid; place-items: center;
-  border-radius: 6px; background: var(--theme-accent); color: var(--theme-chrome);
-  font-size: 13px; font-weight: 700;
+  width: 22px; height: 22px; flex: none; display: block;
 }
-.app-shell[data-theme] .brand-name { font-size: 13px; font-weight: 600; letter-spacing: 0; color: var(--theme-text); }
-.app-shell[data-theme] .titlebar-breadcrumb { min-width: 0; overflow: hidden; color: var(--theme-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell[data-theme] .brand-logo svg { display: block; width: 100%; height: 100%; }
+.app-shell[data-theme] .brand-name { font-size: var(--fs-md); font-weight: 600; letter-spacing: 0; color: var(--theme-text); }
+.app-shell[data-theme] .titlebar-breadcrumb { min-width: 0; overflow: hidden; color: var(--text-muted); font-size: var(--fs-sm); text-overflow: ellipsis; white-space: nowrap; }
 
 /* Side container */
 .app-shell[data-theme] .tools-panel { background: var(--theme-surface); }
@@ -35,7 +34,7 @@
 .app-shell[data-theme] .tool-sidebar-item {
   position: relative; width: 40px; height: 40px; min-height: 0; flex: 0 0 auto;
   display: grid; place-items: center; padding: 0; gap: 0; margin: 0;
-  border: 0; border-left: 0; border-radius: 6px; background: transparent; color: var(--theme-muted);
+  border: 0; border-left: 0; border-radius: 6px; background: transparent; color: var(--text-muted);
   overflow: visible;
 }
 .app-shell[data-theme] .tool-sidebar-item:hover { background: var(--shell-hover); color: var(--theme-text); }
@@ -52,17 +51,17 @@
 .app-shell[data-theme] .tool-sidebar-autohide svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .app-shell[data-theme] .tool-sidebar-label {
   position: absolute; left: 0; right: 0; bottom: 2px; max-width: none;
-  font-size: 9px; line-height: 10px; text-align: center; color: inherit; white-space: nowrap;
+  font-size: var(--fs-xs); line-height: 10px; text-align: center; color: inherit; white-space: nowrap;
 }
 .app-shell[data-theme] .tool-sidebar-separator { width: 24px; height: 1px; flex: 0 0 1px; margin: 2px 0; background: var(--theme-border); }
 .app-shell[data-theme] .tool-sidebar-settings {
   width: 40px; height: 40px; margin-top: auto; flex: 0 0 auto; display: grid; place-items: center;
-  border: 0; border-radius: 6px; background: transparent; color: var(--theme-muted);
+  border: 0; border-radius: 6px; background: transparent; color: var(--text-muted);
 }
 .app-shell[data-theme] .tool-sidebar-settings:hover { background: var(--shell-hover); color: var(--theme-text); }
 .app-shell[data-theme] .tool-sidebar-autohide {
   width: 40px; height: 40px; min-height: 0; flex: 0 0 auto; margin-top: 0; display: grid; place-items: center;
-  border: 0; border-radius: 6px; background: transparent; color: var(--theme-muted);
+  border: 0; border-radius: 6px; background: transparent; color: var(--text-muted);
 }
 .app-shell[data-theme] .tool-sidebar-autohide:hover { background: var(--shell-hover); color: var(--theme-text); }
 .app-shell[data-theme] .tool-sidebar-autohide[aria-pressed="true"] { background: var(--theme-raised); color: var(--theme-text); }
@@ -80,18 +79,18 @@
 .app-shell[data-theme] .workspace-row { display: flex; align-items: center; gap: 6px; min-width: 0; flex: none; margin-bottom: 10px; }
 .app-shell[data-theme] .ws-select { position: relative; flex: 1 1 auto; min-width: 0; height: 36px; }
 .app-shell[data-theme] .workspace-name-select {
-  appearance: none; -webkit-appearance: none; width: 100%; height: 36px; min-height: 36px; box-sizing: border-box; line-height: 1.3; min-width: 0; margin: 0;
+  appearance: none; -webkit-appearance: none; width: 100%; max-width: 100%; height: 36px; min-height: 36px; box-sizing: border-box; line-height: 1.3; min-width: 0; margin: 0;
   padding: 0 28px 0 10px; border: 1px solid var(--theme-border); border-radius: 6px;
-  background: var(--theme-raised); color: var(--theme-text); font: 13px/1.3 Inter, "Segoe UI", sans-serif;
-  text-overflow: ellipsis; cursor: pointer;
+  background: var(--theme-raised); color: var(--theme-text); font: var(--fs-md)/1.3 var(--font-ui);
+  white-space: nowrap; text-overflow: ellipsis; cursor: pointer;
 }
 .app-shell[data-theme] .ws-chevron {
-  position: absolute; right: 8px; top: 50%; width: 14px; height: 14px; transform: translateY(-50%);
-  color: var(--theme-muted); pointer-events: none;
+  position: absolute; right: var(--space-2); top: 50%; width: 14px; height: 14px; transform: translateY(-50%);
+  color: var(--text-muted); pointer-events: none;
 }
 .app-shell[data-theme] .ws-box {
   width: 36px; height: 36px; flex: 0 0 36px; display: grid; place-items: center; padding: 0;
-  border: 1px solid var(--theme-border); border-radius: 6px; background: var(--theme-raised); color: var(--theme-muted);
+  border: 1px solid var(--theme-border); border-radius: 6px; background: var(--theme-raised); color: var(--text-muted);
 }
 .app-shell[data-theme] .ws-box:hover, .app-shell[data-theme] .ws-box[aria-expanded="true"] { color: var(--theme-text); background: var(--shell-hover); }
 .app-shell[data-theme] .ws-box svg { width: 16px; height: 16px; }
@@ -108,10 +107,10 @@
 .app-shell[data-theme] .shell-menu-item {
   width: 100%; height: 28px; display: flex; align-items: center; padding: 0 8px;
   border: 0; border-radius: 6px; background: transparent; color: var(--theme-text);
-  font: 13px/1.3 Inter, "Segoe UI", sans-serif; text-align: left; white-space: nowrap; cursor: pointer;
+  font: var(--fs-md)/1.3 var(--font-ui); text-align: left; white-space: nowrap; cursor: pointer;
 }
 .app-shell[data-theme] .shell-menu-item:hover:not(:disabled), .app-shell[data-theme] .shell-menu-item:focus-visible { background: var(--shell-hover); outline: none; }
-.app-shell[data-theme] .shell-menu-item:disabled { color: var(--theme-muted); opacity: .5; cursor: default; }
+.app-shell[data-theme] .shell-menu-item:disabled { color: var(--text-muted); opacity: .5; cursor: default; }
 
 /* Section headers and 24px icon buttons */
 .app-shell[data-theme] .workspace-section-header {
@@ -119,29 +118,38 @@
   height: 28px; flex: none; margin: 8px 0 2px; padding: 0 4px;
 }
 .app-shell[data-theme] .workspace-section-header h2 {
-  margin: 0; min-width: 0; color: var(--theme-muted); font-size: 12px; font-weight: 500;
+  margin: 0; min-width: 0; color: var(--text-muted); font-size: var(--fs-sm); font-weight: 500;
   letter-spacing: 0; text-transform: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .app-shell[data-theme] .sec-acts { display: flex; align-items: center; gap: 2px; flex: none; }
 .app-shell[data-theme] .ib {
   width: 24px; height: 24px; flex: 0 0 24px; display: grid; place-items: center; padding: 0;
-  border: 0; border-radius: 6px; background: transparent; color: var(--theme-muted);
+  border: 0; border-radius: 6px; background: transparent; color: var(--text-muted);
 }
 .app-shell[data-theme] .ib svg { width: 14px; height: 14px; }
 .app-shell[data-theme] .ib:hover, .app-shell[data-theme] .ib:active, .app-shell[data-theme] .ib[aria-pressed="true"], .app-shell[data-theme] .ib.active { color: var(--theme-text); background: var(--theme-raised); }
+/* Terminal groups header: a 28 px hit area, primary-colour icons, and visible hover and keyboard focus. The title truncates; the icons never wrap. */
+.app-shell[data-theme] .workspace-terminal-groups-header { flex-wrap: nowrap; }
+.app-shell[data-theme] .workspace-terminal-groups-header .ib { width: var(--hit-icon); height: var(--hit-icon); flex: 0 0 var(--hit-icon); border: 1px solid transparent; color: var(--theme-text); }
+.app-shell[data-theme] .workspace-terminal-groups-header .ib svg { width: 16px; height: 16px; }
+.app-shell[data-theme] .workspace-terminal-groups-header .ib:hover { color: var(--theme-text); background: var(--theme-raised); border-color: var(--theme-border); }
+.app-shell[data-theme] .workspace-terminal-groups-header .ib:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }
 
 /* Explorer */
 .app-shell[data-theme] .workspace-explorer { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }
-.app-shell[data-theme] .workspace-explorer-tree { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0; color: var(--row-text); font-size: 13px; }
+.app-shell[data-theme] .workspace-explorer-tree { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0; color: var(--row-text); font-size: var(--fs-md); }
 .app-shell[data-theme] .workspace-root { margin: 0; border: 0; border-radius: 6px; background: transparent; }
 .app-shell[data-theme] .workspace-root.selected { background: transparent; border: 0; }
-.app-shell[data-theme] .workspace-root-row { display: flex; align-items: center; gap: 2px; min-height: 26px; height: 26px; border-radius: 6px; }
+/* Two or more open folders: a divider and space separate each root block. */
+.app-shell[data-theme] .workspace-root + .workspace-root { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--theme-border); }
+.app-shell[data-theme] .workspace-root-row { display: flex; align-items: center; gap: 2px; min-height: 34px; border-radius: 6px; }
 .app-shell[data-theme] .workspace-root-row:hover { background: var(--shell-hover); }
-.app-shell[data-theme] .workspace-root-row > .workspace-folder-select { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--theme-text); text-align: left; }
-.app-shell[data-theme] .workspace-root-row[aria-expanded] .workspace-folder-label strong { font-size: 13px; font-weight: 500; color: var(--theme-text); }
-.app-shell[data-theme] .workspace-root-row .workspace-folder-label small,
-.app-shell[data-theme] .workspace-root-row .workspace-folder-label { display: block; min-width: 0; }
-.app-shell[data-theme] .workspace-folder-remove { width: 20px; height: 20px; flex: 0 0 20px; margin-right: 4px; opacity: 0; border: 0; border-radius: 6px; background: transparent; color: var(--theme-muted); font-size: 13px; }
+.app-shell[data-theme] .workspace-root-row > .workspace-folder-select { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 4px 6px; border: 0; border-radius: 6px; background: transparent; color: var(--theme-text); text-align: left; }
+.app-shell[data-theme] .workspace-root-row[aria-expanded] .workspace-folder-label strong { font-size: var(--fs-md); font-weight: 500; line-height: 1.3; color: var(--theme-text); }
+/* Name and path stack on their own lines; the path is muted and ends with an ellipsis (full path in title). */
+.app-shell[data-theme] .workspace-root-row .workspace-folder-label { display: flex; flex-direction: column; min-width: 0; gap: 3px; }
+.app-shell[data-theme] .workspace-root-row .workspace-folder-label small { display: block; min-width: 0; margin: 0; color: var(--text-muted); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell[data-theme] .workspace-folder-remove { width: 20px; height: 20px; flex: 0 0 20px; margin-right: 4px; opacity: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); font-size: var(--fs-md); }
 .app-shell[data-theme] .workspace-root-row:hover .workspace-folder-remove, .app-shell[data-theme] .workspace-root-row:focus-within .workspace-folder-remove { opacity: 1; }
 .app-shell[data-theme] .workspace-folder-remove:hover { color: var(--theme-text); background: var(--theme-raised); }
 .app-shell[data-theme] .workspace-tree-children { min-width: 0; }
@@ -152,17 +160,17 @@
 .app-shell[data-theme] .workspace-tree-row::before, .app-shell[data-theme] .workspace-tree-row::after { content: none; }
 .app-shell[data-theme] .workspace-tree-row:hover { background: var(--shell-hover); }
 .app-shell[data-theme] .workspace-tree-row > * { position: relative; z-index: 1; }
-.app-shell[data-theme] .workspace-tree-toggle, .app-shell[data-theme] .workspace-tree-toggle-spacer { width: 12px; height: 12px; flex: 0 0 12px; padding: 0; border: 0; background: transparent; color: var(--theme-muted); display: grid; place-items: center; }
+.app-shell[data-theme] .workspace-tree-toggle, .app-shell[data-theme] .workspace-tree-toggle-spacer { width: 12px; height: 12px; flex: 0 0 12px; padding: 0; border: 0; background: transparent; color: var(--text-muted); display: grid; place-items: center; }
 .app-shell[data-theme] .workspace-tree-toggle svg { width: 12px; height: 12px; stroke-width: 2; }
-.app-shell[data-theme] .workspace-tree-entry { min-width: 0; flex: 1 1 auto; height: 26px; display: flex; align-items: center; gap: 6px; padding: 0; border: 0; background: transparent; color: var(--row-text); font: 13px/1.3 Inter, "Segoe UI", sans-serif; text-align: left; }
+.app-shell[data-theme] .workspace-tree-entry { min-width: 0; flex: 1 1 auto; height: 26px; display: flex; align-items: center; gap: 6px; padding: 0; border: 0; background: transparent; color: var(--row-text); font: var(--fs-md)/1.3 var(--font-ui); text-align: left; }
 .app-shell[data-theme] .workspace-tree-entry:hover { color: var(--theme-text); }
-.app-shell[data-theme] .workspace-tree-file-icon { width: 14px; height: 14px; flex: 0 0 14px; display: grid; place-items: center; color: var(--theme-muted); font: inherit; }
+.app-shell[data-theme] .workspace-tree-file-icon { width: 14px; height: 14px; flex: 0 0 14px; display: grid; place-items: center; color: var(--text-muted); font: inherit; }
 .app-shell[data-theme] .workspace-tree-file-icon svg { width: 14px; height: 14px; }
 .app-shell[data-theme] .workspace-tree-name { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell[data-theme] .workspace-tree-size { display: none; }
-.app-shell[data-theme] .workspace-tree-message, .app-shell[data-theme] .workspace-tree-error { min-height: 26px; display: flex; align-items: center; padding-right: 6px; color: var(--theme-muted); font-size: 12px; }
+.app-shell[data-theme] .workspace-tree-message, .app-shell[data-theme] .workspace-tree-error { min-height: 26px; display: flex; align-items: center; padding-right: 6px; color: var(--text-muted); font-size: var(--fs-sm); }
 .app-shell[data-theme] .workspace-tree-error { color: color-mix(in srgb, #f87171 70%, var(--theme-text)); }
-.app-shell[data-theme] .workspace-explorer-footnote { flex: none; padding: 8px 4px; color: var(--theme-muted); font-size: 12px; border: 0; }
+.app-shell[data-theme] .workspace-explorer-footnote { flex: none; padding: 8px 4px; color: var(--text-muted); font-size: var(--fs-sm); border: 0; }
 
 /* Terminal groups: flat tree */
 .app-shell[data-theme] .workspace-terminal-groups { display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; flex-direction: column; }
@@ -170,38 +178,46 @@
 .app-shell[data-theme] .workspace-explorer-tree:has(+ .workspace-terminal-groups .workspace-terminal-groups-toggle[aria-expanded="false"]) { flex: 1 1 36%; max-height: none; }
 .app-shell[data-theme] .workspace-terminal-groups-list { display: flex; flex-direction: column; gap: 2px; min-height: 0; flex: 1 1 auto; overflow: auto; margin-top: 2px; scrollbar-width: thin; }
 .app-shell[data-theme] .workspace-terminal-group-header {
-  position: relative; display: flex; align-items: center; gap: 2px; min-height: 26px; height: 26px; border-radius: 6px;
+  position: relative; display: flex; align-items: center; gap: 2px; min-height: var(--hit-icon); height: var(--hit-icon); border-radius: 6px;
 }
 .app-shell[data-theme] .workspace-terminal-group-header:hover,
 .app-shell[data-theme] .workspace-terminal-group.selected > .workspace-terminal-group-header { background: var(--shell-hover); }
 .app-shell[data-theme] .workspace-terminal-group-select {
-  flex: 1 1 auto; min-width: 0; height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 6px;
-  border: 0; border-radius: 6px; background: transparent; color: var(--theme-text); font: 500 13px Inter, "Segoe UI", sans-serif; text-align: left;
+  flex: 1 1 auto; min-width: 0; height: var(--hit-icon); display: flex; align-items: center; gap: 6px; padding: 0 6px;
+  border: 0; border-radius: 6px; background: transparent; color: var(--theme-text); font: 500 var(--fs-md) var(--font-ui); text-align: left;
 }
-.app-shell[data-theme] .workspace-terminal-group-chevron { width: 12px; height: 12px; flex: none; color: var(--theme-muted); stroke-width: 2; }
+.app-shell[data-theme] .workspace-terminal-group-chevron { width: 12px; height: 12px; flex: none; color: var(--text-muted); stroke-width: 2; }
 .app-shell[data-theme] .workspace-terminal-group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app-shell[data-theme] .workspace-terminal-group-count { margin-left: auto; flex: none; padding-left: 4px; color: var(--theme-muted); font-size: 11px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.app-shell[data-theme] .workspace-terminal-group-count { margin-left: auto; flex: none; padding-left: 4px; color: var(--text-muted); font-size: var(--fs-xs); font-weight: 400; font-variant-numeric: tabular-nums; }
 .app-shell[data-theme] .workspace-terminal-group-acts { display: none; align-items: center; gap: 2px; flex: none; margin-left: 2px; padding-right: 2px; }
 .app-shell[data-theme] .workspace-terminal-group-header:hover .workspace-terminal-group-acts,
 .app-shell[data-theme] .workspace-terminal-group.selected .workspace-terminal-group-acts,
-.app-shell[data-theme] .workspace-terminal-group-acts:focus-within { display: flex; }
-.app-shell[data-theme] .workspace-terminal-group-acts .ib { width: 20px; height: 20px; flex-basis: 20px; }
-.app-shell[data-theme] .workspace-terminal-group-acts .ib svg { width: 12px; height: 12px; }
+.app-shell[data-theme] .workspace-terminal-group-header:focus-within .workspace-terminal-group-acts,
+.app-shell[data-theme] .workspace-terminal-group-acts:focus-within { display: flex; position: absolute; top: 0; right: 2px; bottom: 0; background: color-mix(in srgb, var(--theme-text) 6%, var(--theme-surface)); }
+/* While the actions are shown the group name stops short of them, so the opaque overlay never covers it. */
+.app-shell[data-theme] .workspace-terminal-group-header:hover .workspace-terminal-group-select,
+.app-shell[data-theme] .workspace-terminal-group.selected > .workspace-terminal-group-header .workspace-terminal-group-select,
+.app-shell[data-theme] .workspace-terminal-group-header:focus-within .workspace-terminal-group-select { padding-right: calc(var(--hit-icon) * 3 + 10px); }
+/* Row action icons share the header icon button size: a 32 px hit area, 16 px glyph, primary text colour. */
+.app-shell[data-theme] .workspace-terminal-group-acts .ib { width: var(--hit-icon); height: var(--hit-icon); flex: 0 0 var(--hit-icon); border: 1px solid transparent; color: var(--theme-text); }
+.app-shell[data-theme] .workspace-terminal-group-acts .ib svg { width: 16px; height: 16px; }
+.app-shell[data-theme] .workspace-terminal-group-acts .ib:hover { color: var(--theme-text); background: var(--theme-raised); border-color: var(--theme-border); }
+.app-shell[data-theme] .workspace-terminal-group-acts .ib:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }
 .app-shell[data-theme] .workspace-terminal-group-editor { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 2px; padding: 0 2px; }
 .app-shell[data-theme] .workspace-terminal-group-editor input { min-width: 0; width: 100%; height: 26px; flex: 1 1 auto; border: 1px solid var(--theme-border); border-radius: 6px; background: var(--theme-raised); color: var(--theme-text); padding: 0 6px; font: inherit; }
-.app-shell[data-theme] .workspace-terminal-group-save, .app-shell[data-theme] .workspace-terminal-group-cancel { width: 24px; height: 24px; flex: 0 0 24px; border: 0; border-radius: 6px; background: transparent; color: var(--theme-muted); font-size: 13px; }
+.app-shell[data-theme] .workspace-terminal-group-save, .app-shell[data-theme] .workspace-terminal-group-cancel { width: 24px; height: 24px; flex: 0 0 24px; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); font-size: var(--fs-md); }
 .app-shell[data-theme] .workspace-terminal-group-save:hover, .app-shell[data-theme] .workspace-terminal-group-cancel:hover { color: var(--theme-text); background: var(--theme-raised); }
 .app-shell[data-theme] .workspace-terminal-select {
   display: flex; width: 100%; min-width: 0; height: 26px; align-items: center; gap: 8px;
   padding: 0 6px 0 26px; border: 0; border-radius: 6px; background: transparent; color: var(--row-text);
-  font: 13px/1.3 Inter, "Segoe UI", sans-serif; text-align: left;
+  font: var(--fs-md)/1.3 var(--font-ui); text-align: left;
 }
 .app-shell[data-theme] .workspace-terminal-select:hover { background: var(--shell-hover); color: var(--theme-text); }
 .app-shell[data-theme] .workspace-terminal-select.selected { background: var(--theme-raised); color: var(--bright); font-weight: 500; }
 .app-shell[data-theme] .workspace-terminal-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell[data-theme] .workspace-terminal-indicator { width: 8px; height: 8px; flex: 0 0 8px; box-sizing: border-box; border: 1px solid var(--theme-muted); border-radius: 50%; }
 .app-shell[data-theme] .workspace-terminal-select.selected .workspace-terminal-indicator { border-color: var(--theme-accent); background: var(--theme-accent); }
-.app-shell[data-theme] .workspace-terminal-empty { display: flex; align-items: center; height: 26px; padding-left: 26px; color: var(--theme-muted); font-size: 12px; }
+.app-shell[data-theme] .workspace-terminal-empty { display: flex; align-items: center; height: 26px; padding-left: 26px; color: var(--text-muted); font-size: var(--fs-sm); }
 .app-shell[data-theme] .workspace-terminal-resource-button svg { width: 14px; height: 14px; }
 
 /* Bottom layout block */
@@ -209,7 +225,7 @@
   flex: none; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--theme-border);
   display: flex; flex-direction: column; gap: 6px;
 }
-.app-shell[data-theme] .workspace-layout-label { padding: 0 4px; color: var(--theme-muted); font-size: 12px; }
+.app-shell[data-theme] .workspace-layout-label { padding: 0 4px; color: var(--text-muted); font-size: var(--fs-sm); }
 .app-shell[data-theme] .workspace-layout-label b { color: var(--theme-text); font-weight: 500; }
 .app-shell[data-theme] .workspace-layout-block .layout-mode-toggle,
 .app-shell[data-theme] .workspace-layout-block .floating-terminal-mode-toggle {
@@ -218,7 +234,7 @@
 }
 .app-shell[data-theme] .workspace-layout-block .layout-mode-toggle button {
   min-width: 0; height: 100%; padding: 0 8px; border: 0; border-radius: 6px; background: transparent;
-  color: var(--theme-muted); font-size: 12px; font-weight: 400;
+  color: var(--text-muted); font-size: var(--fs-sm); font-weight: 400;
 }
 .app-shell[data-theme] .workspace-layout-block .layout-mode-toggle button:hover { color: var(--theme-text); }
 .app-shell[data-theme] .workspace-layout-block .layout-mode-toggle button[aria-pressed="true"] { background: var(--shell-pressed); color: var(--theme-text); font-weight: 600; }
@@ -226,7 +242,7 @@
 .app-shell[data-theme] .workspace-layout-block .editor-create-group {
   display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 30px; min-height: 30px;
   padding: 0; border: 1px solid var(--theme-border); border-radius: 6px; background: var(--theme-raised);
-  color: var(--theme-text); font: 13px/1.3 Inter, "Segoe UI", sans-serif;
+  color: var(--theme-text); font: var(--fs-md)/1.3 var(--font-ui);
 }
 .app-shell[data-theme] .workspace-layout-block .workspace-terminal-add-button:hover,
 .app-shell[data-theme] .workspace-layout-block .editor-create-group:hover { background: var(--shell-hover); }
@@ -244,23 +260,31 @@
   stroke-linejoin: round;
 }
 
-/* Scrollbars follow the theme everywhere: thin, rounded, no arrow buttons. */
-.app-shell[data-theme] * { scrollbar-color: auto; scrollbar-width: auto; }
-.app-shell[data-theme] ::-webkit-scrollbar { width: 10px; height: 10px; }
-.app-shell[data-theme] ::-webkit-scrollbar-track,
-.app-shell[data-theme] ::-webkit-scrollbar-corner { background: transparent; }
-.app-shell[data-theme] ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-.app-shell[data-theme] ::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--theme-text) 16%, transparent) padding-box;
+/* Shared sidebar scrollbar: one thin, theme-coloured rule for the app chrome (lists, panels, dialogs).
+   Monaco (editor) and xterm (terminal) keep their own scrollbars and are excluded from this rule. */
+.app-shell[data-theme] {
+  --scroll-thumb: color-mix(in srgb, var(--theme-text) 22%, transparent);
+  --scroll-thumb-hover: color-mix(in srgb, var(--theme-text) 36%, transparent);
 }
-.app-shell[data-theme] ::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--theme-text) 28%, transparent); }
-.app-shell[data-theme] ::-webkit-scrollbar-thumb:active { background-color: color-mix(in srgb, var(--theme-accent) 45%, transparent); }
+.app-shell[data-theme] :where(*):not(.xterm, .xterm *, .monaco-editor, .monaco-editor *, .code-editor-content, .terminal-instance, .terminal-instance *, .terminal-layout-scrollport, .terminal-layout-scrollport *) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+.app-shell[data-theme] :where(*):not(.xterm, .xterm *, .monaco-editor, .monaco-editor *, .code-editor-content, .terminal-instance, .terminal-instance *, .terminal-layout-scrollport, .terminal-layout-scrollport *)::-webkit-scrollbar { width: 8px; height: 8px; }
+.app-shell[data-theme] :where(*):not(.xterm, .xterm *, .monaco-editor, .monaco-editor *, .code-editor-content, .terminal-instance, .terminal-instance *, .terminal-layout-scrollport, .terminal-layout-scrollport *)::-webkit-scrollbar-track,
+.app-shell[data-theme] :where(*):not(.xterm, .xterm *, .monaco-editor, .monaco-editor *, .code-editor-content, .terminal-instance, .terminal-instance *, .terminal-layout-scrollport, .terminal-layout-scrollport *)::-webkit-scrollbar-corner { background: transparent; }
+.app-shell[data-theme] :where(*):not(.xterm, .xterm *, .monaco-editor, .monaco-editor *, .code-editor-content, .terminal-instance, .terminal-instance *, .terminal-layout-scrollport, .terminal-layout-scrollport *)::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+.app-shell[data-theme] :where(*):not(.xterm, .xterm *, .monaco-editor, .monaco-editor *, .code-editor-content, .terminal-instance, .terminal-instance *, .terminal-layout-scrollport, .terminal-layout-scrollport *)::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background-color: var(--scroll-thumb);
+  background-clip: padding-box;
+}
+.app-shell[data-theme] :where(*):not(.xterm, .xterm *, .monaco-editor, .monaco-editor *, .code-editor-content, .terminal-instance, .terminal-instance *, .terminal-layout-scrollport, .terminal-layout-scrollport *)::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-thumb-hover); }
 
 /* Terminal / Editor switch, sits under the workspace picker row */
 .app-shell[data-theme] .tool-primary-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 8px; padding: 3px; border: 1px solid var(--theme-border); border-radius: 8px; background: var(--theme-surface); }
-.app-shell[data-theme] .tool-primary-switch-item { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--theme-muted); font: inherit; font-size: 12px; cursor: pointer; }
+.app-shell[data-theme] .tool-primary-switch-item { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
 .app-shell[data-theme] .tool-primary-switch-item:hover { background: var(--shell-hover); color: var(--theme-text); }
 .app-shell[data-theme] .tool-primary-switch-item.selected { background: color-mix(in srgb, var(--theme-accent) 16%, var(--theme-surface)); color: var(--theme-text); }
 .app-shell[data-theme] .tool-primary-switch-item .tool-sidebar-icon { display: inline-flex; width: 14px; height: 14px; }

@@ -1,36 +1,38 @@
 .branch-picker { position: relative; min-width: 0; }
-.bp-bar { display: flex; align-items: center; gap: 4px; }
-.bp-add { display: grid; place-items: center; flex: none; width: 24px; height: 24px; padding: 0; border: 1px solid color-mix(in srgb, var(--theme-accent, #b3a3ee) 55%, var(--theme-border, #2c2c34)); border-radius: 6px; background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 16%, transparent); color: var(--theme-text); cursor: pointer; }
+.bp-bar { display: flex; align-items: center; gap: var(--space-1); }
+.bp-add { display: grid; place-items: center; flex: none; width: var(--control-h-md); height: var(--control-h-md); padding: 0; border: 1px solid color-mix(in srgb, var(--theme-accent, #b3a3ee) 55%, var(--theme-border, #2c2c34)); border-radius: 6px; background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 16%, transparent); color: var(--theme-text); cursor: pointer; }
 .bp-add:hover { background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 30%, transparent); }
-.bp-add svg { width: 13px; height: 13px; }
-.bp-trigger { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; height: 24px; padding: 0 6px; border: 1px solid var(--theme-border, rgba(255,255,255,.14)); border-radius: 6px; background: var(--theme-surface, #19191f); color: var(--theme-text); font: inherit; font-size: 11px; cursor: pointer; }
+.bp-add svg { width: 16px; height: 16px; }
+.bp-trigger { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; height: var(--control-h-md); padding: 0 6px; border: 1px solid var(--theme-border, rgba(255,255,255,.14)); border-radius: 6px; background: var(--theme-surface, #19191f); color: var(--theme-text); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
 .bp-trigger:hover { border-color: color-mix(in srgb, var(--theme-accent, #b3a3ee) 45%, var(--theme-border, #2c2c34)); }
-.bp-trigger svg { width: 12px; height: 12px; flex: none; }
+.bp-trigger svg { width: 14px; height: 14px; flex: none; }
 .bp-trigger .bp-chevron { margin-left: auto; opacity: .6; }
 .bp-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bp-popover { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0; display: flex; flex-direction: column; gap: 6px; max-height: 340px; padding: 8px; border: 1px solid var(--theme-border, #2c2c34); border-radius: 8px; background: var(--theme-surface, #19191f); box-shadow: 0 8px 24px rgb(0 0 0 / 35%); }
-.bp-input { flex: none; width: 100%; height: 24px; padding: 0 8px; border: 1px solid var(--theme-border, #2c2c34); border-radius: 6px; background: transparent; color: var(--theme-text); font: inherit; font-size: 11px; }
+/* Overlay: fixed-position over the content, placed inline from the trigger (branchPopoverPlacement.ts), so it
+   never changes the row layout and is not clipped by the repository block. */
+.bp-popover { position: fixed; z-index: 60; display: flex; flex-direction: column; gap: 6px; max-height: 340px; padding: 8px; border: 1px solid var(--theme-border, #2c2c34); border-radius: 8px; background: var(--theme-surface, #19191f); box-shadow: 0 8px 24px rgb(0 0 0 / 35%); }
+.bp-input { flex: none; width: 100%; height: 24px; padding: 0 8px; border: 1px solid var(--theme-border, #2c2c34); border-radius: 6px; background: transparent; color: var(--theme-text); font: inherit; font-size: var(--fs-xs); }
 .bp-input:focus { outline: 1px solid var(--theme-accent, #b3a3ee); }
-.bp-new { flex: none; height: 24px; padding: 0 6px; border: 1px dashed var(--theme-border, #2c2c34); border-radius: 6px; background: transparent; color: var(--theme-muted); font: inherit; font-size: 12px; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bp-new { flex: none; height: 24px; padding: 0 6px; border: 1px dashed var(--theme-border, #2c2c34); border-radius: 6px; background: transparent; color: var(--text-muted); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bp-new:hover { color: var(--theme-text); border-color: var(--theme-accent, #b3a3ee); }
 .bp-list { flex: 1 1 auto; min-height: 60px; overflow-y: auto; }
 .bp-list ul { margin: 0; padding: 0; list-style: none; }
-.bp-section { flex: none; padding: 6px 4px 2px; color: var(--theme-muted); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; }
+.bp-section { flex: none; padding: 6px 4px 2px; color: var(--text-muted); font-size: var(--fs-xs); letter-spacing: .05em; text-transform: uppercase; }
 .bp-row { position: relative; display: flex; flex-wrap: wrap; align-items: center; border-radius: 6px; }
 .bp-row:hover { background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 9%, transparent); }
-.bp-item { display: flex; flex: 1; align-items: center; gap: 5px; min-width: 0; height: 22px; padding: 0 6px; border: 0; background: transparent; color: var(--theme-text); font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
+.bp-item { display: flex; flex: 1; align-items: center; gap: 5px; min-width: 0; height: 22px; padding: 0 6px; border: 0; background: transparent; color: var(--theme-text); font: inherit; font-size: var(--fs-xs); text-align: left; cursor: pointer; }
 .bp-item:disabled { cursor: default; }
 .bp-row.current .bp-name { font-weight: 600; }
 .bp-check { width: 12px; flex: none; color: var(--theme-accent, #b3a3ee); }
 .bp-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bp-meta { margin-left: auto; color: var(--theme-muted); font-size: 11px; }
+.bp-meta { margin-left: auto; color: var(--text-muted); font-size: var(--fs-xs); }
 .bp-actions { display: none; gap: 2px; padding-right: 4px; }
 .bp-row:hover .bp-actions, .bp-row:focus-within .bp-actions { display: flex; }
-.bp-icon { width: 22px; height: 22px; border: 0; border-radius: 4px; background: transparent; color: var(--theme-muted); font-size: 12px; cursor: pointer; }
+.bp-icon { width: 22px; height: 22px; border: 0; border-radius: 4px; background: transparent; color: var(--text-muted); font-size: var(--fs-sm); cursor: pointer; }
 .bp-icon:hover { background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 16%, transparent); color: var(--theme-text); }
-.bp-confirm { display: flex; flex: 1 0 100%; align-items: center; gap: 6px; padding: 4px 6px 6px; color: var(--theme-muted); font-size: 11px; }
-.bp-confirm button { height: 22px; padding: 0 8px; border: 1px solid var(--theme-border, #2c2c34); border-radius: 5px; background: transparent; color: var(--theme-text); font: inherit; font-size: 11px; cursor: pointer; }
+.bp-confirm { display: flex; flex: 1 0 100%; align-items: center; gap: 6px; padding: 4px 6px 6px; color: var(--text-muted); font-size: var(--fs-xs); }
+.bp-confirm button { height: 22px; padding: 0 8px; border: 1px solid var(--theme-border, #2c2c34); border-radius: 5px; background: transparent; color: var(--theme-text); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
 .bp-confirm .bp-danger { border-color: #c4586a; color: #f0a0ac; }
-.bp-empty { padding: 8px 4px; color: var(--theme-muted); font-size: 12px; }
-.git-repository-branch-row { display: block; min-width: 0; padding: 6px 8px 0; }
+.bp-empty { padding: 8px 4px; color: var(--text-muted); font-size: var(--fs-sm); }
+.git-repository-branch-row { display: block; min-width: 0; padding: var(--space-2) var(--space-2) 0; }
 .gg-branch-switch { padding: 0 8px 4px; }

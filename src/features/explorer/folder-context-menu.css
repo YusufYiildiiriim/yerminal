@@ -18,8 +18,8 @@
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--theme-muted);
-  font-size: 13px;
+  color: var(--text-muted);
+  font-size: var(--fs-md);
   text-align: left;
   cursor: pointer;
 }

@@ -272,7 +272,8 @@ describe("Git Graph branch switcher", () => {
     await user.click(await within(panel).findByRole("button", { name: "Switch branch, current develop" }));
     const loadsBefore = branchLoads;
     const target = branches.find((branch) => !branch.isRemote && branch.name !== "develop")!;
-    await user.click(await within(panel).findByRole("button", { name: `Checkout ${target.name}` }));
+    // The popover is an overlay portalled to the app shell, so it is queried from the document, not the panel.
+    await user.click(await screen.findByRole("button", { name: `Checkout ${target.name}` }));
 
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("git_checkout_branch", { path: rootPath, name: target.name }));
     await waitFor(() => expect(within(panel).getByRole("button", { name: `Switch branch, current ${target.name}` })).toBeInTheDocument());

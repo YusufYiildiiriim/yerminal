@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,42 +21,51 @@ function setup(state: State | undefined, ops: Record<string, () => unknown> = {}
   return { onChanged, onError };
 }
 
+async function menuItem(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
+  await user.click(await screen.findByRole("button", { name: "More git actions" }));
+  const menu = await screen.findByRole("menu");
+  return within(menu).getByRole("menuitem", { name });
+}
+
 describe("SyncBar", () => {
   beforeEach(() => tauri.invoke.mockReset());
   afterEach(cleanup);
 
-  it("renders nothing when the repository has no remote", async () => {
+  it("shows only the More menu, without Push, when the repository has no remote", async () => {
     setup({ branch: "main", upstream: null, ahead: 0, behind: 0, hasRemote: false });
     await waitFor(() => expect(tauri.invoke).toHaveBeenCalledWith("git_remote_state", { path: "C:/repo" }));
-    expect(screen.queryByRole("group", { name: "Remote sync" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "More git actions" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Push to remote|Publish branch/ })).toBeNull();
   });
 
-  it("shows how many commits are waiting to pull or push", async () => {
+  it("shows how many commits are waiting to push, and how many to pull inside the menu", async () => {
+    const user = userEvent.setup();
     setup({ branch: "main", upstream: "origin/main", ahead: 2, behind: 3, hasRemote: true });
-    expect((await screen.findByLabelText("3 commits to pull")).textContent).toBe("3");
-    expect(screen.getByLabelText("2 commits to push").textContent).toBe("2");
-    expect(screen.getByRole("button", { name: "Pull from remote" })).toBeEnabled();
+    expect((await screen.findByLabelText("2 commits to push")).textContent).toBe("2");
     expect(screen.getByRole("button", { name: "Push to remote" })).toBeEnabled();
+    expect(await menuItem(user, /Pull ↓3/)).toBeEnabled();
   });
 
   it("offers to publish an unpublished branch and disables pull until then", async () => {
     const user = userEvent.setup();
     const { onChanged, onError } = setup({ branch: "feature", upstream: null, ahead: 0, behind: 0, hasRemote: true }, { git_push: () => "Published feature to origin" });
     const publish = await screen.findByRole("button", { name: "Publish branch" });
-    expect(screen.getByRole("button", { name: "Pull from remote" })).toBeDisabled();
+    expect(await menuItem(user, /Pull/)).toBeDisabled();
+    await user.keyboard("{Escape}");
     await user.click(publish);
     expect(tauri.invoke).toHaveBeenCalledWith("git_push", { path: "C:/repo" });
     await waitFor(() => expect(onError).toHaveBeenCalledWith("Publish: Published feature to origin"));
     expect(onChanged).toHaveBeenCalled();
   });
 
-  it("disables push when there is nothing to push, and fetch/pull report their result", async () => {
+  it("hides push when there is nothing to push, and fetch/pull from the menu report their result", async () => {
     const user = userEvent.setup();
     const { onError } = setup({ branch: "main", upstream: "origin/main", ahead: 0, behind: 1, hasRemote: true }, { git_fetch: () => "Already up to date", git_pull: () => "Fast-forward" });
-    expect(await screen.findByRole("button", { name: "Push to remote" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "Fetch from remote" }));
+    await screen.findByRole("button", { name: "More git actions" });
+    expect(screen.queryByRole("button", { name: "Push to remote" })).toBeNull();
+    await user.click(await menuItem(user, /Fetch/));
     await waitFor(() => expect(onError).toHaveBeenCalledWith("Fetch: Already up to date"));
-    await user.click(screen.getByRole("button", { name: "Pull from remote" }));
+    await user.click(await menuItem(user, /Pull/));
     await waitFor(() => expect(onError).toHaveBeenCalledWith("Pull: Fast-forward"));
   });
 
@@ -65,7 +74,7 @@ describe("SyncBar", () => {
     const { onChanged, onError } = setup({ branch: "main", upstream: "origin/main", ahead: 0, behind: 1, hasRemote: true }, {
       git_pull: () => { throw "Your local changes would be overwritten by merge"; },
     });
-    await user.click(await screen.findByRole("button", { name: "Pull from remote" }));
+    await user.click(await menuItem(user, /Pull/));
     await waitFor(() => expect(onError).toHaveBeenCalledWith(expect.stringContaining("Pull failed: Your local changes")));
     expect(onChanged).toHaveBeenCalled();
   });

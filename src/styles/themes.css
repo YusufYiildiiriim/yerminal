@@ -11,6 +11,15 @@
   --theme-border: #23232a;
   --theme-accent: #f59e0b;
   --theme-success: #34d399;
+  /* Text tokens pass 4.5:1 on every surface of the theme (tests/styles/textContrast.test.ts).
+     Fill tokens are dark tones for backgrounds and lines only; never use them as text. */
+  --text-muted: #808290;
+  --text-amber: #d99a3e;
+  --text-green: #2fb070;
+  --text-violet: #a99cf7;
+  --fill-amber: #a3650f;
+  --fill-green: #1c7a48;
+  --fill-violet: #35227a;
   --hover: color-mix(in srgb, var(--theme-text) 7%, transparent);
   --row-text: color-mix(in srgb, var(--theme-text) 88%, var(--theme-muted));
   --bright: color-mix(in srgb, var(--theme-text) 60%, #ffffff);
@@ -36,6 +45,7 @@
   --theme-border: #29413e;
   --theme-accent: #8edbd3;
   --theme-success: #9ad8a7;
+  --text-muted: #859995;
 }
 .app-shell[data-theme="foundry"] {
   --theme-background: #131216;
@@ -49,6 +59,7 @@
   --theme-border: #3d3333;
   --theme-accent: #f2bd82;
   --theme-success: #9dc8a1;
+  --text-muted: #a29ba0;
 }
 .app-shell[data-theme] :is(.titlebar, .statusbar) {
   background: var(--theme-chrome);
@@ -102,7 +113,7 @@
 
 /* Shared workspace visual language across presets. */
 .app-shell[data-theme] {
-  font-family: Inter, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   letter-spacing: .005em;
 }
 .app-shell[data-theme] .titlebar {
@@ -192,8 +203,8 @@
   border: 1px solid var(--theme-border);
   border-radius: 6px;
   background: var(--theme-raised);
-  color: var(--theme-muted);
-  font-size: 10px;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
 }
 .app-shell[data-theme] .titlebar-resource-button:hover,
 .app-shell[data-theme] .titlebar-resource-button[aria-expanded="true"] {
@@ -219,7 +230,7 @@
 .app-shell[data-theme] .workspace-navigation-controls { padding: 7px 8px; gap: 0; background: var(--theme-surface); }
 .app-shell[data-theme] .workspace-root-picker,
 .app-shell[data-theme] .workspace-root-picker select { background: var(--theme-surface); border-color: transparent; }
-.app-shell[data-theme] .workspace-root-picker select { min-height: 27px; font-size: 10px; }
+.app-shell[data-theme] .workspace-root-picker select { min-height: 27px; font-size: var(--fs-xs); }
 .app-shell[data-theme] :is(.read-only-mark, .editor-group-pane.active .editor-group-indicator) { color: var(--theme-accent); }
 .app-shell[data-theme] :is(.terminal-session-toolbar, .terminal-layout-toolbar, .terminal-pane-header, .editor-file-tabs, .editor-group-heading) {
   background: var(--theme-raised);
@@ -249,8 +260,8 @@
   font-weight: 650;
 }
 .app-shell[data-theme] .terminal-resource-strip { border: 0; background: var(--theme-surface); }
-.app-shell[data-theme] .terminal-resource-strip-header { height: 36px; flex-basis: 36px; padding-inline: 12px; border-color: var(--theme-border); font-size: 10px; }
-.app-shell[data-theme] .terminal-resource-strip-header > strong { font-size: 10px; }
+.app-shell[data-theme] .terminal-resource-strip-header { height: 36px; flex-basis: 36px; padding-inline: 12px; border-color: var(--theme-border); font-size: var(--fs-xs); }
+.app-shell[data-theme] .terminal-resource-strip-header > strong { font-size: var(--fs-xs); }
 .app-shell[data-theme] .terminal-resource-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); padding: 10px; }
 .app-shell[data-theme] .terminal-resource-card { min-width: 0; background: var(--theme-raised); border-color: var(--theme-border); border-radius: 5px; box-shadow: none; }
 .app-shell[data-theme] .terminal-resource-card.active { border-color: color-mix(in srgb, var(--theme-accent) 45%, var(--theme-border)); box-shadow: inset 0 1px color-mix(in srgb, var(--theme-accent) 15%, transparent); }
@@ -278,4 +289,11 @@
 }
 @media (max-width: 1000px) {
   .app-shell[data-theme] .titlebar-resource-button { display: none; }
+}
+
+/* Git Changes section cards: band = repository surface, body = recessed background; one definition for all themes. */
+.app-shell[data-theme] {
+  --git-card-band: var(--theme-surface);
+  --git-card-body: var(--theme-background);
+  --git-card-rule: color-mix(in srgb, var(--theme-text) 16%, var(--theme-surface));
 }

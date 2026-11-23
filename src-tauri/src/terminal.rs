@@ -633,6 +633,12 @@ impl TerminalResourceUsage {
     }
 }
 
+/// Checks that a terminal folder exists before a session starts, so a restored terminal whose folder
+/// was removed can fall back to the workspace root instead of failing to start.
+pub fn validate_terminal_directory(path: &str) -> Result<(), String> {
+    resolve_working_directory(Some(path.to_owned())).map(|_| ())
+}
+
 fn resolve_working_directory(value: Option<String>) -> Result<PathBuf, String> {
     let path = match value {
         Some(value) => PathBuf::from(value),
@@ -915,6 +921,18 @@ fn spawn_output_reader(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validate_terminal_directory_rejects_missing_folders() {
+        let error = validate_terminal_directory("definitely-not-a-real-folder-yerminal").unwrap_err();
+        assert!(error.contains("Working directory does not exist"), "{error}");
+    }
+
+    #[test]
+    fn validate_terminal_directory_accepts_existing_folders() {
+        let dir = tempfile::tempdir().expect("create temp directory");
+        assert!(validate_terminal_directory(&dir.path().to_string_lossy()).is_ok());
+    }
 
     #[test]
     fn output_history_assigns_increasing_sequences() {

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { CommitFileChange, CommitInfo } from "./gitTypes";
 import { changeKindLetter, formatFullDate, formatRelativeTime } from "./gitGraphFormat";
+import { GitCard } from "./GitCard";
+import { LoadingState } from "../../components/LoadingState";
 import "./git-graph.css";
 
 type Props = {
@@ -77,7 +79,7 @@ export function OutgoingCommits({ repoPath, refreshKey = 0, onError, onOpenFile 
 
   const renderFiles = (commit: CommitInfo) => {
     const state = details[commit.id];
-    if (!state || state.loading) return <div className="gb-note" role="status">Loading changed files…</div>;
+    if (!state || state.loading) return <LoadingState label="Loading changed files…" centered />;
     if (state.error) return <div className="gb-note gb-error" role="alert"><span>{state.error}</span> <button type="button" className="gb-retry" onClick={() => void loadDetails(commit)}>Retry</button></div>;
     if (state.files.length === 0) return <div className="gb-note">No files changed in this commit.</div>;
     return <div className="gb-files-scroll"><ul className="gb-files" aria-label={`Changed files in ${commit.shortId}`}>
@@ -96,19 +98,18 @@ export function OutgoingCommits({ repoPath, refreshKey = 0, onError, onOpenFile 
     </ul></div>;
   };
 
-  return <section className="outgoing-commits" aria-label="Outgoing commits">
-    <div className="gb-sec"><span>Outgoing commits</span><span className="gb-count">{commits.length}</span></div>
+  return <GitCard label="Outgoing commits" title="Outgoing commits" count={commits.length} className="outgoing-commits">
     <ul className="gb-commits" aria-label="Commits not pushed yet">
       {commits.map((commit) => {
         const open = openId === commit.id;
         return <li key={commit.id} className={open ? "open" : undefined}>
           <button type="button" className={`gb-commit${open ? " on" : ""}`} aria-expanded={open} aria-description={formatFullDate(commit.timestamp)} onClick={(event) => toggleCommit(commit, event)}>
-            <span className="gb-msg">{commit.message.split(/\r?\n/)[0]}</span>
-            <span className="gb-sub"><span className="gb-hash">{commit.shortId.slice(0, 7)}</span><span aria-hidden="true">·</span><span>{commit.author}</span><span aria-hidden="true">·</span><span className="gb-time">{formatRelativeTime(commit.timestamp)}</span></span>
+            <span className="gb-msg" title={commit.message.split(/\r?\n/)[0]}>{commit.message.split(/\r?\n/)[0]}</span>
+            <span className="gb-sub"><span className="gb-hash">{commit.shortId.slice(0, 7)}</span><span aria-hidden="true">·</span><span className="gb-author">{commit.author}</span><span aria-hidden="true">·</span><span className="gb-time">{formatRelativeTime(commit.timestamp)}</span></span>
           </button>
           {open && <section className="gb-detail" aria-label={`Changed files for ${commit.shortId}`}>{renderFiles(commit)}</section>}
         </li>;
       })}
     </ul>
-  </section>;
+  </GitCard>;
 }

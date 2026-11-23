@@ -74,7 +74,10 @@ afterEach(() => {
 async function renderWithOneTerminal() {
   render(<App />);
   await waitFor(() => expect(terminalIds()).toHaveLength(1));
-  return terminalIds()[0];
+  const [id] = terminalIds();
+  // The mock registers its exit handler in an effect, which can run after the pane is already in the DOM.
+  await waitFor(() => expect(mocks.terminalExitHandlers.has(id)).toBe(true));
+  return id;
 }
 
 async function addSecondTerminal() {

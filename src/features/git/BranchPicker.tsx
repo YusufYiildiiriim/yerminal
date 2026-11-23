@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { BranchInfo } from "./gitTypes";
+import { placeBranchPopover, type PopoverPlacement } from "./branchPopoverPlacement";
 import "./branch-picker.css";
 
 type MergeOutcome = { result: "upToDate" | "fastForward" | "merged" | "conflicts"; conflicts: string[] };
@@ -19,13 +21,17 @@ type Props = {
   currentBranch: string;
   onChanged: () => void;
   onError: (message: string) => void;
+  /** Bumped by the parent (the ⋯ menu's "New branch…") to open the picker straight in create mode. */
+  createRequest?: number;
+  /** Shows the inline "+" create button. The Git Changes action row turns it off; New branch is in its ⋯ menu. */
+  showCreate?: boolean;
 };
 
 /**
  * Branch switcher for one repository: search, switch (remote branches create a tracking branch),
  * create from the current branch, rename and delete. All Git work happens in the Rust commands.
  */
-export function BranchPicker({ repoPath, currentBranch, onChanged, onError }: Props) {
+export function BranchPicker({ repoPath, currentBranch, onChanged, onError, createRequest = 0, showCreate = true }: Props) {
   const [open, setOpen] = useState(false);
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [query, setQuery] = useState("");
@@ -34,6 +40,9 @@ export function BranchPicker({ repoPath, currentBranch, onChanged, onError }: Pr
   const [renaming, setRenaming] = useState<{ name: string; value: string } | null>(null);
   const [confirmForce, setConfirmForce] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [placement, setPlacement] = useState<PopoverPlacement | null>(null);
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
   const label = currentBranch || "Detached HEAD";
@@ -56,11 +65,20 @@ export function BranchPicker({ repoPath, currentBranch, onChanged, onError }: Pr
     setConfirmForce(null);
   }, []);
 
+  // The ⋯ menu asks for create mode; the first render (request 0) does nothing.
+  useEffect(() => {
+    if (createRequest === 0) return;
+    setOpen(true);
+    setCreating("");
+  }, [createRequest]);
+
   useEffect(() => {
     if (!open) return;
     void loadBranches();
     const onPointerDown = (event: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) close();
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || popoverRef.current?.contains(target)) return;
+      close();
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") close();
@@ -72,6 +90,27 @@ export function BranchPicker({ repoPath, currentBranch, onChanged, onError }: Pr
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [open, loadBranches, close]);
+
+  // The popover is an overlay: placed from the trigger and the viewport, and never part of the row's layout.
+  useLayoutEffect(() => {
+    if (!open) {
+      setPlacement(null);
+      return;
+    }
+    const update = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      setPlacement(placeBranchPopover({ top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width }, { width: window.innerWidth, height: window.innerHeight }));
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open]);
 
   const run = async (action: () => Promise<unknown>, options: { keepOpen?: boolean } = {}) => {
     setBusy(true);
@@ -148,16 +187,16 @@ export function BranchPicker({ repoPath, currentBranch, onChanged, onError }: Pr
 
   return <div className="branch-picker" ref={rootRef}>
     <div className="bp-bar">
-    <button type="button" className="bp-trigger" aria-haspopup="dialog" aria-expanded={open} aria-label={`Switch branch, current ${label}`} title="Switch branch" onClick={() => (open ? close() : setOpen(true))}>
+    <button ref={triggerRef} type="button" className="bp-trigger" aria-haspopup="dialog" aria-expanded={open} aria-label={`Switch branch, current ${label}`} title="Switch branch" onClick={() => (open ? close() : setOpen(true))}>
       <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="7" r="2" /><path d="M6 7v10M18 9c0 3.5-3 6-8 6" /></svg>
       <span className="bp-label">{label}</span>
       <svg className="bp-chevron" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
     </button>
-    <button type="button" className="bp-add" aria-label="Create new branch" title={`New branch from ${label}`} onClick={() => { setOpen(true); setCreating(""); }}>
+    {showCreate && <button type="button" className="bp-add" aria-label="Create new branch" title={`New branch from ${label}`} onClick={() => { setOpen(true); setCreating(""); }}>
       <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-    </button>
+    </button>}
     </div>
-    {open && <div className="bp-popover" role="dialog" aria-label="Branches">
+    {open && placement && createPortal(<div ref={popoverRef} className="bp-popover" role="dialog" aria-label="Branches" data-placement={placement.placement} style={{ left: placement.left, width: placement.width, top: placement.top, bottom: placement.bottom, maxHeight: placement.maxHeight }}>
       <input className="bp-input" aria-label="Search branches" placeholder="Search branches" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} />
       {creating === null
         ? <button type="button" className="bp-new" onClick={() => setCreating("")}>+ New branch from {label}…</button>
@@ -172,6 +211,6 @@ export function BranchPicker({ repoPath, currentBranch, onChanged, onError }: Pr
         {remote.length > 0 && <><div className="bp-section">Remote</div><ul>{remote.map(renderRow)}</ul></>}
         {local.length + remote.length === 0 && <div className="bp-empty">No matching branches</div>}
       </div>
-    </div>}
+    </div>, document.querySelector<HTMLElement>(".app-shell") ?? document.body)}
   </div>;
 }

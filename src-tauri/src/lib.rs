@@ -64,6 +64,12 @@ fn terminal_output_snapshot(
         .output_snapshot(&session_id)
 }
 
+/// Used before a restored terminal starts: a missing folder is reported, not spawned.
+#[tauri::command]
+fn check_terminal_directory(path: String) -> Result<(), String> {
+    terminal::validate_terminal_directory(&path)
+}
+
 #[tauri::command]
 fn create_terminal(
     app: tauri::AppHandle,
@@ -366,6 +372,7 @@ pub fn run() {
         .manage(workspace_watch::WorkspaceWatchState::default())
         .manage(Arc::new(Mutex::new(agent_usage::AgentUsageCache::default())))
         .invoke_handler(tauri::generate_handler![
+            check_terminal_directory,
             create_terminal,
             create_agent_terminal,
             list_agent_profiles,

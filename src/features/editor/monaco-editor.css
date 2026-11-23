@@ -1,8 +1,8 @@
 .code-editor-content.is-monaco { overflow: hidden; position: relative; padding: 0; }
 .monaco-code-editor-shell { position: absolute; inset: 0; display: flex; flex-direction: column; }
 .monaco-code-editor { flex: 1; min-width: 0; min-height: 0; }
-.monaco-loading { position: absolute; inset: 12px auto auto 16px; z-index: 1; color: var(--theme-muted); }
-.monaco-language-error, .editor-language-welcome { padding: 8px 12px; color: var(--theme-muted); font-size: 12px; }
+.monaco-loading { position: absolute; inset: 12px auto auto 16px; z-index: 1; color: var(--text-muted); }
+.monaco-language-error, .editor-language-welcome { padding: 8px 12px; color: var(--text-muted); font-size: var(--fs-sm); }
 .editor-language-welcome { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--theme-border); }
 .editor-language-welcome span { flex: 1; }
 .editor-language-welcome button { color: var(--theme-text); background: var(--theme-raised); border: 1px solid var(--theme-border); border-radius: 4px; padding: 4px 8px; cursor: pointer; }
@@ -10,7 +10,7 @@
 /* Diff editor sits in the flex column of DiffView, not in the code editor container. */
 .diff-monaco-shell { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .diff-monaco { position: relative; flex: 1; min-width: 0; min-height: 0; }
-.diff-monaco-nav { display: flex; flex: none; align-items: center; gap: 6px; padding: 3px 8px; border-bottom: 1px solid var(--theme-border, #34343c); color: var(--theme-muted, #aaa8b4); font-size: 11px; }
+.diff-monaco-nav { display: flex; flex: none; align-items: center; gap: 6px; padding: 3px 8px; border-bottom: 1px solid var(--theme-border, #34343c); color: var(--text-muted); font-size: var(--fs-xs); }
 .diff-monaco-nav button { min-width: 24px; height: 20px; padding: 0 6px; border: 1px solid var(--theme-border, #34343c); border-radius: 4px; background: transparent; color: var(--theme-text, #efedf4); font: inherit; cursor: pointer; }
 .diff-monaco-nav button:hover:not(:disabled) { border-color: var(--theme-accent, #b3a3ee); }
 .diff-monaco-nav button:disabled { opacity: .45; cursor: default; }

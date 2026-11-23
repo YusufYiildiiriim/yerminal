@@ -1,0 +1,24 @@
+/* Typography tokens: one UI family, one UI mono family, five type steps.
+   Each step is the design size times --ui-scale (Settings > Interface size: 0.92 / 1 / 1.1).
+   Editor and terminal fonts are set separately (Settings) and are not tokenized here. */
+:root {
+  --font-ui: "Geist Variable", Geist, "Segoe UI", sans-serif;
+  --font-mono-ui: "Geist Mono Variable", "Geist Mono", Consolas, monospace;
+  --ui-scale: 1;
+  --fs-xs: calc(11px * var(--ui-scale, 1));
+  --fs-sm: calc(12px * var(--ui-scale, 1));
+  --fs-md: calc(13px * var(--ui-scale, 1));
+  --fs-lg: calc(15px * var(--ui-scale, 1));
+  --fs-xl: calc(18px * var(--ui-scale, 1));
+  /* Spacing steps for dense lists and panels (px, not scaled by --ui-scale). */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  /* Hit area of a header icon button (px, not scaled by --ui-scale). */
+  --hit-icon: 32px;
+  /* Control height ladder for the Git panels (px, not scaled): 32 px for buttons, tabs and the branch trigger,
+     36 px for the repository select. --control-h-md is the same token as --hit-icon. */
+  --control-h-md: var(--hit-icon);
+  --control-h-lg: 36px;
+}

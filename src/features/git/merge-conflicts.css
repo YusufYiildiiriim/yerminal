@@ -1,13 +1,13 @@
 .merge-panel { margin: 8px 10px 0; padding: 8px; border: 1px solid color-mix(in srgb, #d6b879 55%, var(--theme-border, #2c2c34)); border-radius: 8px; background: color-mix(in srgb, #d6b879 8%, var(--theme-surface, #19191f)); }
-.merge-heading { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; font-size: 12px; color: var(--theme-text); }
-.merge-heading span { color: var(--theme-muted); font-size: 11px; }
+.merge-heading { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; font-size: var(--fs-sm); color: var(--theme-text); }
+.merge-heading span { color: var(--text-muted); font-size: var(--fs-xs); }
 .merge-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
-.merge-panel button { height: 24px; padding: 0 9px; border: 1px solid var(--theme-border, #2c2c34); border-radius: 5px; background: transparent; color: var(--theme-text); font: inherit; font-size: 11px; cursor: pointer; }
+.merge-panel button { height: 24px; padding: 0 9px; border: 1px solid var(--theme-border, #2c2c34); border-radius: 5px; background: transparent; color: var(--theme-text); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
 .merge-panel button:hover:not(:disabled) { border-color: var(--theme-accent, #b3a3ee); }
 .merge-panel button:disabled { opacity: .45; cursor: default; }
 .merge-panel .merge-primary { background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 22%, transparent); }
 .merge-panel .merge-danger { border-color: #c4586a; color: #f0a0ac; }
-.merge-confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--theme-muted); font-size: 11px; }
+.merge-confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--text-muted); font-size: var(--fs-xs); }
 .merge-files { margin: 0; padding: 0; list-style: none; }
 .merge-file { display: flex; flex-direction: column; gap: 4px; padding: 5px 0; border-top: 1px solid var(--theme-border, #2c2c34); }
 .merge-panel .merge-path { display: flex; align-items: center; gap: 6px; min-width: 0; height: 24px; padding: 0 2px; border: 0; text-align: left; }
