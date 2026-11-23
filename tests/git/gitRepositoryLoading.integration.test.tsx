@@ -57,6 +57,9 @@ describe("Git Changes repository loading", () => {
     expect(within(list).getByText("alpha")).toBeInTheDocument();
     expect(within(list).getByText("beta")).toBeInTheDocument();
     expect(within(list).getAllByRole("status", { name: "Loading repository…" })).toHaveLength(2);
+    for (const pending of within(list).getAllByRole("status", { name: "Loading repository…" })) {
+      expect(pending).toHaveClass("loading-state", "is-centered");
+    }
   });
 
   it("renders each repository as soon as its own info arrives, without waiting for the others", async () => {
@@ -87,6 +90,7 @@ describe("Git Changes repository loading", () => {
     const loadingChanges = await within(list).findByRole("status", { name: "Loading changes…" });
     const card = loadingChanges.closest(".git-repository-section") as HTMLElement;
     expect(within(card).getByText("alpha")).toBeInTheDocument();
+    expect(loadingChanges).toHaveClass("loading-state", "is-centered");
     expect(within(card).queryByText("0 staged · 0 changes")).toBeNull();
 
     statuses.get(rootA)!.resolve([]);
