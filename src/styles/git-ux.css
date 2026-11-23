@@ -65,11 +65,13 @@
   gap: 3px;
   padding: 1px 6px 1px 0;
   border-left: 2px solid transparent;
+  --change-row-tint: color-mix(in srgb, var(--theme-accent, #b3a3ee) 10%, var(--theme-surface, #19191f));
 }
 .tool-content .change-row:hover,
-.tool-content .change-row.selected {
+.tool-content .change-row.selected,
+.tool-content .change-row:focus-within {
   border-left-color: var(--theme-accent, #b3a3ee);
-  background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 10%, var(--theme-surface, #19191f));
+  background: var(--change-row-tint);
 }
 .tool-content .change-main-row {
   min-height: 20px;
@@ -82,7 +84,10 @@
 .tool-content .change-kind { flex-basis: 14px; width: 14px; font-size: var(--fs-xs); }
 .tool-content .change-badge { flex: 0 0 auto; padding: 1px 4px; font-size: var(--fs-xs); }
 /* Row actions appear on hover and while the row or one of its buttons has keyboard focus. */
-.tool-content .change-row-actions { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); gap: 3px; padding-left: 4px; border-radius: 6px; background: var(--git-card-body); opacity: 0; pointer-events: none; transition: opacity .12s ease; }
+.tool-content .change-row-actions { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); gap: 3px; padding-left: 4px; border-radius: 6px; background: var(--change-row-tint); opacity: 0; pointer-events: none; transition: opacity .12s ease; }
+/* While the overlay is shown the name and the S/U badge stop short of it. */
+.tool-content .change-row:hover .change-main-row,
+.tool-content .change-row:focus-within .change-main-row { padding-right: 56px; }
 .tool-content .change-row:hover .change-row-actions,
 .tool-content .change-row:focus-within .change-row-actions { opacity: 1; pointer-events: auto; }
 .tool-content .change-action {
