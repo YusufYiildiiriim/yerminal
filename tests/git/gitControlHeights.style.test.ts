@@ -37,9 +37,16 @@ const ACTION_ROW = ".git-action-row";
 const HISTORY_TOGGLE = ".hist-toggle";
 
 describe("shared control height ladder", () => {
-  it("defines --control-h-md (32 px) and --control-h-lg (36 px) in typography.css next to --hit-icon", () => {
-    expect(typography).toMatch(/--control-h-md:\s*32px/);
+  it("defines --control-h-md as the --hit-icon token (one source for 32 px) and --control-h-lg as 36 px", () => {
+    expect(typography).toMatch(/--control-h-md:\s*var\(--hit-icon\)/);
     expect(typography).toMatch(/--control-h-lg:\s*36px/);
+  });
+
+  it("sets every sync button (push, pull, sync and the More button) to the 32 px token, keeping its 72 px minimum width", () => {
+    const body = ruleBody(".sync-button");
+    expect(body).toMatch(/(?<![\w-])min-height:\s*var\(--control-h-md\)/);
+    expect(body).not.toMatch(/(?<![\w-])min-height:\s*\d+px/);
+    expect(body).toMatch(/min-width:\s*72px/);
   });
 
   it("sets the branch trigger height from the 32 px token, not a fixed 24 px", () => {
