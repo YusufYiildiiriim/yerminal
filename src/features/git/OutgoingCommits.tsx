@@ -104,7 +104,7 @@ export function OutgoingCommits({ repoPath, refreshKey = 0, onError, onOpenFile 
         return <li key={commit.id} className={open ? "open" : undefined}>
           <button type="button" className={`gb-commit${open ? " on" : ""}`} aria-expanded={open} aria-description={formatFullDate(commit.timestamp)} onClick={(event) => toggleCommit(commit, event)}>
             <span className="gb-msg" title={commit.message.split(/\r?\n/)[0]}>{commit.message.split(/\r?\n/)[0]}</span>
-            <span className="gb-sub"><span className="gb-hash">{commit.shortId.slice(0, 7)}</span><span aria-hidden="true">·</span><span>{commit.author}</span><span aria-hidden="true">·</span><span className="gb-time">{formatRelativeTime(commit.timestamp)}</span></span>
+            <span className="gb-sub"><span className="gb-hash">{commit.shortId.slice(0, 7)}</span><span aria-hidden="true">·</span><span className="gb-author">{commit.author}</span><span aria-hidden="true">·</span><span className="gb-time">{formatRelativeTime(commit.timestamp)}</span></span>
           </button>
           {open && <section className="gb-detail" aria-label={`Changed files for ${commit.shortId}`}>{renderFiles(commit)}</section>}
         </li>;

@@ -26,7 +26,8 @@
 .gb-commit.on { background: var(--theme-raised); color: var(--bright); }
 .gb-hash { color: var(--text-muted); font-family: var(--font-mono-ui); font-size: var(--fs-xs); }
 .gb-msg { min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-sm); line-height: 16px; }
-.gb-sub { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--text-muted); font-size: var(--fs-xs); line-height: 15px; }
+.gb-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; color: var(--text-muted); font-size: var(--fs-xs); line-height: 15px; }
+.gb-author { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .gb-commit.on .gb-sub { color: color-mix(in srgb, var(--theme-text) 60%, var(--theme-muted)); }
 .gb-time { color: var(--text-muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gb-note { padding: 4px 6px; color: var(--text-muted); font-size: var(--fs-sm); }
