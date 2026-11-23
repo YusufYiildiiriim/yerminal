@@ -81,3 +81,30 @@ describe("terminal group rows: height and truncation", () => {
     expect(body).toMatch(/min-width:\s*0/);
   });
 });
+
+describe("terminal group rows: hidden actions do not sit over the group name", () => {
+  const HEADER_HOVER_ACTS = ".app-shell[data-theme] .workspace-terminal-group-header:hover .workspace-terminal-group-acts";
+  const HEADER_FOCUS_ACTS = ".app-shell[data-theme] .workspace-terminal-group-header:focus-within .workspace-terminal-group-acts";
+  const SELECTED_ACTS = ".app-shell[data-theme] .workspace-terminal-group.selected .workspace-terminal-group-acts";
+  const HEADER_HOVER_SELECT = ".app-shell[data-theme] .workspace-terminal-group-header:hover .workspace-terminal-group-select";
+  const HEADER_FOCUS_SELECT = ".app-shell[data-theme] .workspace-terminal-group-header:focus-within .workspace-terminal-group-select";
+  const SELECTED_SELECT = ".app-shell[data-theme] .workspace-terminal-group.selected > .workspace-terminal-group-header .workspace-terminal-group-select";
+
+  it("shows the actions while the group row has keyboard focus, not only while an action has focus", () => {
+    expect(ruleBody(HEADER_FOCUS_ACTS)).toMatch(/display:\s*flex/);
+  });
+
+  it("paints the revealed actions with an opaque tint over the surface, not the translucent hover token", () => {
+    const body = ruleBody(HEADER_HOVER_ACTS);
+    expect(body).not.toMatch(/background:\s*var\(--shell-hover\)/);
+    expect(body).toMatch(/background:\s*color-mix\(in srgb, var\(--theme-text\) 6%, var\(--theme-surface\)\)/);
+    expect(ruleBody(SELECTED_ACTS)).toMatch(/background:\s*color-mix\(in srgb, var\(--theme-text\) 6%, var\(--theme-surface\)\)/);
+    expect(ruleBody(HEADER_FOCUS_ACTS)).toMatch(/background:\s*color-mix\(in srgb, var\(--theme-text\) 6%, var\(--theme-surface\)\)/);
+  });
+
+  it("reserves right padding on the group name for the actions in every state that shows them", () => {
+    for (const selector of [HEADER_HOVER_SELECT, SELECTED_SELECT, HEADER_FOCUS_SELECT]) {
+      expect(ruleBody(selector)).toMatch(/padding-right:\s*calc\(var\(--hit-icon\)\s*\*\s*3\s*\+\s*\d+px\)/);
+    }
+  });
+});
