@@ -2352,7 +2352,7 @@ function PendingRepositoryCard({ path }: { path: string }) {
   const name = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
   return <section className="git-repository-section is-loading" aria-busy="true">
     <header className="git-repository-heading"><div className="git-repository-toggle is-static" title={path}><span className="git-repository-name"><strong>{name}</strong></span></div></header>
-    <LoadingState label="Loading repository…" compact />
+    <LoadingState label="Loading repository…" centered />
   </section>;
 }
 
@@ -2547,7 +2547,7 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenD
         <div className="git-repository-branch-row"><span className="git-action-label">Branch</span><BranchPicker repoPath={repoPath} currentBranch={repoInfo.branch} onChanged={onBranchChanged} onError={onError} createRequest={branchCreateRequest} showCreate={false} /></div>
         <SyncBar repoPath={repoPath} refreshKey={syncNonce + refreshNonce} onChanged={onBranchChanged} onError={onError} onAheadChange={setAheadCount} onNewBranch={() => setBranchCreateRequest((value) => value + 1)} onRefresh={onBranchChanged} view={changeView} onViewChange={chooseChangeView} />
       </div>
-      {!statusLoaded && <LoadingState label="Loading changes…" compact />}
+      {!statusLoaded && <LoadingState label="Loading changes…" centered />}
       {statusError && <div className="git-status-error" role="alert" title={statusError}>
         <span>Could not read changes</span>
         <button type="button" onClick={() => void refresh()}>Try again</button>
