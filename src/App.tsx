@@ -2429,11 +2429,12 @@ function GitRepositoryChanges({ repoInfo, refreshNonce, onBranchChanged, onOpenD
   const unstagedChanges = changes.filter((change) => change.unstaged);
   const conflictedPaths = changes.filter((change) => change.kind === "conflicted").map((change) => change.path);
 
+  // Keyed on repoPath only: the parent rebuilds the repoInfo object on every poll, and depending on it would re-run git_status each time.
   const refresh = useCallback(async () => {
-    if (!repoPath || !repoInfo || !isTauri()) return;
+    if (!repoPath || !isTauri()) return;
     try { setChanges(await invoke<FileChange[]>("git_status", { path: repoPath })); setStatusError(null); setSyncNonce((value) => value + 1); setStatusLoaded(true); }
     catch (reason) { setChanges([]); setStatusError(String(reason)); onError(String(reason)); setStatusLoaded(true); }
-  }, [onError, repoInfo, repoPath]);
+  }, [onError, repoPath]);
 
   const runFileAction = async (action: "stage" | "unstage" | "discard", filePath: string) => {
     if (!repoPath || !repoInfo || fileAction) return;
