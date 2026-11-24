@@ -1,6 +1,6 @@
 [package]
 name = "yerminal"
-version = "0.1.2"
+version = "0.1.3"
 description = "Lightweight AI agent terminal workspace"
 authors = ["Yusuf"]
 edition = "2021"
