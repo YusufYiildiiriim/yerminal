@@ -22,16 +22,25 @@ async function openTerminalSection(user: ReturnType<typeof userEvent.setup>) {
 describe("Terminal open settings", () => {
   afterEach(cleanup);
 
-  it("shows the defaults switch on when the stored value is missing, and turning it off reports the change", async () => {
+  it("shows the defaults switch off when the stored value is missing, and turning it on reports the change", async () => {
     const user = userEvent.setup();
     const onSettingsChange = vi.fn();
     render(<SettingsDialog settings={settings} shortcuts={[]} onSettingsChange={onSettingsChange} onClose={vi.fn()} />);
     await openTerminalSection(user);
 
     const toggle = screen.getByRole("checkbox", { name: "Use defaults when opening a terminal" });
-    expect(toggle).toBeChecked();
+    expect(toggle).not.toBeChecked();
     await user.click(toggle);
-    expect(onSettingsChange).toHaveBeenLastCalledWith({ ...settings, terminalUseDefaults: false });
+    expect(onSettingsChange).toHaveBeenLastCalledWith({ ...settings, terminalUseDefaults: true });
+  });
+
+  it("shows the switch on only when the stored value is explicitly true", async () => {
+    const user = userEvent.setup();
+    const onSettingsChange = vi.fn();
+    render(<SettingsDialog settings={{ ...settings, terminalUseDefaults: false }} shortcuts={[]} onSettingsChange={onSettingsChange} onClose={vi.fn()} />);
+    await openTerminalSection(user);
+
+    expect(screen.getByRole("checkbox", { name: "Use defaults when opening a terminal" })).not.toBeChecked();
   });
 
   it("reports the terminal default path and default group as typed", async () => {

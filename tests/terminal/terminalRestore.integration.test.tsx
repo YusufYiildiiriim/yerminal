@@ -48,7 +48,7 @@ function seed(options: { sessions?: Record<string, Saved[]>; settings?: Record<s
     workspaces: workspaces.map((workspace) => ({ ...workspace, groups: [{ id: GROUP, name: "Terminal 1" }], activeGroupId: GROUP })),
     activeId: "workspace-1",
   }));
-  localStorage.setItem("yerminal.app-settings.v1", JSON.stringify(options.settings ?? {}));
+  localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({ terminalUseDefaults: true, ...(options.settings ?? {}) }));
   if (options.sessions) localStorage.setItem(SESSIONS_KEY, JSON.stringify({ workspaces: options.sessions }));
 }
 

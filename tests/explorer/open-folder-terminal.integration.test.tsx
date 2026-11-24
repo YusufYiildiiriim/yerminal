@@ -52,6 +52,7 @@ afterEach(() => {
 describe("Explorer Open in Terminal integration", () => {
   beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({ terminalUseDefaults: true }));
     localStorage.setItem("yerminal.terminal-workspaces", JSON.stringify({
       workspaces: [{ id: "workspace-1", name: "Workspace 1", rootPath: root, folderPaths: [root] }],
       activeId: "workspace-1",

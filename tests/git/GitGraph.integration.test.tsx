@@ -48,6 +48,7 @@ const files = [
 const patch = "diff --git a/src/App.tsx b/src/App.tsx\n@@ -1 +1 @@\n-old line\n+new line\n";
 
 function seedWorkspace() {
+  localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({ terminalUseDefaults: true }));
   localStorage.setItem("yerminal.terminal-workspaces", JSON.stringify({
     workspaces: [{ id: "workspace-1", name: "Workspace 1", rootPath, folderPaths: [rootPath] }],
     activeId: "workspace-1",
@@ -231,6 +232,7 @@ describe("Git Graph lives in the side panel: branches, commits, and commit detai
 describe("Git Graph repository picker", () => {
   it("lets the user pick which opened repository the graph shows", async () => {
     const otherPath = "C:\other-repo";
+    localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({ terminalUseDefaults: true }));
     localStorage.setItem("yerminal.terminal-workspaces", JSON.stringify({
       workspaces: [{ id: "workspace-1", name: "Workspace 1", rootPath, folderPaths: [rootPath, otherPath] }],
       activeId: "workspace-1",

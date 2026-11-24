@@ -305,7 +305,7 @@ const TOOL_GROUPS: { id: ToolGroupId; label: string; toolIds: ToolId[] }[] = [
 ];
 
 const SETTINGS_KEY = "yerminal.app-settings.v1";
-const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13, quickOpenScope: "active", collapseOtherFolders: false, autoSave: false, agentUsageEnabled: false, editorMinimap: true, enabledLanguages: DEFAULT_LANGUAGES, languageSetupComplete: false, interfaceSize: "default", terminalUseDefaults: true, terminalDefaultPath: "", terminalDefaultGroup: "", terminalRestoreOnStartup: true };
+const DEFAULT_SETTINGS: AppSettings = { theme: "obsidian", editorFontFamily: '"Cascadia Code", Consolas, monospace', editorFontSize: 13, terminalFontFamily: '"Cascadia Code", Consolas, monospace', terminalFontSize: 13, quickOpenScope: "active", collapseOtherFolders: false, autoSave: false, agentUsageEnabled: false, editorMinimap: true, enabledLanguages: DEFAULT_LANGUAGES, languageSetupComplete: false, interfaceSize: "default", terminalUseDefaults: false, terminalDefaultPath: "", terminalDefaultGroup: "", terminalRestoreOnStartup: true };
 function readAppSettings(): AppSettings {
   try {
     const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}");
@@ -323,7 +323,7 @@ function readAppSettings(): AppSettings {
       enabledLanguages: normalizeEnabledLanguages(raw.enabledLanguages),
       languageSetupComplete: raw.languageSetupComplete === true,
       interfaceSize: normalizeInterfaceSize(raw.interfaceSize),
-      terminalUseDefaults: raw.terminalUseDefaults !== false,
+      terminalUseDefaults: raw.terminalUseDefaults === true,
       terminalDefaultPath: typeof raw.terminalDefaultPath === "string" ? raw.terminalDefaultPath.trim().slice(0, 500) : "",
       terminalDefaultGroup: typeof raw.terminalDefaultGroup === "string" ? raw.terminalDefaultGroup.trim().slice(0, 80) : "",
       terminalRestoreOnStartup: raw.terminalRestoreOnStartup !== false,
@@ -1108,7 +1108,7 @@ function App() {
   const chooseTerminalTarget = useCallback((folder: string | undefined, ask: TerminalOpenAsk, fixedGroupId?: string): Promise<TerminalOpenChoice | null> => {
     const workspace = activeTerminalWorkspace;
     const fixedFolder = folder ?? null;
-    if (settings.terminalUseDefaults !== false) {
+    if (settings.terminalUseDefaults === true) {
       const defaults = resolveTerminalOpenDefaults(settings, workspace?.groups ?? []);
       return Promise.resolve({ folder: fixedFolder ?? defaults.folder, group: ask.group ? defaults.group : null });
     }
@@ -1379,7 +1379,7 @@ function App() {
   // The empty group's New Terminal button: its group is the active one, so with defaults off only the folder is asked.
   const addTerminalToActiveGroup = useCallback(async () => {
     const workspace = activeTerminalWorkspace;
-    if (workspace && settings.terminalUseDefaults === false) {
+    if (workspace && settings.terminalUseDefaults !== true) {
       await addTerminalToGroup(workspace.activeGroupId);
       return;
     }
@@ -1755,7 +1755,7 @@ function App() {
               {activeTool === "terminal" || activeTool === "explorer" ? <WorkspacePanel key={activeTerminalWorkspace?.id ?? ""} toolSwitch={primaryToolSwitch} mode={activeTool === "terminal" ? "terminal" : "files"} terminalLayoutMode={terminalLayoutMode} onChangeTerminalLayoutMode={changeTerminalLayoutMode} activeTerminalGroupName={activeTerminalGroup?.name ?? "Terminal"} editorLayoutMode={editorLayoutMode} onChangeEditorLayoutMode={changeEditorLayoutMode} onGoToFile={() => { if (!settingsOpen) setQuickOpenOpen(true); }} onCreateEditorGroup={createEditorGroup} workspaces={terminalWorkspaceState.workspaces} activeWorkspaceId={activeTerminalWorkspace?.id ?? ""} onActivateWorkspace={activateWorkspace} onCreateWorkspace={createWorkspace} onRenameWorkspace={renameWorkspace} onDeleteWorkspace={() => void deleteWorkspace()} folders={workspaceFolders} activePath={repoPath} onAdd={() => void addWorkspaceFolders()} onActivate={(path) => void activateWorkspaceFolder(path, [], { changeTerminalDirectory: false })} onRemove={removeWorkspaceFolder} collapseOtherFolders={settings.collapseOtherFolders} onOpenFile={(root, entry) => void openEditorFile({ id: `workspace:${root}:${entry.path}`, root, path: entry.path, name: entry.name, size: entry.size ?? undefined })} onFolderContextAction={handleFolderContextAction} refreshRequest={workspaceFolderRefresh} terminalGroups={activeTerminalWorkspace?.groups ?? []} activeTerminalGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} activeTerminalId={activeTerminalId ?? ""} terminals={activeWorkspaceTerminals} onCreateTerminalGroup={addTerminalGroup} onCloseTerminalGroup={closeTerminalGroup} onDeleteTerminalGroup={deleteTerminalGroup} onRenameTerminalGroup={renameTerminalGroup} onSelectTerminalGroup={(groupId) => { chooseTerminalGroup(groupId); setActiveMainView("terminals"); }} onSelectTerminal={selectTerminalFromSidebar} onAddTerminal={() => { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToWorkspace(); }} onAddTerminalToGroup={(groupId) => {
           // Defaults on: unchanged (the selected row adds with the defaults, another row only selects).
           // Defaults off: the row's group is known, so only the folder is asked and the terminal lands in that group.
-          if (settings.terminalUseDefaults === false) { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToGroup(groupId); return; }
+          if (settings.terminalUseDefaults !== true) { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToGroup(groupId); return; }
           if (groupId === activeTerminalWorkspace?.activeGroupId) { setActiveMainView("terminals"); selectTerminalView(null); void addTerminalToWorkspace(); return; }
           chooseTerminalGroup(groupId);
         }} agentUsageEnabled={settings.agentUsageEnabled} terminalUsageOpen={terminalUsageOpen} onToggleTerminalUsage={() => { setActiveMainView("terminals"); setTerminalUsageOpen((open) => !open); }} onRenameTerminal={(groupId, terminal) => { selectTerminalFromSidebar(groupId, terminal.id); beginRenameTerminal(terminal); }} onRenameTerminalName={renameTerminalName} onMoveTerminal={moveTerminalToGroup} onCloseTerminal={(terminalId) => void closeTerminal(terminalId)} /> : activeTool === "changes" ? <><div className="git-tool-switch">{primaryToolSwitch}</div><GitChanges key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onOpenFile={(root, relativePath) => { const absolute = joinRepoPath(root, relativePath); void openEditorFile({ id: `workspace:${root}:${absolute}`, root, path: absolute, name: relativePath.split("/").pop() ?? relativePath }); }} onOpenDiff={(root, change, staged) => void openEditorFile({ id: `gitdiff:${root}:${staged ? "index" : "worktree"}:${change.path}`, root, path: change.path, name: change.path.split(/[\\/]/).pop() ?? change.path, view: "diff", diffStaged: staged })} onOpenCommitFile={(root, commit, file) => openCommitFileInEditor(commit, file, root)} onError={showToast} /></> : <><div className="git-tool-switch">{primaryToolSwitch}</div><GitGraphPanel key={activeTerminalWorkspace?.id ?? ""} repoPaths={workspaceFolders} onOpenRepository={() => void addWorkspaceFolders()} onError={showToast} onOpenFile={openCommitFileInEditor} /></>}

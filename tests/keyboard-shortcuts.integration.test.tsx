@@ -45,6 +45,7 @@ vi.mock("../src/features/terminal/TerminalPane", () => ({
 const rootPath = "C:\\repo";
 
 function seedWorkspace() {
+  localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({ terminalUseDefaults: true }));
   localStorage.setItem("yerminal.terminal-workspaces", JSON.stringify({
     workspaces: [{ id: "workspace-1", name: "Workspace 1", rootPath, folderPaths: [rootPath] }],
     activeId: "workspace-1",
