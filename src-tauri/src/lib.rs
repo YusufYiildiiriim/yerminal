@@ -280,6 +280,26 @@ async fn git_push(path: String) -> Result<String, String> {
         .map_err(|error| error.to_string())?
 }
 
+/// Adds a remote from a typed URL and publishes the current branch to it. A user action, so it is a write.
+#[tauri::command]
+async fn git_add_remote_publish(path: String, name: String, url: String) -> Result<String, String> {
+    git_write(move || git_remote::add_remote_and_publish(&path, &name, &url)).await
+}
+
+/// Whether the GitHub CLI is installed and signed in, and the account. Never signs in.
+#[tauri::command]
+async fn git_github_status() -> Result<git_remote::GithubStatus, String> {
+    tauri::async_runtime::spawn_blocking(git_remote::github_status)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Creates a GitHub repository with `gh` from the typed name, then publishes the current branch to it.
+#[tauri::command]
+async fn git_create_github_repo(path: String, name: String, public: bool) -> Result<String, String> {
+    git_write(move || git_remote::create_github_repo(&path, &name, public)).await
+}
+
 #[tauri::command]
 async fn git_checkout_branch(path: String, name: String) -> Result<RepositoryInfo, String> {
     tauri::async_runtime::spawn_blocking(move || git::checkout_branch(&path, &name))
@@ -415,6 +435,9 @@ pub fn run() {
             git_fetch,
             git_pull,
             git_push,
+            git_add_remote_publish,
+            git_github_status,
+            git_create_github_repo,
             git_checkout_branch,
             git_create_branch,
             git_delete_branch,
