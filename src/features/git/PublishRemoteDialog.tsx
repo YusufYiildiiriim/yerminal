@@ -89,8 +89,11 @@ export function PublishRemoteDialog({ branch, defaultRepoName, account, onSubmit
 
   const submitLabel = mode === "url" ? "Add remote and publish" : isPublic ? "Publish publicly" : "Publish";
 
+  // Theme tokens live on .app-shell[data-theme] (see FolderContextMenu), so the dialog portals inside it; body is the fallback.
+  const portalHost = document.querySelector<HTMLElement>(".app-shell") ?? document.body;
+
   return createPortal(
-    <div className="publish-remote-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel(); }}>
+    <div className="publish-remote-backdrop"onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel(); }}>
       <form className="publish-remote-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={onKeyDown} onSubmit={submit} noValidate>
         <h2 id={titleId}>{`Publish ${branch}`}</h2>
         <fieldset className="publish-remote-modes">
@@ -143,6 +146,6 @@ export function PublishRemoteDialog({ branch, defaultRepoName, account, onSubmit
         </footer>
       </form>
     </div>,
-    document.body,
+    portalHost,
   );
 }

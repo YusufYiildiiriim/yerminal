@@ -116,4 +116,24 @@ describe("PublishRemoteDialog", () => {
     await user.keyboard("{Escape}");
     expect(onCancel).toHaveBeenCalledTimes(2);
   });
+
+  it("portals into the app shell, so the theme tokens resolve, and out of the sync bar tree", () => {
+    // Theme tokens are declared on .app-shell[data-theme] only, so the backdrop must render inside it.
+    const shell = document.createElement("main");
+    shell.className = "app-shell";
+    shell.setAttribute("data-theme", "foundry");
+    const bar = document.createElement("div");
+    bar.className = "sync-bar";
+    shell.appendChild(bar);
+    document.body.appendChild(shell);
+    try {
+      render(<PublishRemoteDialog branch="main" defaultRepoName="repo" account={READY} onSubmit={vi.fn()} onCancel={vi.fn()} />, { container: bar });
+      const backdrop = document.querySelector<HTMLElement>(".publish-remote-backdrop");
+      expect(backdrop).not.toBeNull();
+      expect(backdrop?.parentElement).toBe(shell);
+      expect(bar.contains(backdrop)).toBe(false);
+    } finally {
+      shell.remove();
+    }
+  });
 });
