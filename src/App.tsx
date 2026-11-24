@@ -272,6 +272,20 @@ function editorOperationKey(workspaceId: string, tabId: string): string {
   return JSON.stringify([workspaceId, tabId]);
 }
 
+/** Drops tabs from the workspace and moves each affected group's active tab to the nearest remaining neighbour. Empty groups stay. */
+function withoutEditorTabs(workspace: EditorWorkspaceState, removedIds: Set<string>): EditorWorkspaceState {
+  const groups = workspace.groups.map((group) => {
+    if (!group.tabIds.some((id) => removedIds.has(id))) return group;
+    const tabIds = group.tabIds.filter((id) => !removedIds.has(id));
+    const activeIndex = group.activeTabId ? group.tabIds.indexOf(group.activeTabId) : -1;
+    const activeTabId = group.activeTabId && removedIds.has(group.activeTabId)
+      ? tabIds[Math.min(group.tabIds.slice(0, activeIndex).filter((id) => !removedIds.has(id)).length, tabIds.length - 1)] ?? null
+      : group.activeTabId;
+    return { ...group, tabIds, activeTabId };
+  });
+  return { ...workspace, tabs: workspace.tabs.filter((tab) => !removedIds.has(tab.id)), groups };
+}
+
 function editorResourceKey(path: string): string {
   const normalize = (value: string) => value.replace(/\\/g, "/").replace(/\/+$/, "");
   const key = normalize(path);
@@ -912,16 +926,7 @@ function App() {
     setEditorWorkspaces((current) => {
       const workspace = current[workspaceId];
       if (!workspace) return current;
-      const groups = workspace.groups.map((group) => {
-        const removedIndex = group.tabIds.indexOf(tabId);
-        if (removedIndex < 0) return group;
-        const tabIds = group.tabIds.filter((id) => id !== tabId);
-        const activeTabId = group.activeTabId === tabId
-          ? tabIds[Math.min(removedIndex, tabIds.length - 1)] ?? null
-          : group.activeTabId;
-        return { ...group, tabIds, activeTabId };
-      });
-      return { ...current, [workspaceId]: { ...workspace, tabs: workspace.tabs.filter((tab) => tab.id !== tabId), groups } };
+      return { ...current, [workspaceId]: withoutEditorTabs(workspace, new Set([tabId])) };
     });
   }, [activeTerminalWorkspace?.id, editorWorkspaces]);
 
@@ -1550,6 +1555,24 @@ function App() {
   const removeWorkspaceFolder = useCallback((path: string) => {
     const workspace = activeTerminalWorkspace;
     if (!workspace || !workspace.folderPaths.includes(path)) return;
+    // Tabs under this folder close with it, so ask first and leave the folder in place if the user cancels.
+    const folderTabs = (editorWorkspaces[workspace.id]?.tabs ?? []).filter((tab) => tab.root === path);
+    const unsavedNames = folderTabs.filter(isEditorTabUnsaved).map((tab) => tab.name);
+    const savingNames = folderTabs.filter((tab) => tab.isSaving).map((tab) => tab.name);
+    const prompts = [
+      unsavedNames.length > 0 ? `Discard unsaved changes to ${unsavedNames.join(", ")}?` : "",
+      savingNames.length > 0 ? `${savingNames.join(", ")} still saving. Remove anyway? The save will finish in the background.` : "",
+    ].filter(Boolean);
+    if (prompts.length > 0 && !window.confirm(prompts.join("\n"))) return;
+    if (folderTabs.length > 0) {
+      const removedIds = new Set(folderTabs.map((tab) => tab.id));
+      for (const tabId of removedIds) editorOperationIdsRef.current.delete(editorOperationKey(workspace.id, tabId));
+      setEditorWorkspaces((current) => {
+        const editor = current[workspace.id];
+        if (!editor) return current;
+        return { ...current, [workspace.id]: withoutEditorTabs(editor, removedIds) };
+      });
+    }
     const folderPaths = workspace.folderPaths.filter((folder) => folder !== path);
     const rootPath = workspace.rootPath === path ? folderPaths[folderPaths.length - 1] ?? "" : workspace.rootPath;
     updateTerminalWorkspace(workspace.id, (current) => ({
@@ -1564,7 +1587,7 @@ function App() {
     void sendTerminalDirectoryCommand(workspace.id, terminal, rootPath).catch((reason) => {
       showToast(`Could not change terminal working directory: ${String(reason)}`);
     });
-  }, [activeTerminalWorkspace, sendTerminalDirectoryCommand, showToast, terminals, updateTerminalWorkspace]);
+  }, [activeTerminalWorkspace, editorWorkspaces, sendTerminalDirectoryCommand, showToast, terminals, updateTerminalWorkspace]);
 
   const createWorkspaceFile = useCallback(async (root: string, parentPath: string, name: string) => {
     if (!isTauri()) {
