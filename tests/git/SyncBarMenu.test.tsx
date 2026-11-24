@@ -29,15 +29,33 @@ describe("SyncBar action menu", () => {
   beforeEach(() => tauri.invoke.mockReset());
   afterEach(cleanup);
 
-  it("keeps the More button, New branch, Refresh and the view switch when the repository has no remote", async () => {
+  it("hides Fetch and Pull when the repository has no remote, and offers Publish in the menu", async () => {
     const user = userEvent.setup();
     setup({ branch: "main", upstream: null, ahead: 0, behind: 0, hasRemote: false });
     const menu = await openMenu(user);
     expect(within(menu).queryByRole("menuitem", { name: /Fetch/ })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: /Pull/ })).toBeNull();
+    expect(within(menu).getByRole("menuitem", { name: "Publish branch…" })).toBeEnabled();
     expect(within(menu).getByRole("menuitem", { name: "New branch…" })).toBeInTheDocument();
     expect(within(menu).getByRole("menuitem", { name: "Refresh" })).toBeInTheDocument();
     expect(within(menu).getByRole("menuitem", { name: "Tree view" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Push to remote|Publish branch/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Publish branch" })).toBeEnabled();
+  });
+
+  it("opens the publish dialog from the menu when there is no remote", async () => {
+    const user = userEvent.setup();
+    const props = setup({ branch: "main", upstream: null, ahead: 0, behind: 0, hasRemote: false });
+    const menu = await openMenu(user);
+    await user.click(within(menu).getByRole("menuitem", { name: "Publish branch…" }));
+    expect(await screen.findByRole("dialog", { name: "Publish main" })).toBeInTheDocument();
+    expect(props.onError).not.toHaveBeenCalled();
+  });
+
+  it("does not offer Publish in the menu when a remote already exists", async () => {
+    const user = userEvent.setup();
+    setup({ branch: "main", upstream: "origin/main", ahead: 0, behind: 0, hasRemote: true });
+    const menu = await openMenu(user);
+    expect(within(menu).queryByRole("menuitem", { name: /Publish/ })).toBeNull();
   });
 
   it("shows Push with its count outside the menu, and Fetch, Pull with its count inside it", async () => {
