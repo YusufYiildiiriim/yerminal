@@ -122,20 +122,16 @@ export function TerminalPane({ sessionId, shell, profileId, workingDirectory, ac
     });
     const handleFocus = () => onFocusRef.current(sessionId);
     hostRef.current.addEventListener("focusin", handleFocus);
-    // Windows-terminal style right-click: copy the selection (and clear it), otherwise paste the clipboard.
-    // No menu is shown inside the terminal body; the pane header keeps its own menu.
+    // Right-click: copy the selection (and clear it). Without a selection it pastes nothing; paste is Ctrl+Shift+V / Ctrl+V only,
+    // because agent TUIs (Claude Code, Codex) already paste on right-click and a second paste doubles the input.
+    // The event is still prevented and stopped so the webview menu and the pane menu stay out of the terminal body.
     const handleContextMenu = (event: MouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
-      if (terminal.hasSelection()) {
-        const selection = terminal.getSelection();
-        terminal.clearSelection();
-        void navigator.clipboard?.writeText(selection).catch(() => {});
-        return;
-      }
-      void navigator.clipboard?.readText().then((text) => {
-        if (text && !disposed) terminal.paste(text);
-      }).catch(() => {});
+      if (!terminal.hasSelection()) return;
+      const selection = terminal.getSelection();
+      terminal.clearSelection();
+      void navigator.clipboard?.writeText(selection).catch(() => {});
     };
     hostRef.current.addEventListener("contextmenu", handleContextMenu);
 

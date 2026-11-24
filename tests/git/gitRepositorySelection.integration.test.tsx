@@ -26,6 +26,7 @@ function deferred<T>(): Deferred<T> {
 /** Each folder's repository info is held back until the test resolves it. */
 function setup(folders: string[]) {
   localStorage.clear();
+  localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({ terminalUseDefaults: true }));
   localStorage.setItem("yerminal.terminal-workspaces", JSON.stringify({
     workspaces: [{ id: "workspace-1", name: "Workspace 1", rootPath: folders[0], folderPaths: folders }],
     activeId: "workspace-1",

@@ -56,10 +56,12 @@ describe("terminal right-click", () => {
     return { host: view.container.querySelector(".terminal-fit") as HTMLElement, onParentContextMenu };
   }
 
-  it("pastes the clipboard and does not bubble to the pane menu", async () => {
+  it("without a selection pastes nothing, and still does not bubble to the pane menu", async () => {
     const { host, onParentContextMenu } = mount();
     expect(fireEvent.contextMenu(host)).toBe(false);
-    await waitFor(() => expect(xterm.instance!.paste).toHaveBeenCalledWith("echo pasted"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(clipboard.readText).not.toHaveBeenCalled();
+    expect(xterm.instance!.paste).not.toHaveBeenCalled();
     expect(onParentContextMenu).not.toHaveBeenCalled();
   });
 

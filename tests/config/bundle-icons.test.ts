@@ -17,7 +17,10 @@ function paeth(a: number, b: number, c: number) {
 
 // Decodes an 8-bit RGBA, non-interlaced PNG (the only format Tauri emits for these files).
 function decodePng(path: string): DecodedPng {
-  const data = readFileSync(path);
+  return decodePngBuffer(readFileSync(path));
+}
+
+function decodePngBuffer(data: Buffer): DecodedPng {
   let offset = 8;
   let width = 0;
   let height = 0;
@@ -98,6 +101,37 @@ describe("desktop bundle icons", () => {
     // ICONDIRENTRY width byte: 0 means 256.
     const sizes = Array.from({ length: count }, (_, index) => ico[6 + index * 16] || 256);
     expect(sizes).toEqual(expect.arrayContaining([16, 32, 48, 256]));
+  });
+  it("paints the approved mark in every ICO entry, including the 16 and 24 px taskbar sizes", () => {
+    const ico = readFileSync("src-tauri/icons/icon.ico");
+    const count = ico.readUInt16LE(4);
+    const entries = Array.from({ length: count }, (_, index) => {
+      const entry = 6 + index * 16;
+      const bytes = ico.readUInt32LE(entry + 8);
+      const offset = ico.readUInt32LE(entry + 12);
+      return { size: ico[entry] || 256, data: ico.subarray(offset, offset + bytes) };
+    });
+    expect(entries.map((entry) => entry.size)).toEqual(expect.arrayContaining([16, 24, 32, 48, 64, 256]));
+    const approved = [
+      { name: "green", rgb: [0x1c, 0x7a, 0x48] },
+      { name: "amber", rgb: [0xa3, 0x65, 0x0f] },
+      { name: "ground", rgb: [0x17, 0x16, 0x1f] },
+    ];
+    for (const entry of entries) {
+      const png = decodePngBuffer(entry.data);
+      expect(png.width).toBe(entry.size);
+      expect(png.height).toBe(entry.size);
+      expect(png.pixels[3]).toBeLessThan(8);
+      // Small sizes blend edges, so each approved color is required to appear as an opaque pixel within 16 per channel.
+      for (const color of approved) {
+        let painted = false;
+        for (let offset = 0; offset < png.pixels.length && !painted; offset += 4) {
+          painted =
+            png.pixels[offset + 3] === 255 && color.rgb.every((value, channel) => Math.abs(png.pixels[offset + channel] - value) <= 16);
+        }
+        expect(painted, `${entry.size}px entry is missing ${color.name}`).toBe(true);
+      }
+    }
   });
   it.each(["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.png"])(
     "paints the approved mark colors and a transparent rounded corner: %s", (path) => {

@@ -1,5 +1,6 @@
 pub mod agent_usage;
 pub mod git;
+pub mod git_gate;
 pub mod git_remote;
 pub mod terminal;
 pub mod workspace_fs;
@@ -140,105 +141,122 @@ fn create_agent_terminal(
         .create_agent(app, session_id, &profile_id, working_directory, cols, rows)
 }
 
-#[tauri::command]
-fn git_repository_info(path: String) -> Result<RepositoryInfo, String> {
-    git::repository_info(&path)
+/// Shared by every Git read: at most `git_gate::GIT_READ_LIMIT` run at once, first come first served.
+static GIT_READS: git_gate::ReadGate = git_gate::ReadGate::new(git_gate::GIT_READ_LIMIT);
+
+/// Runs a Git read on a blocking worker, so the main thread never waits for git2.
+async fn git_read<T: Send + 'static>(work: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(move || GIT_READS.run(work))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+/// Runs a Git write on a blocking worker. Writes are user actions and are not queued behind reads.
+async fn git_write<T: Send + 'static>(work: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-fn git_status(path: String) -> Result<Vec<FileChange>, String> {
-    git::status(&path)
+async fn git_repository_info(path: String) -> Result<RepositoryInfo, String> {
+    git_read(move || git::repository_info(&path)).await
 }
 
 #[tauri::command]
-fn git_stage_file(path: String, file_path: String) -> Result<(), String> {
-    git::stage_file(&path, &file_path)
+async fn git_status(path: String) -> Result<Vec<FileChange>, String> {
+    git_read(move || git::status(&path)).await
 }
 
 #[tauri::command]
-fn git_unstage_file(path: String, file_path: String) -> Result<(), String> {
-    git::unstage_file(&path, &file_path)
+async fn git_stage_file(path: String, file_path: String) -> Result<(), String> {
+    git_write(move || git::stage_file(&path, &file_path)).await
 }
 
 #[tauri::command]
-fn git_discard_worktree_file(path: String, file_path: String) -> Result<(), String> {
-    git::discard_worktree_file(&path, &file_path)
+async fn git_unstage_file(path: String, file_path: String) -> Result<(), String> {
+    git_write(move || git::unstage_file(&path, &file_path)).await
 }
 
 #[tauri::command]
-fn git_commit_staged(path: String, message: String) -> Result<String, String> {
-    git::commit_staged(&path, &message)
+async fn git_discard_worktree_file(path: String, file_path: String) -> Result<(), String> {
+    git_write(move || git::discard_worktree_file(&path, &file_path)).await
 }
 
 #[tauri::command]
-fn git_diff(path: String, file_path: String, staged: bool) -> Result<String, String> {
-    git::diff(&path, &file_path, staged)
+async fn git_commit_staged(path: String, message: String) -> Result<String, String> {
+    git_write(move || git::commit_staged(&path, &message)).await
 }
 
 #[tauri::command]
-fn git_history(path: String, skip: usize, limit: usize, branch: Option<String>) -> Result<Vec<CommitInfo>, String> {
-    match branch.as_deref().filter(|name| !name.is_empty()) {
+async fn git_diff(path: String, file_path: String, staged: bool) -> Result<String, String> {
+    git_read(move || git::diff(&path, &file_path, staged)).await
+}
+
+#[tauri::command]
+async fn git_history(path: String, skip: usize, limit: usize, branch: Option<String>) -> Result<Vec<CommitInfo>, String> {
+    git_read(move || match branch.as_deref().filter(|name| !name.is_empty()) {
         Some(name) => git::branch_history(&path, name, skip, limit),
         None => git::history(&path, skip, limit),
-    }
+    }).await
 }
 
 #[tauri::command]
-fn git_outgoing_commits(path: String) -> Result<Vec<CommitInfo>, String> {
-    git::outgoing_commits(&path)
+async fn git_outgoing_commits(path: String) -> Result<Vec<CommitInfo>, String> {
+    git_read(move || git::outgoing_commits(&path)).await
 }
 
 #[tauri::command]
-fn git_pushed_history(path: String, skip: usize, limit: usize) -> Result<git::HistoryPage, String> {
-    git::pushed_history(&path, skip, limit)
+async fn git_pushed_history(path: String, skip: usize, limit: usize) -> Result<git::HistoryPage, String> {
+    git_read(move || git::pushed_history(&path, skip, limit)).await
 }
 
 #[tauri::command]
-fn git_branches(path: String) -> Result<Vec<BranchInfo>, String> {
-    git::branches(&path)
+async fn git_branches(path: String) -> Result<Vec<BranchInfo>, String> {
+    git_read(move || git::branches(&path)).await
 }
 
 #[tauri::command]
-fn git_commit_files(path: String, commit_id: String) -> Result<Vec<CommitFileChange>, String> {
-    git::commit_files(&path, &commit_id)
+async fn git_commit_files(path: String, commit_id: String) -> Result<Vec<CommitFileChange>, String> {
+    git_read(move || git::commit_files(&path, &commit_id)).await
 }
 
 #[tauri::command]
-fn git_commit_file_diff(
+async fn git_commit_file_diff(
     path: String,
     commit_id: String,
     file_path: String,
 ) -> Result<String, String> {
-    git::commit_file_diff(&path, &commit_id, &file_path)
+    git_read(move || git::commit_file_diff(&path, &commit_id, &file_path)).await
 }
 
 #[tauri::command]
-fn git_diff_versions(path: String, file_path: String, staged: bool) -> Result<git::DiffVersions, String> {
-    git::diff_versions(&path, &file_path, staged)
+async fn git_diff_versions(path: String, file_path: String, staged: bool) -> Result<git::DiffVersions, String> {
+    git_read(move || git::diff_versions(&path, &file_path, staged)).await
 }
 
 #[tauri::command]
-fn git_commit_file_versions(
+async fn git_commit_file_versions(
     path: String,
     commit_id: String,
     file_path: String,
 ) -> Result<git::DiffVersions, String> {
-    git::commit_file_versions(&path, &commit_id, &file_path)
+    git_read(move || git::commit_file_versions(&path, &commit_id, &file_path)).await
 }
 
 #[tauri::command]
-fn git_commit_file_content(
+async fn git_commit_file_content(
     path: String,
     commit_id: String,
     file_path: String,
 ) -> Result<CommitFileContent, String> {
-    git::commit_file_content(&path, &commit_id, &file_path)
+    git_read(move || git::commit_file_content(&path, &commit_id, &file_path)).await
 }
 
 
 #[tauri::command]
-fn git_remote_state(path: String) -> Result<RemoteState, String> {
-    git_remote::remote_state(&path)
+async fn git_remote_state(path: String) -> Result<RemoteState, String> {
+    git_read(move || git_remote::remote_state(&path)).await
 }
 
 #[tauri::command]
@@ -260,6 +278,26 @@ async fn git_push(path: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || git_remote::push(&path))
         .await
         .map_err(|error| error.to_string())?
+}
+
+/// Adds a remote from a typed URL and publishes the current branch to it. A user action, so it is a write.
+#[tauri::command]
+async fn git_add_remote_publish(path: String, name: String, url: String) -> Result<String, String> {
+    git_write(move || git_remote::add_remote_and_publish(&path, &name, &url)).await
+}
+
+/// Whether the GitHub CLI is installed and signed in, and the account. Never signs in.
+#[tauri::command]
+async fn git_github_status() -> Result<git_remote::GithubStatus, String> {
+    tauri::async_runtime::spawn_blocking(git_remote::github_status)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Creates a GitHub repository with `gh` from the typed name, then publishes the current branch to it.
+#[tauri::command]
+async fn git_create_github_repo(path: String, name: String, public: bool) -> Result<String, String> {
+    git_write(move || git_remote::create_github_repo(&path, &name, public)).await
 }
 
 #[tauri::command]
@@ -310,13 +348,13 @@ async fn git_merge_abort(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn git_merge_message(path: String) -> Result<String, String> {
-    git::merge_message(&path)
+async fn git_merge_message(path: String) -> Result<String, String> {
+    git_read(move || git::merge_message(&path)).await
 }
 
 #[tauri::command]
-fn git_resolve_conflict(path: String, file_path: String, side: String) -> Result<(), String> {
-    git::resolve_conflict(&path, &file_path, &side)
+async fn git_resolve_conflict(path: String, file_path: String, side: String) -> Result<(), String> {
+    git_write(move || git::resolve_conflict(&path, &file_path, &side)).await
 }
 #[tauri::command]
 fn list_workspace_directory(root: String, path: String) -> Result<Vec<WorkspaceEntry>, String> {
@@ -397,6 +435,9 @@ pub fn run() {
             git_fetch,
             git_pull,
             git_push,
+            git_add_remote_publish,
+            git_github_status,
+            git_create_github_repo,
             git_checkout_branch,
             git_create_branch,
             git_delete_branch,

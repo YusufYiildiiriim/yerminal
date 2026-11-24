@@ -42,7 +42,7 @@ function seedWorkspace(settings: Record<string, unknown> = {}) {
     workspaces: [{ id: "workspace-1", name: "Workspace 1", rootPath, folderPaths: [rootPath] }],
     activeId: "workspace-1",
   }));
-  localStorage.setItem("yerminal.app-settings.v1", JSON.stringify(settings));
+  localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({ terminalUseDefaults: true, ...settings }));
 }
 
 function seedTwoWorkspaces(settings: Record<string, unknown> = {}) {
@@ -53,7 +53,7 @@ function seedTwoWorkspaces(settings: Record<string, unknown> = {}) {
     ],
     activeId: "workspace-1",
   }));
-  localStorage.setItem("yerminal.app-settings.v1", JSON.stringify(settings));
+  localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({ terminalUseDefaults: true, ...settings }));
 }
 
 function writeCalls() {

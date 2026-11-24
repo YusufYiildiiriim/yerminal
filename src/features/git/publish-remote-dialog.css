@@ -1,0 +1,17 @@
+/* Same backdrop and layer as the terminal open prompt (terminal-open-dialog.css). */
+.publish-remote-backdrop { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: var(--space-3); background: color-mix(in srgb, var(--theme-surface) 80%, transparent); }
+.publish-remote-dialog { display: flex; flex-direction: column; gap: var(--space-3); width: min(360px, 100%); max-height: 100%; overflow: auto; padding: var(--space-3) var(--space-4) var(--space-4); border: 1px solid var(--theme-border); border-radius: 8px; background: var(--theme-surface); color: var(--theme-text); font-family: var(--font-ui); font-size: var(--fs-md); }
+.publish-remote-dialog h2 { margin: 0; font-size: var(--fs-lg); font-weight: 600; overflow-wrap: anywhere; }
+.publish-remote-hint { margin: 0; color: var(--text-muted); font-size: var(--fs-xs); }
+.publish-remote-field { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--fs-xs); }
+.publish-remote-field input { min-height: var(--control-h-md); min-width: 0; padding: 0 var(--space-2); border: 1px solid var(--theme-border); border-radius: 5px; background: transparent; color: var(--theme-text); font: inherit; font-size: var(--fs-md); }
+.publish-remote-field input:focus { border-color: var(--theme-accent, #b3a3ee); outline: none; }
+.publish-remote-error { margin: 0; color: var(--theme-danger, #e58a8a); font-size: var(--fs-xs); }
+.publish-remote-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.publish-remote-actions button { min-height: var(--control-h-md); padding: 0 var(--space-3); border: 1px solid var(--theme-border); border-radius: 5px; background: transparent; color: var(--theme-text); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.publish-remote-actions button.is-primary { border-color: color-mix(in srgb, var(--theme-accent, #b3a3ee) 55%, var(--theme-border)); background: color-mix(in srgb, var(--theme-accent, #b3a3ee) 16%, transparent); }
+.publish-remote-actions button:disabled { opacity: .45; cursor: default; }
+.publish-remote-modes { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: 0; border: 0; font-size: var(--fs-xs); }
+.publish-remote-option { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+.publish-remote-option input:disabled + span { opacity: .45; }
+.publish-remote-warning { margin: 0; padding: var(--space-1) var(--space-2); border-left: 2px solid var(--theme-danger, #e58a8a); color: var(--theme-text); font-size: var(--fs-xs); }

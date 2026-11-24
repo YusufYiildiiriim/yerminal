@@ -99,6 +99,31 @@ describe("terminal open with defaults on (no prompt)", () => {
   });
 });
 
+describe("terminal open when the defaults setting was never saved (prompt)", () => {
+  beforeEach(() => {
+    tauri.invoke.mockReset();
+    tauri.open.mockReset();
+    tauri.open.mockResolvedValue(null);
+    tauri.invoke.mockImplementation(async (command: string) => {
+      if (command === "list_workspace_directory") return [];
+      if (command === "terminal_output_snapshot") return { events: [] };
+      if (command === "terminal_resource_usage") return [];
+      return undefined;
+    });
+  });
+
+  it("asks for folder and group instead of creating the terminal silently", async () => {
+    const user = userEvent.setup();
+    seed({});
+    render(<App />);
+
+    const dialog = await screen.findByRole("dialog", { name: "Open terminal" });
+    expect(createdDirectories()).toEqual([]);
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(createdDirectories()).toEqual([]);
+  });
+});
+
 describe("terminal open with defaults off (prompt)", () => {
   beforeEach(() => {
     tauri.invoke.mockReset();
@@ -202,7 +227,7 @@ describe("terminal open settings persistence", () => {
 
   it("stores the switch and defaults from Settings and applies them after a restart", async () => {
     const user = userEvent.setup();
-    seed({});
+    seed({ terminalUseDefaults: true });
     const first = render(<App />);
     await waitFor(() => expect(createdDirectories()).toEqual([root]));
 

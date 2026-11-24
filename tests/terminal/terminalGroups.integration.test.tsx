@@ -38,6 +38,7 @@ afterEach(() => {
 describe("terminal groups", () => {
   beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({ terminalUseDefaults: true }));
     localStorage.setItem("yerminal.terminal-workspaces", JSON.stringify({
       workspaces: [{ id: "workspace-1", name: "Workspace 1", rootPath: "", folderPaths: [] }],
       activeId: "workspace-1",
@@ -165,6 +166,7 @@ describe("terminal groups", () => {
   });
 
   it("restores persisted group names and active group without reviving old PTY IDs or layouts", async () => {
+    localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({ terminalUseDefaults: true }));
     localStorage.setItem("yerminal.terminal-workspaces", JSON.stringify({
       workspaces: [{
         id: "workspace-1",
@@ -202,6 +204,7 @@ describe("terminal groups", () => {
   });
 
   it("falls back to the first persisted group when the active group ID is stale", async () => {
+    localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({ terminalUseDefaults: true }));
     localStorage.setItem("yerminal.terminal-workspaces", JSON.stringify({
       workspaces: [{
         id: "workspace-1",
@@ -282,6 +285,7 @@ describe("terminal groups", () => {
 describe("terminal right-click menus", () => {
   beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({ terminalUseDefaults: true }));
     localStorage.setItem("yerminal.terminal-workspaces", JSON.stringify({
       workspaces: [{ id: "workspace-1", name: "Workspace 1", rootPath: "", folderPaths: [] }],
       activeId: "workspace-1",
@@ -340,6 +344,7 @@ describe("terminal right-click menus", () => {
 describe("remembered terminal view per group", () => {
   beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem("yerminal.app-settings.v1", JSON.stringify({ terminalUseDefaults: true }));
     localStorage.setItem("yerminal.terminal-workspaces", JSON.stringify({
       workspaces: [{ id: "workspace-1", name: "Workspace 1", rootPath: "", folderPaths: [] }],
       activeId: "workspace-1",
