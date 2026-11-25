@@ -30,14 +30,14 @@ afterEach(() => {
 });
 
 describe("app top bar", () => {
-  it("has no brand logo or name; keeps the location text", () => {
+  it("shows the brand mark and name in the title bar next to the location text", () => {
     localStorage.clear();
     render(<App />);
     const titlebar = document.querySelector(".titlebar") as HTMLElement;
-    expect(titlebar.querySelector(".brand")).toBeNull();
-    expect(titlebar.querySelector(".brand-logo")).toBeNull();
-    expect(titlebar.querySelector(".brand-name")).toBeNull();
-    expect(within(titlebar).queryByText("yerminal")).toBeNull();
+    const brand = titlebar.querySelector(".brand") as HTMLElement;
+    expect(brand.querySelector("svg")).not.toBeNull();
+    expect(within(brand).getByText("yerminal")).toHaveClass("brand-name");
     expect(titlebar.querySelector(".titlebar-breadcrumb")).not.toBeNull();
+    expect(within(titlebar).getByRole("button", { name: "Close window" })).toBeInTheDocument();
   });
 });
