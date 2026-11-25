@@ -29,15 +29,15 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe("titlebar brand", () => {
-  it("shows the geometric mark instead of the letter y", () => {
+describe("app top bar", () => {
+  it("has no brand logo or name; keeps the location text", () => {
     localStorage.clear();
     render(<App />);
     const titlebar = document.querySelector(".titlebar") as HTMLElement;
-    const logo = titlebar.querySelector(".brand-logo") as HTMLElement;
-    expect(logo.querySelector("svg")).not.toBeNull();
-    expect(logo.querySelectorAll("path")).toHaveLength(3);
-    expect(logo.textContent).toBe("");
-    expect(within(titlebar).getByText("yerminal", { selector: ".brand-name" })).toBeInTheDocument();
+    expect(titlebar.querySelector(".brand")).toBeNull();
+    expect(titlebar.querySelector(".brand-logo")).toBeNull();
+    expect(titlebar.querySelector(".brand-name")).toBeNull();
+    expect(within(titlebar).queryByText("yerminal")).toBeNull();
+    expect(titlebar.querySelector(".titlebar-breadcrumb")).not.toBeNull();
   });
 });
