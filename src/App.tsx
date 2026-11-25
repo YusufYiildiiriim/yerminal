@@ -31,6 +31,8 @@ import { FloatingTerminalDockGuides, FloatingTerminalModeToggle } from "./featur
 import { useFloatingTerminalLayout, type TerminalDockEdge, type TerminalLayoutMode } from "./features/terminal/floatingTerminalLayout";
 import { ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { clampFontSize, SettingsDialog, type AppSettings, type SectionId } from "./features/settings/SettingsDialog";
+import { ReleaseNotesDialog } from "./features/releaseNotes/ReleaseNotesDialog";
+import { CURRENT_VERSION } from "./features/releaseNotes/releaseNotes";
 import { applyInterfaceSize, normalizeInterfaceSize } from "./features/settings/interfaceSize";
 import { WorkspaceViewLayout } from "./features/workspace/WorkspaceViewLayout";
 import { SIDEBAR_MAX_PX, SIDEBAR_MIN_PX, sidebarLimitPercent } from "./features/workspace/sidebarWidth";
@@ -420,6 +422,7 @@ function App() {
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const [workspaceFolderRefresh, setWorkspaceFolderRefresh] = useState<{ root: string; path: string; nonce: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
   // Open while the folder and group prompt is up (defaults switch off); resolved by the prompt's confirm or cancel.
   const [terminalOpenPrompt, setTerminalOpenPrompt] = useState<{ ask: TerminalOpenAsk; folder: string | null; groupId: string | null } | null>(null);
   const terminalOpenResolveRef = useRef<((choice: TerminalOpenChoice | null) => void) | null>(null);
@@ -1764,6 +1767,7 @@ function App() {
               <button className="tool-sidebar-autohide" type="button" aria-label={toolPanelAutoHide ? "Disable automatic hiding of workspace panel" : "Automatically hide workspace panel"} aria-pressed={toolPanelAutoHide} title={toolPanelAutoHide ? "Keep workspace panel visible" : "Automatically hide workspace panel"} onClick={() => setToolPanelAutoHide((enabled) => !enabled)}>
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></svg>
               </button>
+              <button className="tool-sidebar-version" type="button" aria-label={`Version v${CURRENT_VERSION}`} title="Version notes" aria-haspopup="dialog" onClick={() => setReleaseNotesOpen(true)}>v{CURRENT_VERSION}</button>
             </nav>
             <div className="workspace-sidebar-content">
             <section className="tool-content" aria-label={tools.find((tool) => tool.id === activeTool)?.label}>
@@ -1828,6 +1832,7 @@ function App() {
         }}
       />}
       {terminalOpenPrompt && <TerminalOpenDialog ask={terminalOpenPrompt.ask} folders={folderChoices(activeTerminalWorkspace?.rootPath ?? "", activeTerminalWorkspace?.folderPaths ?? [], readRecentTerminalFolders())} initialFolder={terminalOpenPrompt.folder ?? activeTerminalWorkspace?.rootPath ?? null} groups={activeTerminalWorkspace?.groups ?? []} activeGroupId={activeTerminalWorkspace?.activeGroupId ?? ""} fixedGroupId={terminalOpenPrompt.groupId} automaticNameFor={(groupId) => groupId === null ? automaticTerminalName([]) : automaticTerminalName(activeTerminalWorkspace?.groups.find((group) => group.id === groupId)?.terminalIds ?? [])} onBrowse={browseTerminalFolder} onConfirm={finishTerminalOpenPrompt} onCancel={() => finishTerminalOpenPrompt(null)} />}
+      {releaseNotesOpen && <ReleaseNotesDialog onClose={() => setReleaseNotesOpen(false)} />}
       {settingsOpen && <SettingsDialog initialSection={settingsInitialSection} settings={settings} shortcuts={HELP_SHORTCUTS} onSettingsChange={setSettings} onClose={closeSettings} />}
       {toast && <div className={`app-toast app-toast--${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"} aria-live={toast.kind === "error" ? "assertive" : "polite"} aria-atomic="true"><span>{toast.message}</span><button aria-label="Dismiss notification" onClick={dismissToast} type="button">×</button></div>}
     </main>

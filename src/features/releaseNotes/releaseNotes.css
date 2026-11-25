@@ -1,0 +1,50 @@
+/* Version notes dialog. Same overlay and head pattern as the Settings dialog; theme tokens only. */
+
+.release-notes-overlay {
+  position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .45); color: var(--theme-text, #d4d4d8);
+  font-family: var(--font-ui); font-size: var(--fs-md);
+}
+.release-notes-dialog {
+  width: min(560px, calc(100% - 48px)); height: min(560px, calc(100% - 48px));
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--theme-surface, #111115); border: 1px solid var(--theme-border, #23232a);
+  border-radius: 12px; box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+}
+
+.release-notes-head {
+  height: 52px; flex: none; display: flex; align-items: center; gap: 12px;
+  padding: 0 12px 0 20px; border-bottom: 1px solid var(--theme-border, #23232a);
+}
+.release-notes-head h2 { margin: 0; font-size: var(--fs-lg); font-weight: 600; color: var(--theme-text, #d4d4d8); }
+.release-notes-close {
+  margin-left: auto; width: 32px; height: 32px; flex: none; padding: 0; display: grid; place-items: center;
+  border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer;
+}
+.release-notes-close svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; flex: none; }
+.release-notes-close:hover { color: var(--theme-text, #d4d4d8); background: color-mix(in srgb, var(--theme-text, #d4d4d8) 8%, transparent); }
+.release-notes-close:focus-visible, .release-notes-issue:focus-visible { outline: 1px solid var(--theme-muted, #808290); outline-offset: -1px; }
+
+.release-notes-body { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 20px 20px; }
+.release-notes-release + .release-notes-release { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--theme-border, #23232a); }
+.release-notes-release h3 { margin: 0 0 6px; font-size: var(--fs-md); font-weight: 600; color: var(--theme-text, #d4d4d8); }
+.release-notes-issues { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.release-notes-issue {
+  width: 100%; min-height: 28px; display: flex; align-items: baseline; gap: 10px; box-sizing: border-box;
+  padding: 4px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--theme-text, #d4d4d8);
+  font: var(--fs-md) var(--font-ui); text-align: left; cursor: pointer;
+}
+.release-notes-issue:hover { background: color-mix(in srgb, var(--theme-text, #d4d4d8) 8%, transparent); }
+.release-notes-issue-number { flex: none; font: var(--fs-sm) var(--font-mono-ui); color: var(--text-muted, #808290); }
+.release-notes-issue-title { min-width: 0; overflow-wrap: anywhere; }
+.release-notes-empty, .release-notes-error { margin: 6px 0 0; color: var(--text-muted); font-size: var(--fs-sm); }
+.release-notes-error { color: var(--theme-text, #d4d4d8); }
+
+/* Rail entry below Auto-hide: shows the app version and opens the dialog. */
+.tool-sidebar-version {
+  min-width: 0; min-height: 24px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+  padding: 2px 2px; border: 0; border-radius: 5px; background: transparent; color: var(--text-muted, #808290);
+  font: var(--fs-xs) var(--font-mono-ui); overflow: hidden; white-space: nowrap;
+}
+.tool-sidebar-version:hover, .tool-sidebar-version:focus-visible { color: var(--theme-text, #d4d4d8); }
+.tool-sidebar-version:focus-visible { outline: 1px solid var(--theme-muted, #808290); outline-offset: -1px; }

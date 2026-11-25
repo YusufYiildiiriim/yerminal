@@ -36,7 +36,7 @@ describe("sidebar version entry", () => {
   it("shows the app version below Auto-hide in the workspace rail", () => {
     render(<App />);
     const rail = screen.getByRole("navigation", { name: "Workspace tools" });
-    const version = within(rail).getByRole("button", { name: `Version notes, v${CURRENT_VERSION}` });
+    const version = within(rail).getByRole("button", { name: `Version v${CURRENT_VERSION}` });
     expect(version).toHaveTextContent(`v${CURRENT_VERSION}`);
     const autoHide = within(rail).getByRole("button", { name: /hide workspace panel/i });
     expect(autoHide.compareDocumentPosition(version) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -45,7 +45,7 @@ describe("sidebar version entry", () => {
   it("opens the version notes dialog from the rail entry", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(screen.getByRole("button", { name: `Version notes, v${CURRENT_VERSION}` }));
+    await user.click(screen.getByRole("button", { name: `Version v${CURRENT_VERSION}` }));
     expect(screen.getByRole("dialog", { name: "Version notes" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Version notes" })).not.toBeInTheDocument();

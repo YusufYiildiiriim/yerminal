@@ -1,12 +1,11 @@
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { RELEASES } from "../../src/features/releaseNotes/releaseNotes";
 
-// Release gate: run with `npm run release:check`. Fails when the app version files disagree
-// or the current version has no entry in the in-app version notes.
-const root = fileURLToPath(new URL("../..", import.meta.url));
+// Release gate: run with `npm run release:check` from the repository root. Fails when the app
+// version files disagree or the current version has no entry in the in-app version notes.
+const root = process.cwd();
 
 function cargoPackageVersion(text: string): string | undefined {
   const packageSection = text.split(/^\[package\]\s*$/m)[1]?.split(/^\[/m)[0] ?? "";
