@@ -2981,7 +2981,7 @@ mod tests {
         }
 
         let error = diff_versions(&path, "link.txt", false).unwrap_err();
-        assert!(error.contains("symbolic link"), "{error}");
+        assert!(error.to_lowercase().contains("symbolic link"), "{error}");
         assert!(!error.contains("outside secret"));
     }
 }
