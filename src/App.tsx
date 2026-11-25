@@ -23,6 +23,7 @@ import { TerminalResourceGraph } from "./features/terminal/TerminalResourceGraph
 import { AgentUsagePanel } from "./features/agent-usage/AgentUsagePanel";
 import { AppPanelDock } from "./features/app-panel/AppPanelDock";
 import "./features/app-panel/app-panel.css";
+import { readDockPrefs, writeDockPrefs } from "./features/app-panel/dockPrefs";
 import { PaneRenameInput, TerminalPaneMenu } from "./features/terminal/TerminalPaneMenu";
 import { CodeWorkspace, type EditorFileTab, type EditorGroupState } from "./features/editor/CodeWorkspace";
 import { QuickOpenDialog, type QuickOpenFile } from "./features/editor/QuickOpenDialog";
@@ -425,6 +426,8 @@ function App() {
   const [workspaceFolderRefresh, setWorkspaceFolderRefresh] = useState<{ root: string; path: string; nonce: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
+  const [appPanelOpen, setAppPanelOpen] = useState(() => readDockPrefs().open);
+  const setAppPanel = useCallback((next: boolean) => { setAppPanelOpen(next); writeDockPrefs({ open: next }); }, []);
   // Open while the folder and group prompt is up (defaults switch off); resolved by the prompt's confirm or cancel.
   const [terminalOpenPrompt, setTerminalOpenPrompt] = useState<{ ask: TerminalOpenAsk; folder: string | null; groupId: string | null } | null>(null);
   const terminalOpenResolveRef = useRef<((choice: TerminalOpenChoice | null) => void) | null>(null);
@@ -1746,8 +1749,9 @@ function App() {
 
   return (
     <main className="app-shell" data-theme={settings.theme} style={{ "--editor-font-family": settings.editorFontFamily, "--editor-font-size": settings.editorFontSize + "px", "--terminal-font-family": settings.terminalFontFamily, "--terminal-font-size": settings.terminalFontSize + "px" } as CSSProperties}>
-      <WindowTitleBar breadcrumb={titlebarBreadcrumb} />
+      <WindowTitleBar breadcrumb={titlebarBreadcrumb} appsOpen={appPanelOpen} onToggleApps={() => setAppPanel(!appPanelOpen)} />
 
+      <div className="shell-body">
       <PanelGroup direction="horizontal" className="workspace">
         <Panel ref={toolsPanelRef} defaultSize={25} minSize={sidebarLimitPercent(SIDEBAR_MIN_PX, viewportWidth)} maxSize={sidebarLimitPercent(SIDEBAR_MAX_PX, viewportWidth)} collapsible collapsedSize={5000 / Math.max(920, viewportWidth)} className="tools-panel" data-autohide-collapsed={toolsPanelCollapsed ? "true" : "false"} onBlurCapture={(event) => {
           if (!toolPanelAutoHide || event.currentTarget.contains(event.relatedTarget as Node | null)) return;
@@ -1820,7 +1824,8 @@ function App() {
           </div>} />
         </Panel>
       </PanelGroup>
-      <AppPanelDock />
+      <AppPanelDock open={appPanelOpen} onClose={() => setAppPanel(false)} />
+      </div>
       {quickOpenOpen && <QuickOpenDialog
         workspaces={terminalWorkspaceState.workspaces}
         activeWorkspaceId={activeTerminalWorkspace?.id ?? null}
