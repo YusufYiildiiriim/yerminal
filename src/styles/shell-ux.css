@@ -5,15 +5,17 @@
 .app-shell[data-theme] {
   --shell-hover: color-mix(in srgb, var(--theme-text) 6%, transparent);
   --shell-pressed: color-mix(in srgb, var(--theme-text) 10%, transparent);
+  /* Single source for the title bar height; the bar and its row use this token. */
+  --titlebar-height: 40px;
 }
 
-/* Titlebar: custom window bar (native decorations are off). Brand, location and window buttons share one 44px row. */
+/* Titlebar: custom window bar (native decorations are off). Brand, location and window buttons share one row. */
 .app-shell[data-theme] .titlebar {
-  height: 44px; flex: 0 0 44px; padding: 0 0 0 14px; gap: 10px;
+  height: var(--titlebar-height); flex: 0 0 var(--titlebar-height); padding: 0 0 0 14px; gap: 10px;
   background: var(--theme-chrome); border-bottom: 1px solid var(--theme-border);
 }
 .app-shell[data-theme] .brand { display: flex; align-items: center; gap: 9px; flex: none; min-width: 0; }
-.app-shell[data-theme] .brand-logo { width: 24px; height: 24px; flex: none; display: block; }
+.app-shell[data-theme] .brand-logo { width: 22px; height: 22px; flex: none; display: block; }
 .app-shell[data-theme] .brand-name { font-size: var(--fs-lg); font-weight: 650; letter-spacing: 0; color: var(--theme-text); }
 .app-shell[data-theme] .titlebar-breadcrumb { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--text-muted); font-size: var(--fs-sm); text-align: center; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell[data-theme] .window-controls { display: flex; flex: none; align-items: center; height: 100%; padding-right: 6px; }
@@ -258,9 +260,9 @@
 .app-shell[data-theme] .workspace-layout-block .editor-create-group svg { width: 14px; height: 14px; }
 
 
-/* Line icons in the side panel and rail draw with the current text colour. */
-.app-shell[data-theme] .tools-panel svg:not([stroke]),
-.app-shell[data-theme] .titlebar svg:not([stroke]) {
+/* Line icons in the side panel and rail draw with the current text colour.
+   Not the title bar: the brand mark has no stroke attribute and must keep its own fills. */
+.app-shell[data-theme] .tools-panel svg:not([stroke]) {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.7;
