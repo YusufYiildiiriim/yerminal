@@ -21,6 +21,8 @@ import { joinRepoPath } from "./features/git/gitPaths";
 import type { CommitFileChange, CommitInfo } from "./features/git/gitTypes";
 import { TerminalResourceGraph } from "./features/terminal/TerminalResourceGraph";
 import { AgentUsagePanel } from "./features/agent-usage/AgentUsagePanel";
+import { AppPanelDock } from "./features/app-panel/AppPanelDock";
+import "./features/app-panel/app-panel.css";
 import { PaneRenameInput, TerminalPaneMenu } from "./features/terminal/TerminalPaneMenu";
 import { CodeWorkspace, type EditorFileTab, type EditorGroupState } from "./features/editor/CodeWorkspace";
 import { QuickOpenDialog, type QuickOpenFile } from "./features/editor/QuickOpenDialog";
@@ -1818,6 +1820,7 @@ function App() {
           </div>} />
         </Panel>
       </PanelGroup>
+      <AppPanelDock />
       {quickOpenOpen && <QuickOpenDialog
         workspaces={terminalWorkspaceState.workspaces}
         activeWorkspaceId={activeTerminalWorkspace?.id ?? null}

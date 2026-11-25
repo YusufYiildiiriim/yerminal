@@ -1,0 +1,55 @@
+/* Spike styling: functional only, not the approved design. */
+.app-panel {
+  position: fixed;
+  top: 40px;
+  right: 0;
+  bottom: 0;
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  box-sizing: border-box;
+  background: #15161a;
+  z-index: 50;
+}
+
+.app-panel-controls {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.app-panel-controls input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.app-panel-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.app-panel-message {
+  margin: 0;
+  color: #f0a0a0;
+}
+
+.app-panel-dock {
+  flex: 1 1 auto;
+  min-height: 0;
+  background: #000;
+}
+
+.app-panel button {
+  color: #e6e6e6;
+  background: #2a2c33;
+  border: 1px solid #3b3e47;
+  border-radius: 4px;
+  padding: 2px 10px;
+  font: inherit;
+}
+
+.app-panel button:disabled {
+  color: #7a7d86;
+}

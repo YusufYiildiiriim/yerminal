@@ -27,3 +27,6 @@ sysinfo = "0.40.1"
 tauri-plugin-dialog = "2.8.4"
 tauri-plugin-opener = "2"
 notify = "7"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }

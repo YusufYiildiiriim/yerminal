@@ -1,4 +1,5 @@
 pub mod agent_usage;
+pub mod app_panel;
 pub mod git;
 pub mod git_gate;
 pub mod git_remote;
@@ -407,6 +408,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(Mutex::new(SessionManager::default()))
         .manage(Mutex::new(TerminalResourceMonitor::default()))
+        .manage(app_panel::AppPanelState::default())
         .manage(workspace_watch::WorkspaceWatchState::default())
         .manage(Arc::new(Mutex::new(agent_usage::AgentUsageCache::default())))
         .invoke_handler(tauri::generate_handler![
@@ -419,6 +421,10 @@ pub fn run() {
             close_terminal,
             terminal_resource_usage,
             agent_usage_snapshot,
+            app_panel::app_panel_open,
+            app_panel::app_panel_place,
+            app_panel::app_panel_close,
+            app_panel::app_panel_status,
             terminal_output_snapshot,
             git_repository_info,
             git_status,
