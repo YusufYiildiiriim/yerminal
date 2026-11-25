@@ -110,6 +110,17 @@ describe("AppPanelDock", () => {
     await waitFor(() => expect(screen.queryByRole("tab", { name: "X" })).toBeNull());
   });
 
+  it("sends the dock rect in device pixels using the webview pixel ratio", async () => {
+    vi.spyOn(window, "devicePixelRatio", "get").mockReturnValue(1.5);
+    tauri.invoke.mockImplementation(async (command: string) =>
+      command === "app_panel_open" ? { apps: ["x"], active: "x" } : empty);
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: "Open X" }));
+    await waitFor(() => expect(tauri.invoke).toHaveBeenCalledWith("app_panel_open", expect.objectContaining({
+      rect: { x: 1500, y: 168, width: 570, height: 1050 },
+    })));
+  });
+
   it("shows the start error in the panel instead of failing silently", async () => {
     tauri.invoke.mockImplementation(async (command: string) => {
       if (command === "app_panel_open") throw "No supported browser found. Install Brave or Microsoft Edge.";

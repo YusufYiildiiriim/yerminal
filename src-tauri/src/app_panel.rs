@@ -22,7 +22,7 @@ pub const CHROMIUM_WINDOW_CLASS: &str = "Chrome_WidgetWin_1";
 
 pub const NO_BROWSER_MESSAGE: &str = "No supported browser found. Install Brave or Microsoft Edge.";
 
-/// Dock rectangle from the webview, in CSS (logical) pixels relative to the window client area.
+/// Dock content box from the webview, in device pixels relative to the main window client area.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 pub struct DockRect {
     pub x: f64,
@@ -51,24 +51,58 @@ pub struct TopWindow {
     pub has_owner: bool,
 }
 
-pub fn to_physical(rect: DockRect, scale: f64) -> PhysicalRect {
+/// The page sends the dock box in device pixels (CSS pixels times window.devicePixelRatio,
+/// which includes the webview zoom); only rounding is left to do.
+pub fn round_rect(rect: DockRect) -> PhysicalRect {
     PhysicalRect {
-        x: (rect.x * scale).round() as i32,
-        y: (rect.y * scale).round() as i32,
-        width: (rect.width * scale).round() as i32,
-        height: (rect.height * scale).round() as i32,
+        x: rect.x.round() as i32,
+        y: rect.y.round() as i32,
+        width: rect.width.round() as i32,
+        height: rect.height.round() as i32,
     }
 }
 
-/// Where the hosted window must sit so that its top caption band lies above the dock
-/// and is clipped away: the window is moved up by the caption height and grows by it.
-pub fn with_caption_hidden(dock: PhysicalRect, caption: i32) -> PhysicalRect {
-    PhysicalRect {
-        x: dock.x,
-        y: dock.y - caption,
-        width: dock.width,
-        height: dock.height + caption,
+/// Gap between a hosted window's outer rectangle and its client area: Chromium keeps
+/// invisible frame bands (7 px left, right and bottom at 100%) even without WS_THICKFRAME.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Insets {
+    pub left: i32,
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+}
+
+/// `window` is the outer rectangle in screen pixels, `client_origin` the screen position of the
+/// client area's top left corner and `client_size` its width and height.
+pub fn measure_insets(window: PhysicalRect, client_origin: (i32, i32), client_size: (i32, i32)) -> Insets {
+    let left = (client_origin.0 - window.x).max(0);
+    let top = (client_origin.1 - window.y).max(0);
+    Insets {
+        left,
+        top,
+        right: (window.width - client_size.0 - left).max(0),
+        bottom: (window.height - client_size.1 - top).max(0),
     }
+}
+
+/// Outer window rectangle (relative to the parent client area) and the visible region
+/// (relative to the window) so that only the page area shows, exactly on `dock`: the window
+/// grows by the insets and by the caption band Chromium draws at the top of its client area,
+/// and the region cuts all of them away.
+pub fn hosted_frame(dock: PhysicalRect, insets: Insets, caption: i32) -> (PhysicalRect, PhysicalRect) {
+    let window = PhysicalRect {
+        x: dock.x - insets.left,
+        y: dock.y - insets.top - caption,
+        width: dock.width + insets.left + insets.right,
+        height: dock.height + insets.top + caption + insets.bottom,
+    };
+    let visible = PhysicalRect {
+        x: insets.left,
+        y: insets.top + caption,
+        width: dock.width,
+        height: dock.height,
+    };
+    (window, visible)
 }
 
 /// Caption height in device pixels for a given scale factor.
@@ -491,12 +525,40 @@ mod imp {
         }
     }
 
-    /// Moves the hosted window to `frame` and clips its top `caption` band away.
-    fn place_window(hwnd: isize, frame: PhysicalRect, caption: i32) {
+    fn measure(hwnd: isize) -> Option<Insets> {
+        use windows_sys::Win32::Foundation::POINT;
+        use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
+        use windows_sys::Win32::UI::WindowsAndMessaging::GetClientRect;
         let h = hwnd_of(hwnd);
         unsafe {
-            MoveWindow(h, frame.x, frame.y, frame.width, frame.height, TRUE);
-            let region = CreateRectRgn(0, caption, frame.width, frame.height);
+            let mut w = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            let mut c = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            let mut origin = POINT { x: 0, y: 0 };
+            if GetWindowRect(h, &mut w) == 0 || GetClientRect(h, &mut c) == 0 || ClientToScreen(h, &mut origin) == 0 {
+                return None;
+            }
+            let window = PhysicalRect { x: w.left, y: w.top, width: w.right - w.left, height: w.bottom - w.top };
+            Some(measure_insets(window, (origin.x, origin.y), (c.right, c.bottom)))
+        }
+    }
+
+    /// Places the hosted window so that its page area covers `dock` exactly. The insets are
+    /// read from the live window; if resizing changed them, the window is placed once more.
+    fn place_window(hwnd: isize, dock: PhysicalRect, caption: i32) {
+        let h = hwnd_of(hwnd);
+        let mut insets = measure(hwnd).unwrap_or_default();
+        let mut placed = hosted_frame(dock, insets, caption);
+        unsafe { MoveWindow(h, placed.0.x, placed.0.y, placed.0.width, placed.0.height, TRUE) };
+        if let Some(after) = measure(hwnd) {
+            if after != insets {
+                insets = after;
+                placed = hosted_frame(dock, insets, caption);
+                unsafe { MoveWindow(h, placed.0.x, placed.0.y, placed.0.width, placed.0.height, TRUE) };
+            }
+        }
+        let v = placed.1;
+        unsafe {
+            let region = CreateRectRgn(v.x, v.y, v.x + v.width, v.y + v.height);
             SetWindowRgn(h, region, TRUE);
         }
     }
@@ -513,12 +575,12 @@ mod imp {
     /// Shows only the active window (when the dock is shown) and places it on the dock.
     fn sync(panel: &Panel, scale: f64, rect: DockRect) {
         let caption = caption_height(scale);
-        let frame = with_caption_hidden(to_physical(rect, scale), caption);
+        let dock = round_rect(rect);
         for entry in panel.registry.entries() {
             let is_active = panel.registry.active_id() == Some(entry.id.as_str());
             let h = hwnd_of(entry.hwnd);
             if is_active && panel.shown {
-                place_window(entry.hwnd, frame, caption);
+                place_window(entry.hwnd, dock, caption);
                 unsafe { ShowWindow(h, SW_SHOWNOACTIVATE) };
             } else {
                 unsafe { ShowWindow(h, SW_HIDE) };

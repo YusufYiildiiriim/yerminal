@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { APP_CATALOG, findApp, type AppDef } from "./apps";
-import { isDockRectUsable, toDockRect, type DockRect } from "./dockRect";
+import { isDockRectUsable, toDeviceRect, toDockRect, type DockRect } from "./dockRect";
 import { clampDockWidth, hasBlockingOverlay, readDockPrefs, writeDockPrefs } from "./dockPrefs";
 
 interface PanelState {
@@ -36,7 +36,7 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
     const element = contentRef.current;
     if (!element) return null;
     const rect = toDockRect(element.getBoundingClientRect());
-    return isDockRectUsable(rect) ? rect : null;
+    return isDockRectUsable(rect) ? toDeviceRect(rect, window.devicePixelRatio) : null;
   }, []);
 
   // Windows already hosted (for example after a webview reload) come back as tabs.

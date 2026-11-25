@@ -23,18 +23,48 @@ fn entry(id: &str, hwnd: isize) -> Entry {
 }
 
 #[test]
-fn dock_rect_scales_css_pixels_to_physical_pixels() {
-    let rect = DockRect { x: 100.0, y: 40.0, width: 300.0, height: 500.0 };
-    assert_eq!(to_physical(rect, 1.5), PhysicalRect { x: 150, y: 60, width: 450, height: 750 });
+fn device_rect_is_rounded_to_whole_pixels() {
+    let rect = DockRect { x: 820.83, y: 111.98, width: 379.17, height: 638.85 };
+    assert_eq!(round_rect(rect), PhysicalRect { x: 821, y: 112, width: 379, height: 639 });
+}
+
+// Measured 2026-11-26 on a 1440x900 client at webview zoom 1.2: the dock box was 379x639 CSS px,
+// i.e. 455x767 device px, while the window scale factor stayed 1.0. The webview's pixel ratio,
+// not the window scale factor, converts CSS px to device px; the page sends device px.
+#[test]
+fn hosted_frame_grows_by_the_insets_and_caption_and_clips_to_the_dock() {
+    let dock = PhysicalRect { x: 985, y: 134, width: 455, height: 766 };
+    let insets = Insets { left: 7, top: 0, right: 7, bottom: 7 };
+    let (window, visible) = hosted_frame(dock, insets, 31);
+    assert_eq!(window, PhysicalRect { x: 978, y: 103, width: 469, height: 804 });
+    assert_eq!(visible, PhysicalRect { x: 7, y: 31, width: 455, height: 766 });
 }
 
 #[test]
-fn hosted_window_moves_up_by_the_hidden_caption_height() {
-    let dock = PhysicalRect { x: 560, y: 131, width: 340, height: 660 };
-    assert_eq!(
-        with_caption_hidden(dock, 31),
-        PhysicalRect { x: 560, y: 100, width: 340, height: 691 }
+fn visible_area_lands_exactly_on_the_dock_after_placing_the_window() {
+    let dock = PhysicalRect { x: 400, y: 90, width: 300, height: 500 };
+    let insets = Insets { left: 8, top: 1, right: 9, bottom: 6 };
+    let (window, visible) = hosted_frame(dock, insets, 31);
+    assert_eq!((window.x + visible.x, window.y + visible.y), (dock.x, dock.y));
+    assert_eq!((visible.width, visible.height), (dock.width, dock.height));
+    assert!(window.x + visible.x + visible.width <= window.x + window.width);
+    assert!(window.y + visible.y + visible.height <= window.y + window.height);
+}
+
+#[test]
+fn insets_are_the_gap_between_window_rect_and_client_rect() {
+    let insets = measure_insets(
+        PhysicalRect { x: 1059, y: 264, width: 379, height: 670 },
+        (1066, 264),
+        (365, 663),
     );
+    assert_eq!(insets, Insets { left: 7, top: 0, right: 7, bottom: 7 });
+}
+
+#[test]
+fn insets_never_go_negative() {
+    let insets = measure_insets(PhysicalRect { x: 10, y: 10, width: 100, height: 100 }, (10, 10), (120, 120));
+    assert_eq!(insets, Insets { left: 0, top: 0, right: 0, bottom: 0 });
 }
 
 #[test]
