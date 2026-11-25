@@ -3,7 +3,8 @@ import { version as APP_VERSION } from "../../../package.json";
 import releasesJson from "./releases.json";
 
 export type ReleaseIssue = { number: number; title: string };
-export type ReleaseNote = { version: string; date: string; issues: ReleaseIssue[] };
+/** `date` is null for a version that is not released yet; it is shown as "Upcoming". */
+export type ReleaseNote = { version: string; date: string | null; issues: ReleaseIssue[] };
 export type ReleaseNotesData = { repository: string; releases: ReleaseNote[] };
 
 /** Bundled at build time from releases.json; no network access is needed to show the page. */
@@ -25,7 +26,7 @@ export function validateReleaseData(data: ReleaseNotesData): string[] {
     if (!VERSION_PATTERN.test(release.version)) problems.push(`version must be x.y.z: ${release.version}`);
     if (seen.has(release.version)) problems.push(`version listed twice: ${release.version}`);
     seen.add(release.version);
-    if (!DATE_PATTERN.test(release.date)) problems.push(`date must be YYYY-MM-DD in ${release.version}: ${release.date}`);
+    if (release.date !== null && !DATE_PATTERN.test(release.date)) problems.push(`date must be YYYY-MM-DD in ${release.version}: ${release.date}`);
     for (const issue of release.issues) {
       if (!Number.isInteger(issue.number) || issue.number < 1) problems.push(`issue number must be a positive integer in ${release.version}: ${issue.number}`);
       if (typeof issue.title !== "string" || issue.title.trim() === "" || issue.title.length > 300) problems.push(`issue #${issue.number} in ${release.version} needs a title of 1-300 characters`);

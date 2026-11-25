@@ -2,6 +2,14 @@
   "repository": "https://github.com/YusufYiildiiriim/yerminal",
   "releases": [
     {
+      "version": "0.1.4",
+      "date": null,
+      "issues": [
+        { "number": 62, "title": "Custom title bar with bolder brand mark and name" },
+        { "number": 63, "title": "Version notes page listing closed issues per release" }
+      ]
+    },
+    {
       "version": "0.1.3",
       "date": "2026-11-24",
       "issues": [
@@ -10,8 +18,7 @@
         { "number": 58, "title": "Git Changes: UI freezes when a workspace has many repositories" },
         { "number": 59, "title": "Editor tabs of a removed workspace folder stay open" },
         { "number": 60, "title": "Git Changes: Publish Branch without a remote (create GitHub repo or use a URL)" },
-        { "number": 61, "title": "Publish Branch dialog is transparent: theme tokens are not in its portal target" },
-        { "number": 62, "title": "Custom title bar with bolder brand mark and name" }
+        { "number": 61, "title": "Publish Branch dialog is transparent: theme tokens are not in its portal target" }
       ]
     }
   ]

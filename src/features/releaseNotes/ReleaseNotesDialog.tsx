@@ -40,7 +40,7 @@ export function ReleaseNotesDialog({ releases = RELEASES.releases, onClose }: Pr
       <div className="release-notes-body">
         {releases.length === 0 && <p className="release-notes-empty">No release notes yet.</p>}
         {releases.map((release) => <section key={release.version} className="release-notes-release" aria-labelledby={"release-" + release.version}>
-          <h3 id={"release-" + release.version}>{release.version + " · " + release.date}</h3>
+          <h3 id={"release-" + release.version}>{release.version + " · " + (release.date ?? "Upcoming")}</h3>
           {release.issues.length === 0 ? <p className="release-notes-empty">No closed issues listed.</p> : <ul className="release-notes-issues" aria-label={"Issues closed in " + release.version}>
             {release.issues.map((issue) => <li key={issue.number}>
               <button type="button" className="release-notes-issue" aria-label={"Open issue #" + issue.number} title={"Open issue #" + issue.number + " on GitHub"} onClick={() => openIssue(issue.number)}>
