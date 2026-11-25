@@ -65,7 +65,6 @@
   background: var(--theme-chrome);
   border-color: var(--theme-border);
 }
-.app-shell[data-theme] .brand-mark { background: var(--theme-accent); color: var(--theme-chrome); }
 .app-shell[data-theme] :is(.tools-panel, .tool-sidebar, .tool-content, .workspace-navigation, .workspace-explorer-tree, .change-list) {
   background: var(--theme-surface);
   border-color: var(--theme-border);
@@ -120,7 +119,6 @@
   gap: 12px;
   padding-inline: 15px;
 }
-.app-shell[data-theme] .brand-mark { border-radius: 8px; }
 .app-shell[data-theme] .tool-sidebar { padding: 10px 5px; gap: 5px; }
 .app-shell[data-theme] .tool-sidebar-item {
   border-radius: 9px;

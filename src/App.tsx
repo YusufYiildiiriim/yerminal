@@ -38,6 +38,7 @@ import { FolderContextMenu, type FolderContextMenuAction, type FolderContextMenu
 import { useTerminalGroupDrag } from "./features/terminal/useTerminalGroupDrag";
 import { appendTerminalToLayout, closeTerminalGroup as closeTerminalGroupState, createInitialTerminalGroups, createTerminalGroup, moveTerminalBetweenGroups, openFolderInNewTerminal, removeTerminalFromGroups, renameTerminalGroup as renameTerminalGroupState, selectTerminalGroup as selectTerminalGroupState, type TerminalGroup } from "./features/terminal/terminalWorkspaceActions";
 import { DEFAULT_LANGUAGES, normalizeEnabledLanguages } from "./features/editor/editorLanguages";
+import { WindowTitleBar } from "./shell/WindowTitleBar";
 import "@fontsource-variable/geist/index.css";
 import "@fontsource-variable/geist-mono/index.css";
 import "./styles/typography.css";
@@ -1740,11 +1741,7 @@ function App() {
 
   return (
     <main className="app-shell" data-theme={settings.theme} style={{ "--editor-font-family": settings.editorFontFamily, "--editor-font-size": settings.editorFontSize + "px", "--terminal-font-family": settings.terminalFontFamily, "--terminal-font-size": settings.terminalFontSize + "px" } as CSSProperties}>
-      <header className="titlebar">
-        <div className="titlebar-spacer" />
-        <span className="titlebar-breadcrumb">{titlebarBreadcrumb}</span>
-        <div className="titlebar-spacer" />
-      </header>
+      <WindowTitleBar breadcrumb={titlebarBreadcrumb} />
 
       <PanelGroup direction="horizontal" className="workspace">
         <Panel ref={toolsPanelRef} defaultSize={25} minSize={sidebarLimitPercent(SIDEBAR_MIN_PX, viewportWidth)} maxSize={sidebarLimitPercent(SIDEBAR_MAX_PX, viewportWidth)} collapsible collapsedSize={5000 / Math.max(920, viewportWidth)} className="tools-panel" data-autohide-collapsed={toolsPanelCollapsed ? "true" : "false"} onBlurCapture={(event) => {

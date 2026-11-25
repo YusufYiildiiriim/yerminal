@@ -20,7 +20,6 @@ body { margin: 0; min-width: 920px; min-height: 600px; overflow: hidden; }
 button { color: inherit; font: inherit; cursor: pointer; }
 .app-shell { width: 100vw; height: 100vh; display: flex; flex-direction: column; background: var(--bg); }
 .titlebar { height: 48px; flex: 0 0 48px; display: flex; align-items: center; gap: 10px; min-width: 0; padding: 0 12px; border-bottom: 1px solid var(--border); background: #131418; user-select: none; }
-.brand-mark { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; color: #17151f; background: #a99aff; font-weight: 800; font-size: var(--fs-xl); }
 .brand-name { font-size: var(--fs-md); font-weight: 650; letter-spacing: .1px; }
 
 .icon-button:hover { background: #23242a; border-color: #34363e; }
