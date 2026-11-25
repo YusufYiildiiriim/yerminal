@@ -403,12 +403,12 @@ fn watch_workspace_roots(
 }
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    app_panel::install_panic_release();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Mutex::new(SessionManager::default()))
         .manage(Mutex::new(TerminalResourceMonitor::default()))
-        .manage(app_panel::AppPanelState::default())
         .manage(workspace_watch::WorkspaceWatchState::default())
         .manage(Arc::new(Mutex::new(agent_usage::AgentUsageCache::default())))
         .invoke_handler(tauri::generate_handler![
@@ -424,7 +424,9 @@ pub fn run() {
             app_panel::app_panel_open,
             app_panel::app_panel_place,
             app_panel::app_panel_close,
-            app_panel::app_panel_status,
+            app_panel::app_panel_activate,
+            app_panel::app_panel_set_visible,
+            app_panel::app_panel_state,
             terminal_output_snapshot,
             git_repository_info,
             git_status,
@@ -466,6 +468,8 @@ pub fn run() {
         ])
         .on_window_event(|window, event| {
             if should_close_sessions(event) {
+                // The main window is being destroyed: give hosted app windows back before their parent goes.
+                app_panel::release_all();
                 close_all_sessions(window.app_handle());
             }
         })
@@ -474,6 +478,7 @@ pub fn run() {
         .run(|app, event| {
             // Safety net for exits that do not destroy the window first.
             if let tauri::RunEvent::Exit = event {
+                app_panel::release_all();
                 close_all_sessions(app);
             }
         });

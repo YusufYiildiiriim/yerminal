@@ -1,17 +1,26 @@
-//! App panel spike: host an external application window inside a dock rectangle.
-//! Geometry and window-selection helpers are portable and unit tested here; the
-//! Win32 work lives behind `#[cfg(windows)]` and other platforms get an error stub.
+//! App panel: host an installed browser's `--app` window inside the right dock.
+//!
+//! The window belongs to the user's own browser process (default profile, accounts
+//! signed in). Safety rules that everything below follows:
+//! - the browser process is never killed; a hosted window is closed with WM_CLOSE only;
+//! - every hosted window is released (`SetParent(NULL)`, original style, geometry and
+//!   region restored) when a tab is dropped, when the main window is destroyed, when the
+//!   app exits and from a panic hook, so the browser window survives yerminal.
+//!
+//! Geometry, window selection and bookkeeping are portable and unit tested; the Win32
+//! work lives behind `#[cfg(windows)]` and other platforms get an error stub.
 
-use serde::Deserialize;
-use std::process::Child;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-
-/// Placeholder in launch arguments, replaced with the dock's own profile folder so a
-/// Chromium-based app starts its own process (and so its own top-level window).
-pub const PROFILE_PLACEHOLDER: &str = "{profile}";
 
 /// Chromium's custom caption height at 100% scale, measured on Windows 11 (2026-11-26).
 const CAPTION_HEIGHT_AT_100: f64 = 31.0;
+
+/// Hosted window class of Chromium-based browsers (Chrome, Edge, Brave).
+pub const CHROMIUM_WINDOW_CLASS: &str = "Chrome_WidgetWin_1";
+
+pub const NO_BROWSER_MESSAGE: &str = "No supported browser found. Install Brave or Microsoft Edge.";
 
 /// Dock rectangle from the webview, in CSS (logical) pixels relative to the window client area.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
@@ -39,6 +48,7 @@ pub struct TopWindow {
     pub class: String,
     pub title: String,
     pub visible: bool,
+    pub has_owner: bool,
 }
 
 pub fn to_physical(rect: DockRect, scale: f64) -> PhysicalRect {
@@ -66,75 +76,294 @@ pub fn caption_height(scale: f64) -> i32 {
     (CAPTION_HEIGHT_AT_100 * scale).round() as i32
 }
 
-/// Launch arguments with the profile placeholder replaced.
-pub fn expand_args(args: &[String], profile_dir: &str) -> Vec<String> {
-    args.iter()
-        .map(|arg| arg.replace(PROFILE_PLACEHOLDER, profile_dir))
-        .collect()
+// ---------------------------------------------------------------------------
+// Browser choice and launch
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Browser {
+    pub name: &'static str,
+    pub exe: PathBuf,
 }
 
-/// The visible, titled top-level window of the launched process.
-pub fn pick_owned_window(windows: &[TopWindow], pid: u32, class: &str) -> Option<isize> {
-    windows
+/// Install locations in preference order: Brave first, then Edge (ships with Windows).
+pub fn browser_candidates(
+    program_files: Option<&str>,
+    program_files_x86: Option<&str>,
+    local_app_data: Option<&str>,
+) -> Vec<Browser> {
+    let brave = ["BraveSoftware", "Brave-Browser", "Application", "brave.exe"];
+    let edge = ["Microsoft", "Edge", "Application", "msedge.exe"];
+    let join = |root: &str, parts: &[&str]| parts.iter().fold(PathBuf::from(root), |p, c| p.join(c));
+    let mut list = Vec::new();
+    for root in [program_files, program_files_x86, local_app_data].into_iter().flatten() {
+        list.push(Browser { name: "Brave", exe: join(root, &brave) });
+    }
+    for root in [program_files_x86, program_files].into_iter().flatten() {
+        list.push(Browser { name: "Edge", exe: join(root, &edge) });
+    }
+    list
+}
+
+pub fn pick_browser<'a>(candidates: &'a [Browser], exists: &dyn Fn(&Path) -> bool) -> Option<&'a Browser> {
+    candidates.iter().find(|b| exists(&b.exe))
+}
+
+/// Default profile: no `--user-data-dir`, so the user's own accounts are used. When the
+/// browser already runs, the launcher hands the request over and exits.
+pub fn app_launch_args(url: &str) -> Vec<String> {
+    vec![format!("--app={url}")]
+}
+
+// ---------------------------------------------------------------------------
+// Window selection
+// ---------------------------------------------------------------------------
+
+/// Main browser windows carry a browser-name suffix; `--app` windows show the page title.
+pub fn is_main_browser_title(title: &str) -> bool {
+    let clean: String = title.chars().filter(|c| *c != '\u{200b}').collect();
+    [" - Brave", " - Microsoft Edge", " - Google Chrome", " - Chromium"]
         .iter()
-        .find(|w| w.pid == pid && w.visible && w.class == class && !w.title.is_empty())
-        .map(|w| w.hwnd)
+        .any(|suffix| clean.ends_with(suffix))
 }
 
-/// A visible, titled top-level window of `class` that did not exist before the launch.
-/// Used when the launcher hands the request to an already running instance and exits.
+fn is_app_candidate(w: &TopWindow, class: &str) -> bool {
+    w.visible
+        && !w.has_owner
+        && w.class == class
+        && !w.title.is_empty()
+        && !is_main_browser_title(&w.title)
+}
+
+/// A new top-level app window (not a main browser window) that did not exist before the
+/// launch. Used because the launcher hands over to the running browser and exits, so the
+/// window cannot be found by process id.
 pub fn pick_new_window(before: &[isize], after: &[TopWindow], class: &str) -> Option<isize> {
     after
         .iter()
+        .find(|w| is_app_candidate(w, class) && !before.contains(&w.hwnd))
+        .map(|w| w.hwnd)
+}
+
+fn title_matches_hint(title: &str, hint: &str) -> bool {
+    title == hint
+        || title.ends_with(&format!(" - {hint}"))
+        || title.ends_with(&format!(" / {hint}"))
+}
+
+/// An app window for the same site that already exists (the browser focuses it instead
+/// of opening a second one). `skip` holds windows already hosted.
+pub fn pick_existing_app_window(
+    windows: &[TopWindow],
+    hint: &str,
+    class: &str,
+    skip: &[isize],
+) -> Option<isize> {
+    windows
+        .iter()
         .find(|w| {
-            w.visible && w.class == class && !w.title.is_empty() && !before.contains(&w.hwnd)
+            is_app_candidate(w, class) && !skip.contains(&w.hwnd) && title_matches_hint(&w.title, hint)
         })
         .map(|w| w.hwnd)
 }
 
-/// Hosted window class of Chromium-based browsers (Chrome, Edge, Brave).
-pub const CHROMIUM_WINDOW_CLASS: &str = "Chrome_WidgetWin_1";
+// ---------------------------------------------------------------------------
+// Styles and geometry that make a window embeddable and restorable
+// ---------------------------------------------------------------------------
 
-/// Launched application whose window is embedded in the main window.
-struct Hosted {
-    child: Child,
-    hwnd: isize,
+pub const STYLE_CHILD: isize = 0x4000_0000;
+const STYLE_POPUP: isize = 0x8000_0000_u32 as i32 as isize;
+const STYLE_CAPTION: isize = 0x00C0_0000;
+const STYLE_THICKFRAME: isize = 0x0004_0000;
+const STYLE_SYSMENU: isize = 0x0008_0000;
+const STYLE_MINIMIZEBOX: isize = 0x0002_0000;
+const STYLE_MAXIMIZEBOX: isize = 0x0001_0000;
+pub const FRAME_STYLE_BITS: isize = STYLE_CAPTION
+    | STYLE_THICKFRAME
+    | STYLE_SYSMENU
+    | STYLE_MINIMIZEBOX
+    | STYLE_MAXIMIZEBOX
+    | STYLE_POPUP;
+
+pub fn embedded_style(style: isize) -> isize {
+    (style & !FRAME_STYLE_BITS) | STYLE_CHILD
+}
+
+/// What a window looked like before it was hosted; applied again on release.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Saved {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub style: isize,
+}
+
+pub fn restore_geometry(saved: &Saved) -> PhysicalRect {
+    PhysicalRect { x: saved.x, y: saved.y, width: saved.width, height: saved.height }
+}
+
+// ---------------------------------------------------------------------------
+// Hosted window bookkeeping
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Entry {
+    pub id: String,
+    pub hwnd: isize,
+    pub saved: Saved,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PanelState {
+    pub apps: Vec<String>,
+    pub active: Option<String>,
 }
 
 #[derive(Default)]
-pub struct AppPanelState {
-    hosted: Mutex<Option<Hosted>>,
+pub struct Registry {
+    entries: Vec<Entry>,
+    active: Option<String>,
 }
 
-#[tauri::command]
+impl Registry {
+    pub fn add(&mut self, entry: Entry) {
+        self.active = Some(entry.id.clone());
+        self.entries.push(entry);
+    }
+
+    pub fn contains(&self, id: &str) -> bool {
+        self.entries.iter().any(|e| e.id == id)
+    }
+
+    pub fn activate(&mut self, id: &str) -> bool {
+        if self.contains(id) {
+            self.active = Some(id.to_owned());
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn active_id(&self) -> Option<&str> {
+        self.active.as_deref()
+    }
+
+    pub fn hwnds(&self) -> Vec<isize> {
+        self.entries.iter().map(|e| e.hwnd).collect()
+    }
+
+    pub fn entries(&self) -> &[Entry] {
+        &self.entries
+    }
+
+    /// Removes an entry; if it was active, the previous neighbour (else the next) becomes active.
+    pub fn remove(&mut self, id: &str) -> Option<Entry> {
+        let index = self.entries.iter().position(|e| e.id == id)?;
+        let removed = self.entries.remove(index);
+        if self.active.as_deref() == Some(id) {
+            let next = index.checked_sub(1).or(if self.entries.is_empty() { None } else { Some(0) });
+            self.active = next.and_then(|i| self.entries.get(i)).map(|e| e.id.clone());
+        }
+        Some(removed)
+    }
+
+    pub fn drain(&mut self) -> Vec<Entry> {
+        self.active = None;
+        std::mem::take(&mut self.entries)
+    }
+
+    /// Drops entries whose window no longer exists.
+    pub fn prune(&mut self, alive: impl Fn(isize) -> bool) {
+        let gone: Vec<String> = self
+            .entries
+            .iter()
+            .filter(|e| !alive(e.hwnd))
+            .map(|e| e.id.clone())
+            .collect();
+        for id in gone {
+            self.remove(&id);
+        }
+    }
+
+    pub fn state(&self) -> PanelState {
+        PanelState {
+            apps: self.entries.iter().map(|e| e.id.clone()).collect(),
+            active: self.active.clone(),
+        }
+    }
+}
+
+/// Process-wide so that the exit paths and the panic hook can release windows too.
+struct Panel {
+    registry: Registry,
+    /// False while an HTML dialog or menu needs the area the native window covers.
+    shown: bool,
+}
+
+static PANEL: Mutex<Panel> = Mutex::new(Panel {
+    registry: Registry { entries: Vec::new(), active: None },
+    shown: true,
+});
+
+fn lock_panel() -> std::sync::MutexGuard<'static, Panel> {
+    PANEL.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+// ---------------------------------------------------------------------------
+// Commands
+// ---------------------------------------------------------------------------
+
+#[tauri::command(async)]
 pub fn app_panel_open(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AppPanelState>,
-    exe: String,
-    args: Vec<String>,
+    id: String,
+    url: String,
+    title_hint: String,
     rect: DockRect,
-) -> Result<(), String> {
-    imp::open(&app, &state, &exe, &args, rect)
+) -> Result<PanelState, String> {
+    imp::open(&app, &id, &url, &title_hint, rect)
 }
 
-#[tauri::command]
-pub fn app_panel_place(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, AppPanelState>,
-    rect: DockRect,
-) -> Result<(), String> {
-    imp::place(&app, &state, rect)
+#[tauri::command(async)]
+pub fn app_panel_activate(app: tauri::AppHandle, id: String, rect: DockRect) -> Result<PanelState, String> {
+    imp::activate(&app, &id, rect)
 }
 
-#[tauri::command]
-pub fn app_panel_close(state: tauri::State<'_, AppPanelState>) -> Result<(), String> {
-    imp::close(&state)
+#[tauri::command(async)]
+pub fn app_panel_place(app: tauri::AppHandle, rect: DockRect) -> Result<(), String> {
+    imp::place(&app, rect)
 }
 
-/// True while the hosted window still exists.
-#[tauri::command]
-pub fn app_panel_status(state: tauri::State<'_, AppPanelState>) -> Result<bool, String> {
-    imp::status(&state)
+#[tauri::command(async)]
+pub fn app_panel_close(app: tauri::AppHandle, id: String, rect: DockRect) -> Result<PanelState, String> {
+    imp::close(&app, &id, rect)
+}
+
+/// Hides or shows the hosted window (an HTML dialog or menu must not end up under it).
+#[tauri::command(async)]
+pub fn app_panel_set_visible(visible: bool) -> Result<(), String> {
+    imp::set_visible(visible)
+}
+
+/// Live hosted apps and the active one; entries whose window vanished are dropped.
+#[tauri::command(async)]
+pub fn app_panel_state() -> Result<PanelState, String> {
+    Ok(imp::state())
+}
+
+/// Gives every hosted window back to the desktop (called on exit and from the panic hook).
+pub fn release_all() {
+    imp::release_all(false);
+}
+
+/// Panic hook: must never block, so the lock is only tried.
+pub fn install_panic_release() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        imp::release_all(true);
+        previous(info);
+    }));
 }
 
 #[cfg(windows)]
@@ -143,35 +372,21 @@ mod imp {
     use std::process::Command;
     use std::time::{Duration, Instant};
     use tauri::{AppHandle, Manager};
-    use windows_sys::Win32::Foundation::{HWND, LPARAM, TRUE};
+    use windows_sys::Win32::Foundation::{HWND, LPARAM, RECT, TRUE};
     use windows_sys::Win32::Graphics::Gdi::{CreateRectRgn, SetWindowRgn};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetClassNameW, GetWindowLongPtrW, GetWindowTextW,
-        GetWindowThreadProcessId, IsWindow, IsWindowVisible, MoveWindow, PostMessageW,
-        SetParent, SetWindowLongPtrW, SetWindowPos, GWL_STYLE, SWP_FRAMECHANGED,
-        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE,
+        EnumWindows, GetClassNameW, GetWindow, GetWindowLongPtrW, GetWindowRect, GetWindowTextW,
+        GetWindowThreadProcessId, IsWindow, IsWindowVisible, MoveWindow, PostMessageW, SetParent,
+        SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_STYLE, GW_OWNER, SWP_FRAMECHANGED,
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE, WM_CLOSE,
     };
-
-    const WS_CHILD: isize = 0x4000_0000;
-    const WS_POPUP: isize = 0x8000_0000_isize;
-    const WS_CAPTION: isize = 0x00C0_0000;
-    const WS_THICKFRAME: isize = 0x0004_0000;
-    const WS_SYSMENU: isize = 0x0008_0000;
-    const WS_MINIMIZEBOX: isize = 0x0002_0000;
-    const WS_MAXIMIZEBOX: isize = 0x0001_0000;
-    const FRAME_STYLES: isize = WS_CAPTION
-        | WS_THICKFRAME
-        | WS_SYSMENU
-        | WS_MINIMIZEBOX
-        | WS_MAXIMIZEBOX
-        | WS_POPUP;
-
-    fn window_exists(raw: isize) -> bool {
-        unsafe { IsWindow(hwnd_of(raw)) != 0 }
-    }
 
     fn hwnd_of(raw: isize) -> HWND {
         raw as HWND
+    }
+
+    fn window_exists(raw: isize) -> bool {
+        unsafe { IsWindow(hwnd_of(raw)) != 0 }
     }
 
     fn class_name(hwnd: HWND) -> String {
@@ -196,6 +411,7 @@ mod imp {
             class: class_name(hwnd),
             title: window_title(hwnd),
             visible: IsWindowVisible(hwnd) != 0,
+            has_owner: !GetWindow(hwnd, GW_OWNER).is_null(),
         });
         TRUE
     }
@@ -208,14 +424,34 @@ mod imp {
         list
     }
 
-    /// Makes `hwnd` a child of `parent` without its frame.
-    fn embed(hwnd: isize, parent: isize) {
+    fn find_browser() -> Result<Browser, String> {
+        let env = |name: &str| std::env::var(name).ok();
+        let list = browser_candidates(
+            env("ProgramFiles").as_deref(),
+            env("ProgramFiles(x86)").as_deref(),
+            env("LOCALAPPDATA").as_deref(),
+        );
+        pick_browser(&list, &|p| p.exists())
+            .cloned()
+            .ok_or_else(|| NO_BROWSER_MESSAGE.to_owned())
+    }
+
+    /// Captures the window's current state, then makes it a frameless child of `parent`.
+    fn embed(hwnd: isize, parent: isize) -> Saved {
         let h = hwnd_of(hwnd);
         unsafe {
-            SetParent(h, hwnd_of(parent));
+            let mut r = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            GetWindowRect(h, &mut r);
             let style = GetWindowLongPtrW(h, GWL_STYLE);
-            let next = (style & !FRAME_STYLES) | WS_CHILD;
-            SetWindowLongPtrW(h, GWL_STYLE, next);
+            let saved = Saved {
+                x: r.left,
+                y: r.top,
+                width: r.right - r.left,
+                height: r.bottom - r.top,
+                style,
+            };
+            SetParent(h, hwnd_of(parent));
+            SetWindowLongPtrW(h, GWL_STYLE, embedded_style(style));
             SetWindowPos(
                 h,
                 std::ptr::null_mut(),
@@ -225,6 +461,33 @@ mod imp {
                 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
             );
+            saved
+        }
+    }
+
+    /// Gives the window back to the desktop: no clip region, no parent, original style and
+    /// geometry, visible. Does nothing when the window is already gone.
+    fn release(entry: &Entry) {
+        if !window_exists(entry.hwnd) {
+            return;
+        }
+        let h = hwnd_of(entry.hwnd);
+        let g = restore_geometry(&entry.saved);
+        unsafe {
+            SetWindowRgn(h, std::ptr::null_mut(), TRUE);
+            SetParent(h, std::ptr::null_mut());
+            SetWindowLongPtrW(h, GWL_STYLE, entry.saved.style);
+            MoveWindow(h, g.x, g.y, g.width, g.height, TRUE);
+            SetWindowPos(
+                h,
+                std::ptr::null_mut(),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            );
+            ShowWindow(h, SW_SHOWNOACTIVATE);
         }
     }
 
@@ -247,113 +510,136 @@ mod imp {
         Ok((hwnd, scale))
     }
 
-    pub fn open(
-        app: &AppHandle,
-        state: &AppPanelState,
-        exe: &str,
-        args: &[String],
-        rect: DockRect,
-    ) -> Result<(), String> {
-        let (main, scale) = main_window(app)?;
-        let profile = app
-            .path()
-            .app_data_dir()
-            .map_err(|e| e.to_string())?
-            .join("app-panel")
-            .join("profile");
-        std::fs::create_dir_all(&profile).map_err(|e| e.to_string())?;
-
-        let mut slot = state
-            .hosted
-            .lock()
-            .map_err(|_| "App panel is unavailable".to_owned())?;
-        if let Some(mut old) = slot.take() {
-            let _ = old.child.kill();
-        }
-
-        let before: Vec<isize> = top_windows().iter().map(|w| w.hwnd).collect();
-        let profile_arg = profile.to_string_lossy().into_owned();
-        let mut child = Command::new(exe)
-            .args(expand_args(args, &profile_arg))
-            .spawn()
-            .map_err(|e| format!("Cannot start app: {e}"))?;
-        let pid = child.id();
-
-        let deadline = Instant::now() + Duration::from_secs(10);
-        let hwnd = loop {
-            let windows = top_windows();
-            if let Some(found) = pick_owned_window(&windows, pid, CHROMIUM_WINDOW_CLASS) {
-                break found;
+    /// Shows only the active window (when the dock is shown) and places it on the dock.
+    fn sync(panel: &Panel, scale: f64, rect: DockRect) {
+        let caption = caption_height(scale);
+        let frame = with_caption_hidden(to_physical(rect, scale), caption);
+        for entry in panel.registry.entries() {
+            let is_active = panel.registry.active_id() == Some(entry.id.as_str());
+            let h = hwnd_of(entry.hwnd);
+            if is_active && panel.shown {
+                place_window(entry.hwnd, frame, caption);
+                unsafe { ShowWindow(h, SW_SHOWNOACTIVATE) };
+            } else {
+                unsafe { ShowWindow(h, SW_HIDE) };
             }
-            let exited = child.try_wait().map_err(|e| e.to_string())?.is_some();
-            if exited {
-                if let Some(found) = pick_new_window(&before, &windows, CHROMIUM_WINDOW_CLASS) {
-                    break found;
-                }
+        }
+    }
+
+    /// Waits for the launched app window, or reuses an existing one for the same site.
+    fn obtain_window(url: &str, hint: &str, hosted: &[isize]) -> Result<isize, String> {
+        let existing = top_windows();
+        if let Some(found) = pick_existing_app_window(&existing, hint, CHROMIUM_WINDOW_CLASS, hosted) {
+            return Ok(found);
+        }
+        let browser = find_browser()?;
+        let before: Vec<isize> = existing.iter().map(|w| w.hwnd).collect();
+        // The child handle is dropped on purpose: the launcher is either the user's browser
+        // itself or a stub that hands over and exits. Neither is ever killed from here.
+        Command::new(&browser.exe)
+            .args(app_launch_args(url))
+            .spawn()
+            .map_err(|e| format!("Cannot start {}: {e}", browser.name))?;
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            let windows = top_windows();
+            if let Some(found) = pick_new_window(&before, &windows, CHROMIUM_WINDOW_CLASS) {
+                return Ok(found);
             }
             if Instant::now() >= deadline {
-                let _ = child.kill();
-                return Err("App window did not appear within 10 seconds".to_owned());
+                return pick_existing_app_window(&windows, hint, CHROMIUM_WINDOW_CLASS, hosted)
+                    .ok_or_else(|| "The app window did not appear within 15 seconds".to_owned());
             }
             std::thread::sleep(Duration::from_millis(100));
-        };
-
-        embed(hwnd, main);
-        let caption = caption_height(scale);
-        let frame = with_caption_hidden(to_physical(rect, scale), caption);
-        place_window(hwnd, frame, caption);
-        *slot = Some(Hosted { child, hwnd });
-        Ok(())
+        }
     }
 
-    pub fn place(app: &AppHandle, state: &AppPanelState, rect: DockRect) -> Result<(), String> {
+    pub fn open(app: &AppHandle, id: &str, url: &str, hint: &str, rect: DockRect) -> Result<PanelState, String> {
+        let (main, scale) = main_window(app)?;
+        {
+            let mut panel = lock_panel();
+            if panel.registry.activate(id) {
+                sync(&panel, scale, rect);
+                return Ok(panel.registry.state());
+            }
+        }
+        let hosted = lock_panel().registry.hwnds();
+        let hwnd = obtain_window(url, hint, &hosted)?;
+        let saved = embed(hwnd, main);
+        let mut panel = lock_panel();
+        panel.shown = true;
+        panel.registry.add(Entry { id: id.to_owned(), hwnd, saved });
+        sync(&panel, scale, rect);
+        Ok(panel.registry.state())
+    }
+
+    pub fn activate(app: &AppHandle, id: &str, rect: DockRect) -> Result<PanelState, String> {
         let (_, scale) = main_window(app)?;
-        let slot = state
-            .hosted
-            .lock()
-            .map_err(|_| "App panel is unavailable".to_owned())?;
-        let hosted = slot.as_ref().ok_or_else(|| "No app is open".to_owned())?;
-        let caption = caption_height(scale);
-        let frame = with_caption_hidden(to_physical(rect, scale), caption);
-        place_window(hosted.hwnd, frame, caption);
+        let mut panel = lock_panel();
+        panel.registry.prune(window_exists);
+        panel.registry.activate(id);
+        sync(&panel, scale, rect);
+        Ok(panel.registry.state())
+    }
+
+    pub fn place(app: &AppHandle, rect: DockRect) -> Result<(), String> {
+        let (_, scale) = main_window(app)?;
+        let panel = lock_panel();
+        sync(&panel, scale, rect);
         Ok(())
     }
 
-    pub fn close(state: &AppPanelState) -> Result<(), String> {
-        let taken = state
-            .hosted
-            .lock()
-            .map_err(|_| "App panel is unavailable".to_owned())?
-            .take();
-        let Some(mut hosted) = taken else {
-            return Ok(());
-        };
-        unsafe {
-            PostMessageW(hwnd_of(hosted.hwnd), WM_CLOSE, 0, 0);
+    /// Closes one hosted window with WM_CLOSE. The browser process is not touched.
+    pub fn close(app: &AppHandle, id: &str, rect: DockRect) -> Result<PanelState, String> {
+        let (_, scale) = main_window(app)?;
+        let removed = lock_panel().registry.remove(id);
+        if let Some(entry) = removed {
+            unsafe {
+                PostMessageW(hwnd_of(entry.hwnd), WM_CLOSE, 0, 0);
+            }
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while Instant::now() < deadline && window_exists(entry.hwnd) {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            if window_exists(entry.hwnd) {
+                // The page vetoed the close (e.g. an unload prompt): hand it back instead of killing anything.
+                release(&entry);
+            }
         }
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while Instant::now() < deadline && window_exists(hosted.hwnd) {
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        if matches!(hosted.child.try_wait(), Ok(None)) {
-            let _ = hosted.child.kill();
+        let panel = lock_panel();
+        sync(&panel, scale, rect);
+        Ok(panel.registry.state())
+    }
+
+    pub fn set_visible(visible: bool) -> Result<(), String> {
+        let mut panel = lock_panel();
+        panel.shown = visible;
+        for entry in panel.registry.entries() {
+            let is_active = panel.registry.active_id() == Some(entry.id.as_str());
+            let flag = if is_active && visible { SW_SHOWNOACTIVATE } else { SW_HIDE };
+            unsafe { ShowWindow(hwnd_of(entry.hwnd), flag) };
         }
         Ok(())
     }
 
-    pub fn status(state: &AppPanelState) -> Result<bool, String> {
-        let mut slot = state
-            .hosted
-            .lock()
-            .map_err(|_| "App panel is unavailable".to_owned())?;
-        let alive = match slot.as_ref() {
-            Some(hosted) => window_exists(hosted.hwnd),
-            None => return Ok(false),
+    pub fn state() -> PanelState {
+        let mut panel = lock_panel();
+        panel.registry.prune(window_exists);
+        panel.registry.state()
+    }
+
+    pub fn release_all(non_blocking: bool) {
+        let drained = if non_blocking {
+            match PANEL.try_lock() {
+                Ok(mut panel) => panel.registry.drain(),
+                Err(_) => return,
+            }
+        } else {
+            lock_panel().registry.drain()
         };
-        if !alive {
-            *slot = None;
+        for entry in &drained {
+            release(entry);
         }
-        Ok(alive)
     }
 }
 
@@ -362,124 +648,35 @@ mod imp {
     use super::*;
     use tauri::AppHandle;
 
-    const UNSUPPORTED: &str = "App panel is available on Windows only in this spike";
+    const UNSUPPORTED: &str = "App panel is available on Windows only";
 
-    pub fn open(
-        _app: &AppHandle,
-        _state: &AppPanelState,
-        _exe: &str,
-        _args: &[String],
-        _rect: DockRect,
-    ) -> Result<(), String> {
+    pub fn open(_app: &AppHandle, _id: &str, _url: &str, _hint: &str, _rect: DockRect) -> Result<PanelState, String> {
         Err(UNSUPPORTED.to_owned())
     }
 
-    pub fn place(_app: &AppHandle, _state: &AppPanelState, _rect: DockRect) -> Result<(), String> {
+    pub fn activate(_app: &AppHandle, _id: &str, _rect: DockRect) -> Result<PanelState, String> {
         Err(UNSUPPORTED.to_owned())
     }
 
-    pub fn close(_state: &AppPanelState) -> Result<(), String> {
+    pub fn place(_app: &AppHandle, _rect: DockRect) -> Result<(), String> {
         Ok(())
     }
 
-    pub fn status(_state: &AppPanelState) -> Result<bool, String> {
-        Ok(false)
+    pub fn close(_app: &AppHandle, _id: &str, _rect: DockRect) -> Result<PanelState, String> {
+        Ok(PanelState { apps: Vec::new(), active: None })
     }
+
+    pub fn set_visible(_visible: bool) -> Result<(), String> {
+        Ok(())
+    }
+
+    pub fn state() -> PanelState {
+        PanelState { apps: Vec::new(), active: None }
+    }
+
+    pub fn release_all(_non_blocking: bool) {}
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn window(hwnd: isize, pid: u32, class: &str, title: &str, visible: bool) -> TopWindow {
-        TopWindow { hwnd, pid, class: class.to_owned(), title: title.to_owned(), visible }
-    }
-
-    #[test]
-    fn dock_rect_scales_css_pixels_to_physical_pixels() {
-        let rect = DockRect { x: 100.0, y: 40.0, width: 300.0, height: 500.0 };
-        assert_eq!(
-            to_physical(rect, 1.5),
-            PhysicalRect { x: 150, y: 60, width: 450, height: 750 }
-        );
-    }
-
-    #[test]
-    fn dock_rect_at_100_percent_is_unchanged() {
-        let rect = DockRect { x: 560.0, y: 0.0, width: 340.0, height: 660.0 };
-        assert_eq!(
-            to_physical(rect, 1.0),
-            PhysicalRect { x: 560, y: 0, width: 340, height: 660 }
-        );
-    }
-
-    #[test]
-    fn fractional_scale_rounds_to_the_nearest_pixel() {
-        let rect = DockRect { x: 10.2, y: 0.0, width: 100.4, height: 50.0 };
-        assert_eq!(
-            to_physical(rect, 1.25),
-            PhysicalRect { x: 13, y: 0, width: 126, height: 63 }
-        );
-    }
-
-    #[test]
-    fn owned_window_is_the_visible_titled_window_of_the_child_pid() {
-        let windows = [
-            window(1, 10, "Chrome_WidgetWin_1", "", true),
-            window(2, 10, "Chrome_WidgetWin_1", "YouTube Music", true),
-            window(3, 11, "Chrome_WidgetWin_1", "YouTube Music", true),
-        ];
-        assert_eq!(pick_owned_window(&windows, 10, "Chrome_WidgetWin_1"), Some(2));
-    }
-
-    #[test]
-    fn owned_window_ignores_hidden_and_other_classes() {
-        let windows = [
-            window(1, 10, "Chrome_WidgetWin_1", "YouTube Music", false),
-            window(2, 10, "Chrome_RenderWidgetHostHWND", "YouTube Music", true),
-        ];
-        assert_eq!(pick_owned_window(&windows, 10, "Chrome_WidgetWin_1"), None);
-    }
-
-    #[test]
-    fn new_window_is_the_matching_top_level_window_absent_before_launch() {
-        let before = [1, 2];
-        let after = [
-            window(1, 10, "Chrome_WidgetWin_1", "Other", true),
-            window(2, 10, "Chrome_WidgetWin_1", "Other", true),
-            window(5, 10, "Chrome_WidgetWin_1", "YouTube Music", true),
-        ];
-        assert_eq!(pick_new_window(&before, &after, "Chrome_WidgetWin_1"), Some(5));
-    }
-
-    #[test]
-    fn new_window_is_none_when_nothing_new_appeared() {
-        let before = [1];
-        let after = [window(1, 10, "Chrome_WidgetWin_1", "Other", true)];
-        assert_eq!(pick_new_window(&before, &after, "Chrome_WidgetWin_1"), None);
-    }
-
-    #[test]
-    fn hosted_window_moves_up_by_the_hidden_caption_height() {
-        let dock = PhysicalRect { x: 560, y: 131, width: 340, height: 660 };
-        assert_eq!(
-            with_caption_hidden(dock, 31),
-            PhysicalRect { x: 560, y: 100, width: 340, height: 691 }
-        );
-    }
-
-    #[test]
-    fn caption_height_scales_with_the_display() {
-        assert_eq!(caption_height(1.0), 31);
-        assert_eq!(caption_height(1.5), 47);
-    }
-
-    #[test]
-    fn profile_placeholder_is_replaced_in_each_argument() {
-        let args = vec!["--app=https://music.youtube.com".to_owned(), "--user-data-dir={profile}".to_owned()];
-        assert_eq!(
-            expand_args(&args, "C:/data/app-panel/brave"),
-            vec!["--app=https://music.youtube.com".to_owned(), "--user-data-dir=C:/data/app-panel/brave".to_owned()]
-        );
-    }
-}
+#[path = "app_panel_tests.rs"]
+mod tests;
