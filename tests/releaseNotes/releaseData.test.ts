@@ -8,8 +8,33 @@ describe("release notes data", () => {
 
   it("lists the closed issues of 0.1.3 with their numbers and titles", () => {
     const current = RELEASES.releases.find((release) => release.version === "0.1.3");
-    expect(current?.issues.map((issue) => issue.number)).toEqual([55, 56, 58, 59, 60, 61, 62]);
+    expect(current?.issues.map((issue) => issue.number)).toEqual([55, 56, 58, 59, 60, 61]);
     expect(current?.issues.find((issue) => issue.number === 59)?.title).toBe("Editor tabs of a removed workspace folder stay open");
+  });
+
+  it("lists 0.1.4 as an unreleased version with no date, holding issues 62 and 63", () => {
+    const upcoming = RELEASES.releases.find((release) => release.version === "0.1.4");
+    expect(upcoming?.date).toBeNull();
+    expect(upcoming?.issues).toEqual([
+      { number: 62, title: "Custom title bar with bolder brand mark and name" },
+      { number: 63, title: "Version notes page listing closed issues per release" },
+    ]);
+  });
+
+  it("accepts an unreleased version whose date is null", () => {
+    const data: ReleaseNotesData = {
+      repository: "https://github.com/YusufYiildiiriim/yerminal",
+      releases: [{ version: "1.0.0", date: null, issues: [] }],
+    };
+    expect(validateReleaseData(data)).toEqual([]);
+  });
+
+  it("rejects a date that is neither null nor YYYY-MM-DD", () => {
+    const data: ReleaseNotesData = {
+      repository: "https://github.com/YusufYiildiiriim/yerminal",
+      releases: [{ version: "1.0.0", date: "2026/01/01", issues: [] }],
+    };
+    expect(validateReleaseData(data).length).toBeGreaterThan(0);
   });
 
   it("rejects an issue number that is not a positive integer", () => {

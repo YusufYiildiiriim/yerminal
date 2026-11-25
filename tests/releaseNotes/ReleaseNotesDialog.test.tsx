@@ -54,6 +54,12 @@ describe("ReleaseNotesDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
+  it("labels an unreleased version as Upcoming and shows no date", () => {
+    render(<ReleaseNotesDialog releases={[{ version: "0.1.4", date: null, issues: [{ number: 63, title: "Version notes page" }] }]} onClose={() => {}} />);
+    const headings = screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent);
+    expect(headings).toEqual(["0.1.4 · Upcoming"]);
+  });
+
   it("shows an empty state when there are no releases", () => {
     render(<ReleaseNotesDialog releases={[]} onClose={() => {}} />);
     expect(screen.getByText("No release notes yet.")).toBeInTheDocument();
