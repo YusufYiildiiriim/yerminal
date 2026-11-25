@@ -12,12 +12,13 @@ describe("release notes data", () => {
     expect(current?.issues.find((issue) => issue.number === 59)?.title).toBe("Editor tabs of a removed workspace folder stay open");
   });
 
-  it("lists 0.1.4 as an unreleased version with no date, holding issues 62 and 63", () => {
+  it("lists 0.1.4 as an unreleased version with no date, holding issues 62, 63 and 64", () => {
     const upcoming = RELEASES.releases.find((release) => release.version === "0.1.4");
     expect(upcoming?.date).toBeNull();
     expect(upcoming?.issues).toEqual([
       { number: 62, title: "Custom title bar with bolder brand mark and name" },
       { number: 63, title: "Version notes page listing closed issues per release" },
+      { number: 64, title: "Title bar logo renders broken and bar is too tall" },
     ]);
   });
 
