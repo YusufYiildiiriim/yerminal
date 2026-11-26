@@ -61,6 +61,11 @@ pub struct TopWindow {
     pub title: String,
     pub visible: bool,
     pub has_owner: bool,
+    /// Full path of the executable that owns the window (empty when it could not be read).
+    pub exe: String,
+    /// GWL_STYLE and GWL_EXSTYLE.
+    pub style: u32,
+    pub ex_style: u32,
 }
 
 /// The page sends the dock box in device pixels (CSS pixels times window.devicePixelRatio,
@@ -194,11 +199,30 @@ pub fn is_main_browser_title(title: &str) -> bool {
         .any(|suffix| clean.ends_with(suffix))
 }
 
-fn is_app_candidate(w: &TopWindow, class: &str) -> bool {
+const WS_POPUP: u32 = 0x8000_0000;
+const WS_CAPTION: u32 = 0x00C0_0000;
+const WS_EX_TOOLWINDOW: u32 = 0x0000_0080;
+
+/// Same file, whatever the case or slash style. An unknown (empty) path matches nothing.
+pub fn same_path(a: &str, b: &str) -> bool {
+    let norm = |p: &str| p.replace('/', "\\").to_lowercase();
+    !a.is_empty() && norm(a) == norm(b)
+}
+
+/// A window the launched browser could have opened for an `--app` launch: it belongs to the browser
+/// executable, is visible, has no owner, is a captioned top-level window (not a popup, tool window
+/// or bubble) and is not a DevTools window. Other Chromium-class windows (VS Code, Electron apps)
+/// never qualify, whatever their title.
+fn is_app_candidate(w: &TopWindow, class: &str, browser: &str) -> bool {
     w.visible
         && !w.has_owner
         && w.class == class
+        && same_path(&w.exe, browser)
+        && w.style & WS_CAPTION == WS_CAPTION
+        && w.style & WS_POPUP == 0
+        && w.ex_style & WS_EX_TOOLWINDOW == 0
         && !w.title.is_empty()
+        && !w.title.starts_with("DevTools")
         && !is_main_browser_title(&w.title)
 }
 
@@ -206,9 +230,10 @@ fn is_app_candidate(w: &TopWindow, class: &str) -> bool {
 /// exist before it. Windows that were already open are never taken, whatever their title, so the
 /// user's own windows stay theirs. Among new windows the one titled like the app wins; any other
 /// new window is taken as a fallback because the page may not have set its title yet. The launcher
-/// hands over to the running browser and exits, so the window cannot be found by process id.
-pub fn pick_new_window(before: &[isize], after: &[TopWindow], class: &str, hint: &str) -> Option<isize> {
-    let mut fresh = after.iter().filter(|w| is_app_candidate(w, class) && !before.contains(&w.hwnd));
+/// hands over to the running browser and exits, so the window cannot be found by the process this
+/// code started; it is recognised by the executable that owns it (`browser`) instead.
+pub fn pick_new_window(before: &[isize], after: &[TopWindow], class: &str, hint: &str, browser: &str) -> Option<isize> {
+    let mut fresh = after.iter().filter(|w| is_app_candidate(w, class, browser) && !before.contains(&w.hwnd));
     let first = fresh.next()?;
     let matching = std::iter::once(first).chain(fresh).find(|w| title_matches_hint(&w.title, hint));
     Some(matching.unwrap_or(first).hwnd)
@@ -758,8 +783,8 @@ mod imp {
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         EnumChildWindows, EnumWindows, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowRect, GetWindowTextW,
-        GetWindowThreadProcessId, IsHungAppWindow, IsIconic, IsWindow, IsWindowVisible, IsZoomed, MoveWindow, PostMessageW,
-        SetWindowPos, ShowWindow, GW_HWNDPREV, GW_OWNER, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        GetWindowLongPtrW, GetWindowThreadProcessId, IsHungAppWindow, IsIconic, IsWindow, IsWindowVisible, IsZoomed, MoveWindow, PostMessageW,
+        SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_STYLE, GW_HWNDPREV, GW_OWNER, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
         SW_HIDE, SW_RESTORE, SW_SHOWNOACTIVATE, WM_CLOSE,
     };
 
@@ -823,17 +848,43 @@ mod imp {
         String::from_utf16_lossy(&buf[..len.max(0) as usize])
     }
 
+    /// Full path of the executable of a process; empty when it cannot be read.
+    fn process_image(pid: u32) -> String {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION};
+        unsafe {
+            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if process.is_null() {
+                return String::new();
+            }
+            let mut buf = [0u16; 1024];
+            let mut len = buf.len() as u32;
+            let ok = QueryFullProcessImageNameW(process, 0, buf.as_mut_ptr(), &mut len);
+            CloseHandle(process);
+            if ok == 0 {
+                return String::new();
+            }
+            String::from_utf16_lossy(&buf[..len as usize])
+        }
+    }
+
     unsafe extern "system" fn collect(hwnd: HWND, lparam: LPARAM) -> i32 {
         let list = &mut *(lparam as *mut Vec<TopWindow>);
         let mut pid = 0u32;
         GetWindowThreadProcessId(hwnd, &mut pid);
+        let class = class_name(hwnd);
+        // The owner's image path is only looked up for windows that could be a browser window.
+        let exe = if class == CHROMIUM_WINDOW_CLASS { process_image(pid) } else { String::new() };
         list.push(TopWindow {
             hwnd: hwnd as isize,
             pid,
-            class: class_name(hwnd),
+            class,
             title: window_title(hwnd),
             visible: IsWindowVisible(hwnd) != 0,
             has_owner: !GetWindow(hwnd, GW_OWNER).is_null(),
+            exe,
+            style: GetWindowLongPtrW(hwnd, GWL_STYLE) as u32,
+            ex_style: GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32,
         });
         TRUE
     }
@@ -1255,7 +1306,7 @@ mod imp {
             .map_err(|e| format!("Cannot start {}: {e}", browser.name))?;
         let deadline = Instant::now() + Duration::from_secs(15);
         loop {
-            if let Some(found) = pick_new_window(&before, &top_windows(), CHROMIUM_WINDOW_CLASS, hint) {
+            if let Some(found) = pick_new_window(&before, &top_windows(), CHROMIUM_WINDOW_CLASS, hint, &browser.exe.to_string_lossy()) {
                 return Ok(found);
             }
             if Instant::now() >= deadline {

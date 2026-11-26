@@ -2,6 +2,9 @@ use super::*;
 use std::path::{Path, PathBuf};
 
 const CLASS: &str = "Chrome_WidgetWin_1";
+const BROWSER: &str = r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe";
+/// WS_OVERLAPPEDWINDOW style of a Chromium app window (measured on Brave).
+const APP_STYLE: u32 = 0x16CF_0000;
 
 fn window(hwnd: isize, title: &str) -> TopWindow {
     TopWindow {
@@ -11,6 +14,9 @@ fn window(hwnd: isize, title: &str) -> TopWindow {
         title: title.to_owned(),
         visible: true,
         has_owner: false,
+        exe: BROWSER.to_owned(),
+        style: APP_STYLE,
+        ex_style: 0x0020_0100,
     }
 }
 
@@ -159,12 +165,12 @@ fn no_browser_gives_a_clear_message() {
 fn new_window_is_the_app_window_absent_before_launch() {
     let before = [1, 2];
     let after = [window(1, "Other"), window(2, "Other"), window(5, "YouTube Music")];
-    assert_eq!(pick_new_window(&before, &after, CLASS, "YouTube Music"), Some(5));
+    assert_eq!(pick_new_window(&before, &after, CLASS, "YouTube Music", BROWSER), Some(5));
 }
 
 #[test]
 fn new_window_is_none_when_nothing_new_appeared() {
-    assert_eq!(pick_new_window(&[1], &[window(1, "Other")], CLASS, "YouTube Music"), None);
+    assert_eq!(pick_new_window(&[1], &[window(1, "Other")], CLASS, "YouTube Music", BROWSER), None);
 }
 
 #[test]
@@ -184,7 +190,7 @@ fn new_window_skips_main_browser_windows_hidden_owned_untitled_and_other_classes
         window(5, ""),
         other,
     ];
-    assert_eq!(pick_new_window(&[], &after, CLASS, "YouTube Music"), None);
+    assert_eq!(pick_new_window(&[], &after, CLASS, "YouTube Music", BROWSER), None);
 }
 
 #[test]
@@ -201,24 +207,24 @@ fn main_browser_titles_are_recognised_by_their_browser_suffix() {
 #[test]
 fn a_window_open_before_the_launch_is_never_taken_even_with_a_matching_title() {
     let after = [window(2, "Lofi mix - YouTube Music")];
-    assert_eq!(pick_new_window(&[2], &after, CLASS, "YouTube Music"), None);
+    assert_eq!(pick_new_window(&[2], &after, CLASS, "YouTube Music", BROWSER), None);
 }
 
 #[test]
 fn only_the_window_that_appeared_after_the_launch_is_taken() {
     let after = [window(2, "Lofi mix - YouTube Music"), window(9, "YouTube Music")];
-    assert_eq!(pick_new_window(&[2], &after, CLASS, "YouTube Music"), Some(9));
+    assert_eq!(pick_new_window(&[2], &after, CLASS, "YouTube Music", BROWSER), Some(9));
 }
 
 #[test]
 fn among_new_windows_the_one_matching_the_app_title_wins() {
     let after = [window(8, "Some other app"), window(9, "Home / X")];
-    assert_eq!(pick_new_window(&[], &after, CLASS, "X"), Some(9));
+    assert_eq!(pick_new_window(&[], &after, CLASS, "X", BROWSER), Some(9));
 }
 
 #[test]
 fn a_new_window_with_another_title_is_taken_while_the_page_has_not_titled_itself_yet() {
-    assert_eq!(pick_new_window(&[1], &[window(1, "Old"), window(9, "music.youtube.com")], CLASS, "YouTube Music"), Some(9));
+    assert_eq!(pick_new_window(&[1], &[window(1, "Old"), window(9, "music.youtube.com")], CLASS, "YouTube Music", BROWSER), Some(9));
 }
 
 #[test]
@@ -703,4 +709,40 @@ fn yerminal_is_never_the_window_that_moves_when_it_is_in_front() {
     for prev in [None, Some(OTHER), Some(APP)] {
         assert!(!matches!(z_action(MAIN, MAIN, APP, prev), ZAction::MainBelowApp));
     }
+}
+
+// --- A-16: only windows of the launched browser that look like an app window are taken ---
+
+fn other(mut w: TopWindow, f: impl FnOnce(&mut TopWindow)) -> TopWindow {
+    f(&mut w);
+    w
+}
+
+#[test]
+fn a_new_window_of_another_program_is_never_taken() {
+    // VS Code and other Electron apps use the same window class as Chromium.
+    let vscode = other(window(9, "main.rs - Visual Studio Code"), |w| {
+        w.exe = r"C:\Users\u\AppData\Local\Programs\Microsoft VS Code\Code.exe".into()
+    });
+    assert_eq!(pick_new_window(&[], &[vscode], CLASS, "YouTube Music", BROWSER), None);
+}
+
+#[test]
+fn the_browser_path_is_compared_without_regard_to_case_or_slash_style() {
+    let w = other(window(9, "Home / X"), |w| {
+        w.exe = "c:/program files/bravesoftware/brave-browser/application/BRAVE.EXE".into()
+    });
+    assert_eq!(pick_new_window(&[], &[w], CLASS, "X", BROWSER), Some(9));
+    assert!(same_path(r"C:\a\B.exe", "c:/a/b.exe"));
+    assert!(!same_path(r"C:\a\b.exe", r"C:\a\c.exe"));
+    assert!(!same_path("", ""), "an unknown image path never matches");
+}
+
+#[test]
+fn browser_windows_that_are_not_app_windows_are_never_taken() {
+    let devtools = window(3, "DevTools - example.com/");
+    let popup = other(window(4, "Some page"), |w| w.style = 0x9600_0000); // WS_POPUP, no caption
+    let tool = other(window(5, "Some page"), |w| w.ex_style = 0x0020_0180); // WS_EX_TOOLWINDOW
+    let unknown_owner = other(window(6, "Some page"), |w| w.exe = String::new());
+    assert_eq!(pick_new_window(&[], &[devtools, popup, tool, unknown_owner], CLASS, "X", BROWSER), None);
 }
