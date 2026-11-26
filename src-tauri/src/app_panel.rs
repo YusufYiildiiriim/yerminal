@@ -11,6 +11,7 @@
 //! Geometry, window selection and bookkeeping are portable and unit tested; the Win32
 //! work lives behind `#[cfg(windows)]` and other platforms get an error stub.
 
+use crate::app_panel_rescue::{self, RescueFile, RescueWindow};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -498,6 +499,12 @@ struct Panel {
     placed_at: Option<std::time::Instant>,
     /// True while the follow thread runs (it stops when the last window is gone).
     following: bool,
+    /// App data folder that holds the rescue file (see `app_panel_rescue`).
+    rescue_dir: Option<PathBuf>,
+    /// What the rescue file contains right now (rewritten only when it changes).
+    rescue_last: Option<RescueFile>,
+    /// The watchdog process was started.
+    watchdog: bool,
 }
 
 static PANEL: Mutex<Panel> = Mutex::new(Panel {
@@ -510,6 +517,9 @@ static PANEL: Mutex<Panel> = Mutex::new(Panel {
     band: 0,
     placed_at: None,
     following: false,
+    rescue_dir: None,
+    rescue_last: None,
+    watchdog: false,
 });
 
 fn lock_panel() -> std::sync::MutexGuard<'static, Panel> {
@@ -563,6 +573,11 @@ pub fn app_panel_snapshot() -> Result<tauri::ipc::Response, String> {
 #[tauri::command(async)]
 pub fn app_panel_state() -> Result<PanelState, String> {
     Ok(imp::state())
+}
+
+/// Start-up fallback for windows a dead yerminal left behind (see `app_panel_rescue`).
+pub fn rescue_orphans(app: &tauri::AppHandle) {
+    imp::rescue_orphans(app);
 }
 
 /// Gives every hosted window back to the desktop (called on exit and from the panic hook).
@@ -969,6 +984,83 @@ mod imp {
                 placed,
             }
         };
+        sync_rescue(panel);
+    }
+
+    /// Writes the rescue file when what it must contain changed, and starts the watchdog the
+    /// first time. Cheap when nothing changed (in-memory comparison only).
+    fn sync_rescue(panel: &mut Panel) {
+        let Some(dir) = panel.rescue_dir.clone() else { return };
+        let path = dir.join(app_panel_rescue::rescue_file_name(std::process::id()));
+        if panel.registry.entries().is_empty() {
+            if panel.rescue_last.take().is_some() {
+                let _ = std::fs::remove_file(&path);
+            }
+            return;
+        }
+        let backdrops = BACKDROPS.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        let windows = panel
+            .registry
+            .entries()
+            .iter()
+            .map(|e| {
+                let mut pid = 0u32;
+                unsafe { GetWindowThreadProcessId(hwnd_of(e.hwnd), &mut pid) };
+                RescueWindow {
+                    hwnd: e.hwnd,
+                    pid,
+                    class: class_name(hwnd_of(e.hwnd)),
+                    x: e.saved.x,
+                    y: e.saved.y,
+                    width: e.saved.width,
+                    height: e.saved.height,
+                    backdrop: backdrops.iter().find(|(w, _)| *w == e.hwnd).map(|(_, v)| *v),
+                    hidden: !(panel.applied.visible && panel.applied.hwnd == Some(e.hwnd)),
+                }
+            })
+            .collect();
+        let file = RescueFile { owner_pid: std::process::id(), owner_started: app_panel_rescue::own_start_time(), windows };
+        if panel.rescue_last.as_ref() == Some(&file) {
+            return;
+        }
+        if app_panel_rescue::write_atomic(&path, &file).is_ok() {
+            panel.rescue_last = Some(file);
+            if !panel.watchdog {
+                panel.watchdog = spawn_watchdog(&path);
+            }
+        }
+    }
+
+    /// Same executable in watchdog mode: no window, no Tauri, only waits for this process to end.
+    fn spawn_watchdog(path: &Path) -> bool {
+        use std::os::windows::process::CommandExt;
+        use std::process::Stdio;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let Ok(exe) = std::env::current_exe() else { return false };
+        Command::new(exe)
+            .arg(app_panel_rescue::WATCHDOG_FLAG)
+            .arg(std::process::id().to_string())
+            .arg(path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .is_ok()
+    }
+
+    /// Remembers where the rescue file lives (called by every command that has the app handle).
+    fn remember_rescue_dir(panel: &mut Panel, app: &AppHandle) {
+        if panel.rescue_dir.is_none() {
+            panel.rescue_dir = app.path().app_data_dir().ok();
+        }
+    }
+
+    /// Start-up fallback: windows left behind by a yerminal that died are given back.
+    pub fn rescue_orphans(app: &AppHandle) {
+        if let Ok(dir) = app.path().app_data_dir() {
+            app_panel_rescue::rescue_orphans(&dir);
+        }
     }
 
     /// Starts the follow loop (once). Light polling: a few window queries every 40 ms, no
@@ -985,6 +1077,7 @@ mod imp {
             if panel.registry.entries().is_empty() || !window_exists(panel.main) {
                 panel.following = false;
                 panel.applied = Applied::default();
+                sync_rescue(&mut panel);
                 return;
             }
             apply(&mut panel);
@@ -1025,6 +1118,7 @@ mod imp {
         let (main, scale) = main_window(app)?;
         {
             let mut panel = lock_panel();
+            remember_rescue_dir(&mut panel, app);
             (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
             if panel.registry.activate(id) {
                 apply(&mut panel);
@@ -1035,6 +1129,7 @@ mod imp {
         let saved = capture(hwnd);
         let mut panel = lock_panel();
         panel.shown = true;
+        remember_rescue_dir(&mut panel, app);
         (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
         panel.registry.add(Entry { id: id.to_owned(), hwnd, saved });
         ensure_follower(&mut panel);
@@ -1195,14 +1290,18 @@ mod imp {
             match PANEL.try_lock() {
                 Ok(mut panel) => {
                     panel.applied = Applied::default();
-                    panel.registry.drain()
+                    let drained = panel.registry.drain();
+                    sync_rescue(&mut panel);
+                    drained
                 }
                 Err(_) => return,
             }
         } else {
             let mut panel = lock_panel();
             panel.applied = Applied::default();
-            panel.registry.drain()
+            let drained = panel.registry.drain();
+            sync_rescue(&mut panel);
+            drained
         };
         for entry in &drained {
             release(entry);
@@ -1244,6 +1343,8 @@ mod imp {
     pub fn state() -> PanelState {
         PanelState { apps: Vec::new(), active: None }
     }
+
+    pub fn rescue_orphans(_app: &AppHandle) {}
 
     pub fn release_all(_non_blocking: bool) {}
 }

@@ -1,5 +1,6 @@
 pub mod agent_usage;
 pub mod app_panel;
+pub mod app_panel_rescue;
 pub mod git;
 pub mod git_gate;
 pub mod git_remote;
@@ -468,6 +469,9 @@ pub fn run() {
             watch_workspace_roots
         ])
         .setup(|_app| {
+            // Windows a dead yerminal left hidden or clipped are given back (own thread: a hung browser must not delay start).
+            let handle = _app.handle().clone();
+            std::thread::spawn(move || app_panel::rescue_orphans(&handle));
             #[cfg(debug_assertions)]
             app_panel::debug_autoopen(_app.handle().clone());
             Ok(())
