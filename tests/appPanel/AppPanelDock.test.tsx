@@ -84,15 +84,11 @@ describe("AppPanelDock", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Add app" }));
     const menu = screen.getByRole("menu", { name: "Apps" });
-    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["YouTube Music", "YouTube", "X"]);
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["YouTube Music", "YouTube", "X", "Add app…"]);
     fireEvent.click(within(menu).getByRole("menuitem", { name: "YouTube Music" }));
 
-    await waitFor(() => expect(tauri.invoke).toHaveBeenCalledWith("app_panel_open", {
-      id: "youtube-music",
-      url: "https://music.youtube.com",
-      titleHint: "YouTube Music",
-      rect: RECT,
-    }));
+    // The page names an app by its id only: no url, no title hint, no path.
+    await waitFor(() => expect(tauri.invoke).toHaveBeenCalledWith("app_panel_open", { id: "youtube-music", rect: RECT }));
     expect(await screen.findByRole("tab", { name: "YouTube Music", selected: true })).toBeTruthy();
   });
 
@@ -260,6 +256,193 @@ describe("AppPanelDock", () => {
     localStorage.setItem("yerminal.app-panel", JSON.stringify({ open: true, width: 450 }));
     setup();
     expect(screen.getByLabelText("App panel").style.flexBasis).toBe("450px");
+  });
+
+  describe("own apps", () => {
+    const READY = [
+      { id: "youtube-music", name: "YouTube Music", kind: "builtin" },
+      { id: "youtube", name: "YouTube", kind: "builtin" },
+      { id: "x", name: "X", kind: "builtin" },
+    ];
+    const POSTMAN = { id: "custom-1", name: "Postman", kind: "custom" };
+    const calls = (name: string) => tauri.invoke.mock.calls.filter(([command]) => command === name);
+
+    /** Backend double: a list that add/rename/remove change, and a picker with a fixed answer. */
+    function backend(initial: unknown[] = [], extra: Record<string, unknown> = {}) {
+      let own = [...initial];
+      tauri.invoke.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+        if (command in extra) {
+          const value = extra[command];
+          if (value instanceof Error) throw value.message;
+          return value;
+        }
+        switch (command) {
+          case "app_panel_state": return empty;
+          case "app_panel_apps_list": return [...READY, ...own];
+          case "app_panel_app_pick": return { default_name: "charmap" };
+          case "app_panel_app_register": own = [...own, { id: "custom-9", name: String(args?.name), kind: "custom" }]; return [...READY, ...own];
+          case "app_panel_app_rename": own = own.map((app) => ((app as { id: string }).id === args?.id ? { ...(app as object), name: String(args?.name) } : app)); return [...READY, ...own];
+          case "app_panel_app_remove": own = own.filter((app) => (app as { id: string }).id !== args?.id); return [...READY, ...own];
+          default: return undefined;
+        }
+      });
+    }
+
+    const openMenu = async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Add app" }));
+      return screen.getByRole("menu", { name: "Apps" });
+    };
+
+    it("lists ready-made apps, a separator, the saved apps and Add app at the bottom", async () => {
+      backend([POSTMAN]);
+      setup();
+      await screen.findByRole("button", { name: "Open Postman" });
+      const menu = await openMenu();
+      const items = within(menu).getAllByRole("menuitem").map((item) => item.getAttribute("aria-label") ?? item.textContent);
+      expect(items).toEqual(["YouTube Music", "YouTube", "X", "Postman", "Rename Postman", "Remove Postman", "Add app…"]);
+      expect(within(menu).getAllByRole("separator").length).toBeGreaterThanOrEqual(1);
+      expect(within(menu).getAllByRole("menuitem").at(-1)?.textContent).toBe("Add app…");
+    });
+
+    it("opens a saved app by its id and nothing else", async () => {
+      backend([POSTMAN], { app_panel_open: { apps: ["custom-1"], active: "custom-1" } });
+      setup();
+      await screen.findByRole("button", { name: "Open Postman" });
+      const menu = await openMenu();
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Postman" }));
+      await waitFor(() => expect(calls("app_panel_open")).toEqual([["app_panel_open", { id: "custom-1", rect: RECT }]]));
+      expect(await screen.findByRole("tab", { name: "Postman", selected: true })).toBeTruthy();
+    });
+
+    it("ignores a double click on a saved app", async () => {
+      backend([POSTMAN], { app_panel_open: new Promise(() => undefined) });
+      setup();
+      await screen.findByRole("button", { name: "Open Postman" });
+      const menu = await openMenu();
+      const item = within(menu).getByRole("menuitem", { name: "Postman" });
+      fireEvent.click(item);
+      fireEvent.click(item);
+      expect(calls("app_panel_open")).toHaveLength(1);
+    });
+
+    it("adds an app: the picker is opened by the backend, the page only types a name", async () => {
+      backend();
+      setup();
+      const menu = await openMenu();
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Add app…" }));
+
+      const input = await screen.findByRole("textbox", { name: "App name" });
+      expect((input as HTMLInputElement).value).toBe("charmap");
+      expect(calls("app_panel_app_pick")).toEqual([["app_panel_app_pick"]]);
+      fireEvent.change(input, { target: { value: "Character Map" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+      await waitFor(() => expect(calls("app_panel_app_register")).toEqual([["app_panel_app_register", { name: "Character Map" }]]));
+      expect(await screen.findByRole("button", { name: "Open Character Map" })).toBeTruthy();
+      expect(screen.queryByRole("textbox", { name: "App name" })).toBeNull();
+      // No call ever carries a path or an argument.
+      for (const [, args] of tauri.invoke.mock.calls) {
+        expect(JSON.stringify(args ?? {})).not.toMatch(/path|exe|args|\.exe/i);
+      }
+    });
+
+    it("saves with Enter and drops the pick with Escape", async () => {
+      backend();
+      setup();
+      let menu = await openMenu();
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Add app…" }));
+      let input = await screen.findByRole("textbox", { name: "App name" });
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(screen.queryByRole("textbox", { name: "App name" })).toBeNull();
+      expect(calls("app_panel_app_register")).toHaveLength(0);
+
+      menu = await openMenu();
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Add app…" }));
+      input = await screen.findByRole("textbox", { name: "App name" });
+      fireEvent.submit(input.closest("form") as HTMLFormElement);
+      await waitFor(() => expect(calls("app_panel_app_register")).toHaveLength(1));
+    });
+
+    it("does nothing when the picker is cancelled", async () => {
+      backend([], { app_panel_app_pick: null });
+      setup();
+      const menu = await openMenu();
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Add app…" }));
+      await waitFor(() => expect(calls("app_panel_app_pick")).toHaveLength(1));
+      expect(screen.queryByRole("textbox", { name: "App name" })).toBeNull();
+      expect(screen.queryByRole("status")).toBeNull();
+    });
+
+    it("shows a refused pick or a failed save in the message area", async () => {
+      backend([], { app_panel_app_pick: new Error("Choose an .exe file on a local drive") });
+      setup();
+      const menu = await openMenu();
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Add app…" }));
+      expect((await screen.findByRole("status")).textContent).toContain("local drive");
+    });
+
+    it("does not save an empty name", async () => {
+      backend();
+      setup();
+      const menu = await openMenu();
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Add app…" }));
+      const input = await screen.findByRole("textbox", { name: "App name" });
+      fireEvent.change(input, { target: { value: "   " } });
+      expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it("renames a saved app and the open tab follows", async () => {
+      backend([POSTMAN], { app_panel_state: { apps: ["custom-1"], active: "custom-1" } });
+      setup();
+      await screen.findByRole("tab", { name: "Postman" });
+      const menu = await openMenu();
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Rename Postman" }));
+      const input = await screen.findByRole("textbox", { name: "App name" });
+      expect((input as HTMLInputElement).value).toBe("Postman");
+      fireEvent.change(input, { target: { value: "Postman Agent" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(calls("app_panel_app_rename")).toEqual([["app_panel_app_rename", { id: "custom-1", name: "Postman Agent" }]]));
+      expect(await screen.findByRole("tab", { name: "Postman Agent" })).toBeTruthy();
+    });
+
+    it("removes a saved app only after a confirmation, and never closes its window", async () => {
+      backend([POSTMAN]);
+      setup();
+      await screen.findByRole("button", { name: "Open Postman" });
+      let menu = await openMenu();
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Remove Postman" }));
+      expect(screen.getByText(/Remove Postman from the list/)).toBeTruthy();
+      expect(calls("app_panel_app_remove")).toHaveLength(0);
+      fireEvent.click(screen.getByRole("button", { name: "Keep" }));
+      expect(screen.queryByText(/Remove Postman from the list/)).toBeNull();
+      expect(calls("app_panel_app_remove")).toHaveLength(0);
+
+      menu = await openMenu();
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Remove Postman" }));
+      fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+      await waitFor(() => expect(calls("app_panel_app_remove")).toEqual([["app_panel_app_remove", { id: "custom-1" }]]));
+      await waitFor(() => expect(screen.queryByRole("button", { name: "Open Postman" })).toBeNull());
+      expect(calls("app_panel_close")).toHaveLength(0);
+    });
+
+    it("keeps an open tab, with its name, after its app was removed from the list", async () => {
+      backend([POSTMAN], { app_panel_state: { apps: ["custom-1"], active: "custom-1" } });
+      setup();
+      await screen.findByRole("tab", { name: "Postman" });
+      const menu = await openMenu();
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Remove Postman" }));
+      fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+      await waitFor(() => expect(calls("app_panel_app_remove")).toHaveLength(1));
+      expect(screen.getByRole("tab", { name: "Postman" })).toBeTruthy();
+      expect(calls("app_panel_close")).toHaveLength(0);
+    });
+
+    it("shows a start error of a saved app in the message area", async () => {
+      backend([POSTMAN], { app_panel_open: new Error("No new window appeared. The app may already be open: close it and try again.") });
+      setup();
+      fireEvent.click(await screen.findByRole("button", { name: "Open Postman" }));
+      expect((await screen.findByRole("status")).textContent).toContain("may already be open");
+    });
   });
 
   describe("dialog over the hosted window", () => {

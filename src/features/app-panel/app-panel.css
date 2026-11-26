@@ -47,11 +47,30 @@
 
 .app-shell[data-theme] .app-panel-add { position: relative; flex: none; }
 .app-shell[data-theme] .app-panel-menu {
-  position: absolute; z-index: 5; top: calc(100% + 4px); right: 0; min-width: 168px; padding: 4px; display: grid; gap: 1px;
+  position: absolute; z-index: 5; top: calc(100% + 4px); right: 0; min-width: 208px; padding: 4px; display: grid; gap: 1px;
   border: 1px solid var(--theme-border); border-radius: 8px; background: var(--theme-raised); box-shadow: 0 10px 28px #0007;
 }
-.app-shell[data-theme] .app-panel-menu-item { height: 28px; padding: 0 10px; border: 0; border-radius: 5px; background: transparent; color: var(--theme-text); font-size: var(--fs-sm); text-align: left; }
+.app-shell[data-theme] .app-panel-menu-item { height: 32px; padding: 0 10px; border: 0; border-radius: 5px; background: transparent; color: var(--theme-text); font-size: var(--fs-sm); text-align: left; }
 .app-shell[data-theme] .app-panel-menu-item:hover { background: var(--shell-hover, var(--hover)); }
+.app-shell[data-theme] .app-panel-menu-separator { height: 1px; margin: 3px 2px; background: var(--theme-border); }
+/* A saved app: name button grows, rename and remove sit at the end (32 px hit areas). */
+.app-shell[data-theme] .app-panel-menu-row { display: flex; align-items: center; min-width: 0; }
+.app-shell[data-theme] .app-panel-menu-row .app-panel-menu-item { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell[data-theme] .app-panel-menu-action { width: 32px; height: 32px; flex: none; padding: 0; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.app-shell[data-theme] .app-panel-menu-action svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.app-shell[data-theme] .app-panel-menu-action:hover { background: var(--shell-hover, var(--hover)); color: var(--theme-text); }
+.app-shell[data-theme] .app-panel-menu-action:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }
+
+/* Name and remove confirmation sit in their own strip above the content, never over the native window. */
+.app-shell[data-theme] .app-panel-name-form,
+.app-shell[data-theme] .app-panel-confirm { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; min-height: 40px; padding: 4px 8px 4px 12px; border-bottom: 1px solid var(--theme-border); background: var(--theme-chrome); color: var(--theme-text); font-size: var(--fs-sm); }
+.app-shell[data-theme] .app-panel-confirm span { flex: 1 1 auto; min-width: 0; line-height: 1.4; }
+.app-shell[data-theme] .app-panel-name-input { flex: 1 1 auto; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--theme-border); border-radius: 6px; background: var(--theme-terminal); color: var(--theme-text); font: inherit; }
+.app-shell[data-theme] .app-panel-name-input:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }
+.app-shell[data-theme] .app-panel-name-button { height: 32px; flex: none; padding: 0 12px; border: 1px solid var(--theme-border); border-radius: 6px; background: var(--theme-raised); color: var(--theme-text); font-size: var(--fs-sm); cursor: pointer; }
+.app-shell[data-theme] .app-panel-name-button:hover:not(:disabled) { background: color-mix(in srgb, var(--theme-text) 10%, var(--theme-raised)); }
+.app-shell[data-theme] .app-panel-name-button:disabled { opacity: .5; cursor: default; }
+.app-shell[data-theme] .app-panel-name-button:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }
 
 .app-shell[data-theme] .app-panel-message { margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--theme-border); color: var(--text-amber); font-size: var(--fs-xs); line-height: 1.5; }
 

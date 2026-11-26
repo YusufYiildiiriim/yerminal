@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { APP_CATALOG, findApp, type AppDef } from "./apps";
+import { READY_MADE_APPS, nameOf, splitApps, type AppInfo } from "./apps";
 import { isDockRectUsable, toDeviceRect, toDockRect, type DockRect } from "./dockRect";
 import { clampDockWidth, readDockPrefs, writeDockPrefs } from "./dockPrefs";
 import { overlapsContent, overlayBoxes } from "./overlayGeometry";
@@ -25,6 +25,12 @@ const OVERLAY_CHECK_DELAY_MS = 50;
 let placeSeq = Date.now();
 const placeRequest = (rect: DockRect) => invoke("app_panel_place", { rect, seq: ++placeSeq });
 
+/** Longest name the backend accepts. */
+const MAX_APP_NAME = 60;
+
+/** What the name form is doing: naming a file the backend just picked, or renaming a saved app. */
+type Editor = { mode: "add" } | { mode: "rename"; id: string };
+
 const iconProps = { viewBox: "0 0 24 24", "aria-hidden": true, focusable: false } as const;
 
 /**
@@ -38,7 +44,13 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
   const [state, setState] = useState<PanelState>(EMPTY_STATE);
   const [menuOpen, setMenuOpen] = useState(false);
   const [overlay, setOverlay] = useState(false);
-  const [opening, setOpening] = useState<AppDef | null>(null);
+  const [apps, setApps] = useState<AppInfo[]>([...READY_MADE_APPS]);
+  const seenNames = useRef(new Map<string, string>());
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const [draft, setDraft] = useState("");
+  const [confirming, setConfirming] = useState<AppInfo | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [opening, setOpening] = useState<AppInfo | null>(null);
   const [message, setMessage] = useState("");
   const [dragging, setDragging] = useState(false);
   const [snapshot, setSnapshot] = useState<SnapshotImage | null>(null);
@@ -59,6 +71,22 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
+
+  const applyList = useCallback((list: unknown) => {
+    if (!Array.isArray(list)) return;
+    for (const app of list as AppInfo[]) seenNames.current.set(app.id, app.name);
+    setApps(list as AppInfo[]);
+  }, []);
+
+  // The app list (ready-made and saved apps) is kept by the backend; the page never sees a path.
+  useEffect(() => {
+    if (!isTauri()) return;
+    let cancelled = false;
+    invoke<AppInfo[]>("app_panel_apps_list")
+      .then((list) => { if (!cancelled) applyList(list); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [applyList]);
 
   // Dialogs and menus are HTML: the native window would be drawn over them. It is hidden only
   // while one of them actually reaches the content area, and a still frame stands in meanwhile.
@@ -146,7 +174,7 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
   }, [menuOpen]);
 
-  const run = async (command: string, args: Record<string, unknown>, busy?: AppDef) => {
+  const run = async (command: string, args: Record<string, unknown>, busy?: AppInfo) => {
     setMessage("");
     setOpening(busy ?? null);
     try {
@@ -158,7 +186,7 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
     }
   };
 
-  const launch = (app: AppDef) => {
+  const launch = (app: AppInfo) => {
     setMenuOpen(false);
     // One launch at a time (a second would see the first one's new window), and an app that is
     // already open is brought forward instead of started again.
@@ -169,7 +197,71 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
       void run("app_panel_activate", { id: app.id, rect });
       return;
     }
-    void run("app_panel_open", { id: app.id, url: app.url, titleHint: app.titleHint, rect }, app);
+    // The backend knows what an id launches; the page sends the id and the dock box only.
+    void run("app_panel_open", { id: app.id, rect }, app);
+  };
+
+  /** The native file picker is opened by the backend; the page only gets a suggested name back. */
+  const addApp = async () => {
+    setMenuOpen(false);
+    if (opening || picking) return;
+    setMessage("");
+    setConfirming(null);
+    setPicking(true);
+    try {
+      const picked = await invoke<{ default_name: string } | null>("app_panel_app_pick");
+      if (picked) {
+        setDraft(picked.default_name ?? "");
+        setEditor({ mode: "add" });
+      }
+    } catch (error) {
+      setMessage(String(error));
+    } finally {
+      setPicking(false);
+    }
+  };
+
+  const startRename = (app: AppInfo) => {
+    setMenuOpen(false);
+    setMessage("");
+    setConfirming(null);
+    setDraft(app.name);
+    setEditor({ mode: "rename", id: app.id });
+  };
+
+  const startRemove = (app: AppInfo) => {
+    setMenuOpen(false);
+    setMessage("");
+    setEditor(null);
+    setConfirming(app);
+  };
+
+  const submitName = async (event: { preventDefault: () => void }) => {
+    event.preventDefault();
+    const name = draft.trim();
+    if (!editor || !name) return;
+    try {
+      applyList(editor.mode === "add"
+        ? await invoke("app_panel_app_register", { name })
+        : await invoke("app_panel_app_rename", { id: editor.id, name }));
+      setEditor(null);
+    } catch (error) {
+      setMessage(String(error));
+      // A pick is used up by one save attempt; naming it again would need a new pick.
+      if (editor.mode === "add") setEditor(null);
+    }
+  };
+
+  /** Removing only edits the list: an open window of that app stays open and keeps its tab. */
+  const removeApp = async () => {
+    const app = confirming;
+    setConfirming(null);
+    if (!app) return;
+    try {
+      applyList(await invoke("app_panel_app_remove", { id: app.id }));
+    } catch (error) {
+      setMessage(String(error));
+    }
   };
 
   const activate = (id: string) => {
@@ -211,6 +303,8 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
     writeDockPrefs({ width: clampDockWidth(window.innerWidth - event.clientX, window.innerWidth) });
   };
 
+  const { ready, own } = splitApps(apps);
+
   if (!open) return null;
 
   return (
@@ -236,7 +330,7 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
       <div className="app-panel-tabs-row">
         <div className="app-panel-tabs" role="tablist" aria-label="Open apps">
           {state.apps.map((id) => {
-            const name = findApp(id)?.name ?? id;
+            const name = nameOf(id, apps, seenNames.current);
             const active = state.active === id;
             return (
               <div className="app-panel-tab" key={id} data-active={active ? "true" : "false"}>
@@ -255,13 +349,53 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
           </button>
           {menuOpen && (
             <div className="app-panel-menu" role="menu" aria-label="Apps" onKeyDown={(event) => { if (event.key === "Escape") setMenuOpen(false); }}>
-              {APP_CATALOG.map((app) => (
+              {ready.map((app) => (
                 <button key={app.id} className="app-panel-menu-item" type="button" role="menuitem" disabled={opening !== null} onClick={() => launch(app)}>{app.name}</button>
               ))}
+              <div className="app-panel-menu-separator" role="separator" />
+              {own.map((app) => (
+                <div key={app.id} className="app-panel-menu-row" role="none">
+                  <button className="app-panel-menu-item" type="button" role="menuitem" disabled={opening !== null} onClick={() => launch(app)}>{app.name}</button>
+                  <button className="app-panel-menu-action" type="button" role="menuitem" aria-label={`Rename ${app.name}`} title="Rename" onClick={() => startRename(app)}>
+                    <svg {...iconProps}><path d="M4 20h4L19 9l-4-4L4 16z" /></svg>
+                  </button>
+                  <button className="app-panel-menu-action" type="button" role="menuitem" aria-label={`Remove ${app.name}`} title="Remove" onClick={() => startRemove(app)}>
+                    <svg {...iconProps}><path d="M7 7l10 10M17 7L7 17" /></svg>
+                  </button>
+                </div>
+              ))}
+              {own.length > 0 && <div className="app-panel-menu-separator" role="separator" />}
+              <button className="app-panel-menu-item" type="button" role="menuitem" disabled={opening !== null || picking} onClick={() => void addApp()}>Add app…</button>
             </div>
           )}
         </div>
       </div>
+      {editor && (
+        <form
+          className="app-panel-name-form"
+          onSubmit={(event) => void submitName(event)}
+          onKeyDown={(event) => { if (event.key === "Escape") setEditor(null); }}
+        >
+          <input
+            className="app-panel-name-input"
+            type="text"
+            aria-label="App name"
+            value={draft}
+            maxLength={MAX_APP_NAME}
+            autoFocus
+            onChange={(event) => setDraft(event.target.value)}
+          />
+          <button className="app-panel-name-button" type="submit" disabled={draft.trim() === ""}>Save</button>
+          <button className="app-panel-name-button" type="button" onClick={() => setEditor(null)}>Cancel</button>
+        </form>
+      )}
+      {confirming && (
+        <div className="app-panel-confirm" role="group" aria-label="Remove app">
+          <span>Remove {confirming.name} from the list? A window that is open stays open.</span>
+          <button className="app-panel-name-button" type="button" onClick={() => void removeApp()}>Remove</button>
+          <button className="app-panel-name-button" type="button" onClick={() => setConfirming(null)}>Keep</button>
+        </div>
+      )}
       {message && <p className="app-panel-message" role="status">{message}</p>}
       <div ref={contentRef} className="app-panel-content" aria-label="App content">
         {open && overlay && state.apps.length > 0 && (snapshot
@@ -271,9 +405,10 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
           <div className="app-panel-empty">
             <p>Pick an app to keep next to your work.</p>
             <div className="app-panel-empty-list">
-              {APP_CATALOG.map((app) => (
+              {[...ready, ...own].map((app) => (
                 <button key={app.id} className="app-panel-empty-item" type="button" aria-label={`Open ${app.name}`} onClick={() => launch(app)}>{app.name}</button>
               ))}
+              <button className="app-panel-empty-item" type="button" disabled={picking} onClick={() => void addApp()}>Add app…</button>
             </div>
           </div>
         )}
