@@ -159,12 +159,12 @@ fn no_browser_gives_a_clear_message() {
 fn new_window_is_the_app_window_absent_before_launch() {
     let before = [1, 2];
     let after = [window(1, "Other"), window(2, "Other"), window(5, "YouTube Music")];
-    assert_eq!(pick_new_window(&before, &after, CLASS), Some(5));
+    assert_eq!(pick_new_window(&before, &after, CLASS, "YouTube Music"), Some(5));
 }
 
 #[test]
 fn new_window_is_none_when_nothing_new_appeared() {
-    assert_eq!(pick_new_window(&[1], &[window(1, "Other")], CLASS), None);
+    assert_eq!(pick_new_window(&[1], &[window(1, "Other")], CLASS, "YouTube Music"), None);
 }
 
 #[test]
@@ -184,7 +184,7 @@ fn new_window_skips_main_browser_windows_hidden_owned_untitled_and_other_classes
         window(5, ""),
         other,
     ];
-    assert_eq!(pick_new_window(&[], &after, CLASS), None);
+    assert_eq!(pick_new_window(&[], &after, CLASS, "YouTube Music"), None);
 }
 
 #[test]
@@ -196,24 +196,37 @@ fn main_browser_titles_are_recognised_by_their_browser_suffix() {
     assert!(!is_main_browser_title("Home / X"));
 }
 
+// The panel only takes a window it caused: a window that was already open before the launch is
+// never taken, even when its title matches the app (the user's own YouTube Music window).
 #[test]
-fn existing_app_window_is_found_by_title_hint() {
-    let windows = [
-        window(1, "New Tab - Brave"),
-        window(2, "Lofi mix - YouTube Music"),
-        window(3, "Some video - YouTube"),
-        window(4, "Home / X"),
-    ];
-    assert_eq!(pick_existing_app_window(&windows, "YouTube Music", CLASS, &[]), Some(2));
-    assert_eq!(pick_existing_app_window(&windows, "YouTube", CLASS, &[]), Some(3));
-    assert_eq!(pick_existing_app_window(&windows, "X", CLASS, &[]), Some(4));
-    assert_eq!(pick_existing_app_window(&windows, "Spotify", CLASS, &[]), None);
+fn a_window_open_before_the_launch_is_never_taken_even_with_a_matching_title() {
+    let after = [window(2, "Lofi mix - YouTube Music")];
+    assert_eq!(pick_new_window(&[2], &after, CLASS, "YouTube Music"), None);
 }
 
 #[test]
-fn existing_app_window_skips_windows_already_hosted() {
-    let windows = [window(2, "YouTube Music")];
-    assert_eq!(pick_existing_app_window(&windows, "YouTube Music", CLASS, &[2]), None);
+fn only_the_window_that_appeared_after_the_launch_is_taken() {
+    let after = [window(2, "Lofi mix - YouTube Music"), window(9, "YouTube Music")];
+    assert_eq!(pick_new_window(&[2], &after, CLASS, "YouTube Music"), Some(9));
+}
+
+#[test]
+fn among_new_windows_the_one_matching_the_app_title_wins() {
+    let after = [window(8, "Some other app"), window(9, "Home / X")];
+    assert_eq!(pick_new_window(&[], &after, CLASS, "X"), Some(9));
+}
+
+#[test]
+fn a_new_window_with_another_title_is_taken_while_the_page_has_not_titled_itself_yet() {
+    assert_eq!(pick_new_window(&[1], &[window(1, "Old"), window(9, "music.youtube.com")], CLASS, "YouTube Music"), Some(9));
+}
+
+#[test]
+fn hint_matching_is_exact_or_by_suffix() {
+    assert!(title_matches_hint("YouTube Music", "YouTube Music"));
+    assert!(title_matches_hint("Mix - YouTube", "YouTube"));
+    assert!(title_matches_hint("Home / X", "X"));
+    assert!(!title_matches_hint("Mix - YouTube Music", "YouTube"));
 }
 
 #[test]
@@ -432,4 +445,10 @@ fn hiding_wins_over_full_screen() {
     let suspended = Applied { hwnd: Some(7), visible: true, rect: None, suspended: true };
     let wanted = Wanted { fullscreen: true, ..wanted(Some(7), true, true, Some(rect(10, 20, 300, 400))) };
     assert!(plan_follow(&suspended, &wanted).hide);
+}
+
+#[test]
+fn the_no_new_window_message_tells_the_user_what_to_do() {
+    assert!(NO_NEW_WINDOW_MESSAGE.contains("already open"));
+    assert!(NO_NEW_WINDOW_MESSAGE.contains("close"));
 }

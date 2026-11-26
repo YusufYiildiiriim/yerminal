@@ -27,6 +27,10 @@ pub const CHROMIUM_WINDOW_CLASS: &str = "Chrome_WidgetWin_1";
 
 pub const NO_BROWSER_MESSAGE: &str = "No supported browser found. Install Brave or Microsoft Edge.";
 
+/// Shown when the launch produced no new window (the browser may have only focused one that was already open).
+pub const NO_NEW_WINDOW_MESSAGE: &str =
+    "No new app window appeared. It is probably already open in your browser: close that window and try again.";
+
 /// Dock content box from the webview, in device pixels relative to the main window client area.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 pub struct DockRect {
@@ -195,36 +199,22 @@ fn is_app_candidate(w: &TopWindow, class: &str) -> bool {
         && !is_main_browser_title(&w.title)
 }
 
-/// A new top-level app window (not a main browser window) that did not exist before the
-/// launch. Used because the launcher hands over to the running browser and exits, so the
-/// window cannot be found by process id.
-pub fn pick_new_window(before: &[isize], after: &[TopWindow], class: &str) -> Option<isize> {
-    after
-        .iter()
-        .find(|w| is_app_candidate(w, class) && !before.contains(&w.hwnd))
-        .map(|w| w.hwnd)
+/// The app window this launch caused: a top-level window (not a main browser window) that did not
+/// exist before it. Windows that were already open are never taken, whatever their title, so the
+/// user's own windows stay theirs. Among new windows the one titled like the app wins; any other
+/// new window is taken as a fallback because the page may not have set its title yet. The launcher
+/// hands over to the running browser and exits, so the window cannot be found by process id.
+pub fn pick_new_window(before: &[isize], after: &[TopWindow], class: &str, hint: &str) -> Option<isize> {
+    let mut fresh = after.iter().filter(|w| is_app_candidate(w, class) && !before.contains(&w.hwnd));
+    let first = fresh.next()?;
+    let matching = std::iter::once(first).chain(fresh).find(|w| title_matches_hint(&w.title, hint));
+    Some(matching.unwrap_or(first).hwnd)
 }
 
 fn title_matches_hint(title: &str, hint: &str) -> bool {
     title == hint
         || title.ends_with(&format!(" - {hint}"))
         || title.ends_with(&format!(" / {hint}"))
-}
-
-/// An app window for the same site that already exists (the browser focuses it instead
-/// of opening a second one). `skip` holds windows already hosted.
-pub fn pick_existing_app_window(
-    windows: &[TopWindow],
-    hint: &str,
-    class: &str,
-    skip: &[isize],
-) -> Option<isize> {
-    windows
-        .iter()
-        .find(|w| {
-            is_app_candidate(w, class) && !skip.contains(&w.hwnd) && title_matches_hint(&w.title, hint)
-        })
-        .map(|w| w.hwnd)
 }
 
 // ---------------------------------------------------------------------------
@@ -853,14 +843,11 @@ mod imp {
         });
     }
 
-    /// Waits for the launched app window, or reuses an existing one for the same site.
-    fn obtain_window(url: &str, hint: &str, hosted: &[isize]) -> Result<isize, String> {
-        let existing = top_windows();
-        if let Some(found) = pick_existing_app_window(&existing, hint, CHROMIUM_WINDOW_CLASS, hosted) {
-            return Ok(found);
-        }
+    /// Launches the app and waits for the window that appears because of it. Windows that existed
+    /// before the launch (the user's own) are never taken; if none appears, the user is told.
+    fn obtain_window(url: &str, hint: &str) -> Result<isize, String> {
         let browser = find_browser()?;
-        let before: Vec<isize> = existing.iter().map(|w| w.hwnd).collect();
+        let before: Vec<isize> = top_windows().iter().map(|w| w.hwnd).collect();
         // The child handle is dropped on purpose: the launcher is either the user's browser
         // itself or a stub that hands over and exits. Neither is ever killed from here.
         #[allow(unused_mut)]
@@ -876,13 +863,11 @@ mod imp {
             .map_err(|e| format!("Cannot start {}: {e}", browser.name))?;
         let deadline = Instant::now() + Duration::from_secs(15);
         loop {
-            let windows = top_windows();
-            if let Some(found) = pick_new_window(&before, &windows, CHROMIUM_WINDOW_CLASS) {
+            if let Some(found) = pick_new_window(&before, &top_windows(), CHROMIUM_WINDOW_CLASS, hint) {
                 return Ok(found);
             }
             if Instant::now() >= deadline {
-                return pick_existing_app_window(&windows, hint, CHROMIUM_WINDOW_CLASS, hosted)
-                    .ok_or_else(|| "The app window did not appear within 15 seconds".to_owned());
+                return Err(NO_NEW_WINDOW_MESSAGE.to_owned());
             }
             std::thread::sleep(Duration::from_millis(100));
         }
@@ -898,8 +883,7 @@ mod imp {
                 return Ok(panel.registry.state());
             }
         }
-        let hosted = lock_panel().registry.hwnds();
-        let hwnd = obtain_window(url, hint, &hosted)?;
+        let hwnd = obtain_window(url, hint)?;
         let saved = capture(hwnd);
         let mut panel = lock_panel();
         panel.shown = true;
