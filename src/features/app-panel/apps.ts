@@ -3,7 +3,7 @@ export interface AppDef {
   id: string;
   name: string;
   url: string;
-  /** How the app's window title ends (or equals); lets an already open window of the site be reused. */
+  /** How the app's window title ends (or equals); picks the new window out of the ones a launch opens. */
   titleHint: string;
 }
 

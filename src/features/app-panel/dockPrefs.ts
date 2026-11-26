@@ -41,10 +41,7 @@ export function writeDockPrefs(patch: Partial<DockPrefs>, storage: WriteStorage 
 
 /**
  * Dialogs and menus are HTML and cannot draw over the native app window, so the window is
- * hidden while one is rendered. Menus inside the dock itself are tracked by the dock.
+ * hidden while one is rendered.
  */
 export const BLOCKING_OVERLAY_SELECTOR = '[role="dialog"], [role="alertdialog"], [role="menu"], [aria-modal="true"]';
 
-export function hasBlockingOverlay(root: ParentNode): boolean {
-  return Array.from(root.querySelectorAll(BLOCKING_OVERLAY_SELECTOR)).some((element) => !element.closest("[data-app-panel]"));
-}

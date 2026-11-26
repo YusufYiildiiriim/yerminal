@@ -19,13 +19,14 @@ use std::sync::Mutex;
 /// Chromium's custom caption height at 100% scale, measured on Windows 11 (2026-11-26).
 const CAPTION_HEIGHT_AT_100: f64 = 31.0;
 
-/// Hosted window class of Chromium-based browsers (Chrome, Edge, Brave).
 /// Follow loop period: a few window queries per tick, placement only when something changed.
 #[cfg(windows)]
 const FOLLOW_INTERVAL_MS: u64 = 40;
 /// Shortest time between two repairs of a window that changed behind our back.
+#[cfg(windows)]
 const DRIFT_REPAIR_MIN_MS: u64 = 200;
 
+/// Window class of Chromium-based browsers (Chrome, Edge, Brave).
 pub const CHROMIUM_WINDOW_CLASS: &str = "Chrome_WidgetWin_1";
 
 pub const NO_BROWSER_MESSAGE: &str = "No supported browser found. Install Brave or Microsoft Edge.";
@@ -557,6 +558,7 @@ impl Registry {
 /// - the window calls of one pass run under `DRIVER` alone (see `run_pass`), which also keeps
 ///   passes from overlapping; order is always `DRIVER` then `PANEL`;
 /// - exit paths wait for either lock with a time limit (`try_lock_for`).
+#[cfg_attr(not(windows), allow(dead_code))]
 struct Panel {
     registry: Registry,
     /// False while an HTML dialog or menu needs the area the native window covers.
@@ -575,6 +577,7 @@ struct Panel {
     place_seq: u64,
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 static PANEL: Mutex<Panel> = Mutex::new(Panel {
     registry: Registry { entries: Vec::new(), active: None },
     shown: true,
@@ -598,12 +601,14 @@ pub fn accept_place_seq(last: &mut u64, seq: u64) -> bool {
     }
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 fn lock_panel() -> std::sync::MutexGuard<'static, Panel> {
     PANEL.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// State that only the window passes use; whoever holds this lock is the one thread allowed to
 /// touch the hosted windows.
+#[cfg_attr(not(windows), allow(dead_code))]
 struct Driver {
     applied: Applied,
     /// Band above the page that the last placement clipped away (device pixels).
@@ -616,6 +621,7 @@ struct Driver {
     watchdog: bool,
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 static DRIVER: Mutex<Driver> = Mutex::new(Driver {
     applied: Applied { hwnd: None, visible: false, rect: None, suspended: false, placed: None },
     band: 0,
@@ -624,12 +630,14 @@ static DRIVER: Mutex<Driver> = Mutex::new(Driver {
     watchdog: false,
 });
 
+#[cfg_attr(not(windows), allow(dead_code))]
 fn lock_driver() -> std::sync::MutexGuard<'static, Driver> {
     DRIVER.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// What a pass needs from the panel, copied under the lock so the window calls can run without it.
 #[derive(Debug, Clone)]
+#[cfg_attr(not(windows), allow(dead_code))]
 struct Inputs {
     main: isize,
     scale: f64,
@@ -640,6 +648,7 @@ struct Inputs {
     rescue_dir: Option<PathBuf>,
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 impl Inputs {
     fn capture(panel: &Panel) -> Inputs {
         let active = panel
@@ -1518,6 +1527,7 @@ mod imp {
     /// The visible part (clip box) of the active hosted window as a raw frame. Taken while the
     /// window is still shown; the panel lock is not held during the capture.
     pub fn snapshot() -> Result<Vec<u8>, String> {
+        #[cfg(debug_assertions)]
         let started = Instant::now();
         let (hwnd, clip) = {
             let panel = lock_panel();
@@ -1537,6 +1547,7 @@ mod imp {
         if looks_blank(&pixels) {
             return Err("Capture was blank".to_owned());
         }
+        #[cfg(debug_assertions)]
         if std::env::var_os("YERMINAL_APP_PANEL_SNAPSHOT_LOG").is_some() {
             eprintln!("[app-panel snapshot] {w}x{h} {} bytes in {:?}", pixels.len(), started.elapsed());
         }

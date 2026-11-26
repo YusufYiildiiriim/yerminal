@@ -478,7 +478,7 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if should_close_sessions(event) {
-                // The main window is being destroyed: give hosted app windows back before their parent goes.
+                // The main window is being destroyed: give hosted app windows back to the desktop (they stay open).
                 app_panel::release_all();
                 close_all_sessions(window.app_handle());
             }

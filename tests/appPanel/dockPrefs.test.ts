@@ -4,7 +4,6 @@ import {
   DOCK_MAX_WIDTH,
   DOCK_MIN_WIDTH,
   clampDockWidth,
-  hasBlockingOverlay,
   readDockPrefs,
   writeDockPrefs,
 } from "../../src/features/app-panel/dockPrefs";
@@ -49,18 +48,3 @@ describe("dock preferences", () => {
   });
 });
 
-describe("hasBlockingOverlay", () => {
-  it("is false for a plain page and true while a dialog or menu is rendered", () => {
-    document.body.innerHTML = "<main><p>hi</p></main>";
-    expect(hasBlockingOverlay(document)).toBe(false);
-    document.body.innerHTML = '<main></main><section role="dialog" aria-modal="true"></section>';
-    expect(hasBlockingOverlay(document)).toBe(true);
-    document.body.innerHTML = '<div role="menu"></div>';
-    expect(hasBlockingOverlay(document)).toBe(true);
-  });
-
-  it("ignores menus that live inside the app panel itself", () => {
-    document.body.innerHTML = '<aside data-app-panel><div role="menu"></div></aside>';
-    expect(hasBlockingOverlay(document)).toBe(false);
-  });
-});

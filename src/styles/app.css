@@ -24,7 +24,7 @@ button { color: inherit; font: inherit; cursor: pointer; }
 
 .icon-button:hover { background: #23242a; border-color: #34363e; }
 
-.titlebar-spacer { flex: 1; }.window-caption { color: var(--text-muted); font-size: var(--fs-xs); }
+.window-caption { color: var(--text-muted); font-size: var(--fs-xs); }
 .titlebar-help { position: relative; display: flex; flex: 0 0 auto; align-items: center; z-index: 20; }
 .titlebar-help-button { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 9px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #999ba6; font-size: var(--fs-xs); }
 .titlebar-help-button > span { display: grid; place-items: center; width: 15px; height: 15px; border: 1px solid #666277; border-radius: 50%; color: #c1b5ff; font-size: var(--fs-xs); line-height: 1; }
