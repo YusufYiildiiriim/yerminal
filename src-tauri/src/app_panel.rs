@@ -484,6 +484,12 @@ impl Registry {
 }
 
 /// Process-wide so that the exit paths and the panic hook can release windows too.
+///
+/// Lock rules (a browser window that does not answer must never freeze yerminal):
+/// - `PANEL` is held for bookkeeping only, never across a call into a foreign window;
+/// - the window calls of one pass run under `DRIVER` alone (see `run_pass`), which also keeps
+///   passes from overlapping; order is always `DRIVER` then `PANEL`;
+/// - exit paths wait for either lock with a time limit (`try_lock_for`).
 struct Panel {
     registry: Registry,
     /// False while an HTML dialog or menu needs the area the native window covers.
@@ -492,19 +498,12 @@ struct Panel {
     dock: Option<PhysicalRect>,
     main: isize,
     scale: f64,
+    /// Copy of what the last pass applied (the driver owns the original); readers use this one.
     applied: Applied,
-    /// Band above the page that the last placement clipped away (device pixels).
-    band: i32,
-    /// When the last placement happened (drift repairs are rate limited).
-    placed_at: Option<std::time::Instant>,
     /// True while the follow thread runs (it stops when the last window is gone).
     following: bool,
     /// App data folder that holds the rescue file (see `app_panel_rescue`).
     rescue_dir: Option<PathBuf>,
-    /// What the rescue file contains right now (rewritten only when it changes).
-    rescue_last: Option<RescueFile>,
-    /// The watchdog process was started.
-    watchdog: bool,
 }
 
 static PANEL: Mutex<Panel> = Mutex::new(Panel {
@@ -514,16 +513,112 @@ static PANEL: Mutex<Panel> = Mutex::new(Panel {
     main: 0,
     scale: 1.0,
     applied: Applied { hwnd: None, visible: false, rect: None, suspended: false, placed: None },
-    band: 0,
-    placed_at: None,
     following: false,
     rescue_dir: None,
-    rescue_last: None,
-    watchdog: false,
 });
 
 fn lock_panel() -> std::sync::MutexGuard<'static, Panel> {
     PANEL.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// State that only the window passes use; whoever holds this lock is the one thread allowed to
+/// touch the hosted windows.
+struct Driver {
+    applied: Applied,
+    /// Band above the page that the last placement clipped away (device pixels).
+    band: i32,
+    /// When the last placement happened (drift repairs are rate limited).
+    placed_at: Option<std::time::Instant>,
+    /// What the rescue file contains right now (rewritten only when it changes).
+    rescue_last: Option<RescueFile>,
+    /// The watchdog process was started.
+    watchdog: bool,
+}
+
+static DRIVER: Mutex<Driver> = Mutex::new(Driver {
+    applied: Applied { hwnd: None, visible: false, rect: None, suspended: false, placed: None },
+    band: 0,
+    placed_at: None,
+    rescue_last: None,
+    watchdog: false,
+});
+
+fn lock_driver() -> std::sync::MutexGuard<'static, Driver> {
+    DRIVER.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// What a pass needs from the panel, copied under the lock so the window calls can run without it.
+#[derive(Debug, Clone)]
+struct Inputs {
+    main: isize,
+    scale: f64,
+    dock: Option<PhysicalRect>,
+    shown: bool,
+    active: Option<isize>,
+    entries: Vec<Entry>,
+    rescue_dir: Option<PathBuf>,
+}
+
+impl Inputs {
+    fn capture(panel: &Panel) -> Inputs {
+        let active = panel
+            .registry
+            .active_id()
+            .and_then(|id| panel.registry.entries().iter().find(|e| e.id == id))
+            .map(|e| e.hwnd);
+        Inputs {
+            main: panel.main,
+            scale: panel.scale,
+            dock: panel.dock,
+            shown: panel.shown,
+            active,
+            entries: panel.registry.entries().to_vec(),
+            rescue_dir: panel.rescue_dir.clone(),
+        }
+    }
+}
+
+/// One pass over the screen: copy the inputs (short `PANEL` lock), make the window calls with no
+/// `PANEL` lock held, then publish what was applied (short lock again).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn run_pass(exec: impl FnOnce(&Inputs, &mut Driver)) {
+    let mut driver = lock_driver();
+    let inputs = Inputs::capture(&lock_panel());
+    exec(&inputs, &mut driver);
+    lock_panel().applied = driver.applied;
+}
+
+/// The rescue file may be deleted only when the windows were given back and no earlier release was
+/// abandoned (the exit path calls `release_all` twice; the second call finds nothing left to do).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn rescue_file_may_go(finished: bool, abandoned_before: bool) -> bool {
+    finished && !abandoned_before
+}
+
+/// `lock` with a time limit; `None` when somebody keeps it longer. Poisoning is ignored.
+pub fn try_lock_for<T>(mutex: &'static Mutex<T>, limit: std::time::Duration) -> Option<std::sync::MutexGuard<'static, T>> {
+    let deadline = std::time::Instant::now() + limit;
+    loop {
+        match mutex.try_lock() {
+            Ok(guard) => return Some(guard),
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => return Some(poisoned.into_inner()),
+            Err(std::sync::TryLockError::WouldBlock) => {}
+        }
+        if std::time::Instant::now() >= deadline {
+            return None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+/// Runs `work` on its own thread and waits at most `limit` for the result. A call that never
+/// returns (a hung browser window) is abandoned instead of freezing the caller.
+pub fn run_bounded<T: Send + 'static>(limit: std::time::Duration, work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(work());
+    });
+    rx.recv_timeout(limit).ok()
 }
 
 // ---------------------------------------------------------------------------
@@ -627,6 +722,7 @@ pub fn debug_autoopen(app: tauri::AppHandle) {
 mod imp {
     use super::*;
     use std::process::Command;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::{Duration, Instant};
     use tauri::{AppHandle, Manager};
     use windows_sys::Win32::Foundation::{HWND, LPARAM, RECT, TRUE};
@@ -635,7 +731,7 @@ mod imp {
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         EnumChildWindows, EnumWindows, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowRect, GetWindowTextW,
-        GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, MoveWindow, PostMessageW,
+        GetWindowThreadProcessId, IsHungAppWindow, IsIconic, IsWindow, IsWindowVisible, IsZoomed, MoveWindow, PostMessageW,
         SetWindowPos, ShowWindow, GW_HWNDPREV, GW_OWNER, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
         SW_HIDE, SW_RESTORE, SW_SHOWNOACTIVATE, WM_CLOSE,
     };
@@ -893,84 +989,85 @@ mod imp {
         (unsafe { ClientToScreen(hwnd_of(main), &mut origin) } != 0).then_some((origin.x, origin.y))
     }
 
-    /// Brings the screen in line with the panel state (called by the commands and by the follow
-    /// loop). The hosted window stays a top-level window with no owner or parent; it is moved
-    /// onto the dock box in screen pixels and the main window is kept directly below it.
-    fn apply(panel: &mut Panel) {
-        if !window_exists(panel.main) {
+    /// Brings the screen in line with the panel state (see `run_pass`; runs under the driver lock
+    /// only, never under the panel lock). The hosted window stays a top-level window with no owner
+    /// or parent; it is moved onto the dock box in screen pixels and the main window is kept
+    /// directly below it.
+    fn execute(i: &Inputs, d: &mut Driver) {
+        if !window_exists(i.main) {
             return;
         }
-        let Some(origin) = client_origin(panel.main) else { return };
-        let active = panel
-            .registry
-            .active_id()
-            .and_then(|id| panel.registry.entries().iter().find(|e| e.id == id))
-            .map(|e| e.hwnd);
-        let screen = panel.dock.map(|d| to_screen(d, origin));
+        let Some(origin) = client_origin(i.main) else { return };
+        let active = i.active;
+        // A hosted window that does not answer is left alone this pass (a call into it would block).
+        if i.entries.iter().any(|e| is_hung(e.hwnd)) {
+            return;
+        }
+        let screen = i.dock.map(|d| to_screen(d, origin));
         let live = active.and_then(live_state);
         let wanted = Wanted {
             hwnd: active,
-            shown: panel.shown,
-            main_minimized: unsafe { IsIconic(hwnd_of(panel.main)) } != 0,
+            shown: i.shown,
+            main_minimized: unsafe { IsIconic(hwnd_of(i.main)) } != 0,
             screen,
             fullscreen: active.is_some_and(|hwnd| window_is_fullscreen(hwnd, screen, live.is_some_and(|l| l.zoomed))),
             live,
         };
-        let mut plan = plan_follow(&panel.applied, &wanted);
+        let mut plan = plan_follow(&d.applied, &wanted);
         // A repair that only came from drift is rate limited: a window that keeps changing itself
         // right after each placement must not be moved every tick.
-        let repair_only = plan.place.is_some() && panel.applied.hwnd == active && panel.applied.rect == screen;
-        if repair_only && panel.placed_at.is_some_and(|at| at.elapsed() < Duration::from_millis(DRIFT_REPAIR_MIN_MS)) {
+        let repair_only = plan.place.is_some() && d.applied.hwnd == active && d.applied.rect == screen;
+        if repair_only && d.placed_at.is_some_and(|at| at.elapsed() < Duration::from_millis(DRIFT_REPAIR_MIN_MS)) {
             plan.place = None;
         }
         // Page content can move inside the window after it was placed (the first draw, an infobar
         // appearing or going away): re-place at the same box when the measured band changed.
         if let (Some(hwnd), None, false, true, false) =
-            (active, plan.place, plan.hide, panel.applied.visible, wanted.fullscreen)
+            (active, plan.place, plan.hide, d.applied.visible, wanted.fullscreen)
         {
-            if panel.applied.hwnd == active && panel.applied.rect.is_some() {
+            if d.applied.hwnd == active && d.applied.rect.is_some() {
                 flatten(hwnd);
-                if measure_frame(hwnd, panel.scale).1 != panel.band {
-                    plan.place = panel.applied.rect;
+                if measure_frame(hwnd, i.scale).1 != d.band {
+                    plan.place = d.applied.rect;
                 }
             }
         }
-        let scale = panel.scale;
+        let scale = i.scale;
         if plan.hide {
-            for entry in panel.registry.entries() {
+            for entry in &i.entries {
                 unsafe { ShowWindow(hwnd_of(entry.hwnd), SW_HIDE) };
             }
         } else if plan.hide_others {
-            for entry in panel.registry.entries().iter().filter(|e| Some(e.hwnd) != active) {
+            for entry in i.entries.iter().filter(|e| Some(e.hwnd) != active) {
                 unsafe { ShowWindow(hwnd_of(entry.hwnd), SW_HIDE) };
             }
         }
         if let (Some(hwnd), true) = (active, plan.suspend) {
             unsafe { SetWindowRgn(hwnd_of(hwnd), std::ptr::null_mut(), TRUE) };
         }
-        let mut placed = panel.applied.placed;
+        let mut placed = d.applied.placed;
         if let (Some(hwnd), Some(rect)) = (active, plan.place) {
             let (band, after) = place_window(hwnd, rect, scale);
-            panel.band = band;
-            panel.placed_at = Some(Instant::now());
+            d.band = band;
+            d.placed_at = Some(Instant::now());
             placed = after;
         }
         if let (Some(hwnd), true) = (active, plan.show) {
             unsafe { ShowWindow(hwnd_of(hwnd), SW_SHOWNOACTIVATE) };
         }
-        let visible = !plan.hide && (plan.show || panel.applied.visible && wanted.hwnd == panel.applied.hwnd);
+        let visible = !plan.hide && (plan.show || d.applied.visible && wanted.hwnd == d.applied.hwnd);
         if let (Some(hwnd), true, false) = (active, visible, wanted.fullscreen) {
             // Only reorder while yerminal or the app window is the one in use, and only when the
             // main window is not already directly below the app window.
             unsafe {
-                let (m, h) = (hwnd_of(panel.main), hwnd_of(hwnd));
+                let (m, h) = (hwnd_of(i.main), hwnd_of(hwnd));
                 let fg = GetForegroundWindow();
                 if (fg == m || fg == h) && GetWindow(m, GW_HWNDPREV) != h {
                     SetWindowPos(m, h, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                 }
             }
         }
-        panel.applied = if plan.hide {
+        d.applied = if plan.hide {
             Applied { hwnd: active, visible: false, rect: None, suspended: false, placed: None }
         } else if wanted.fullscreen && visible {
             // The next placement happens when the window is back to normal size.
@@ -979,29 +1076,38 @@ mod imp {
             Applied {
                 hwnd: active,
                 visible,
-                rect: if plan.place.is_some() { plan.place } else { panel.applied.rect },
+                rect: if plan.place.is_some() { plan.place } else { d.applied.rect },
                 suspended: false,
                 placed,
             }
         };
-        sync_rescue(panel);
+        sync_rescue(i, d);
+    }
+
+    /// True when the window's owner does not process messages: a call into it would block.
+    fn is_hung(raw: isize) -> bool {
+        unsafe { IsHungAppWindow(hwnd_of(raw)) != 0 }
+    }
+
+    /// One pass over the screen, for the commands and the follow loop.
+    fn apply_now() {
+        run_pass(execute);
     }
 
     /// Writes the rescue file when what it must contain changed, and starts the watchdog the
     /// first time. Cheap when nothing changed (in-memory comparison only).
-    fn sync_rescue(panel: &mut Panel) {
-        let Some(dir) = panel.rescue_dir.clone() else { return };
+    fn sync_rescue(i: &Inputs, d: &mut Driver) {
+        let Some(dir) = i.rescue_dir.clone() else { return };
         let path = dir.join(app_panel_rescue::rescue_file_name(std::process::id()));
-        if panel.registry.entries().is_empty() {
-            if panel.rescue_last.take().is_some() {
+        if i.entries.is_empty() {
+            if d.rescue_last.take().is_some() {
                 let _ = std::fs::remove_file(&path);
             }
             return;
         }
         let backdrops = BACKDROPS.lock().unwrap_or_else(|p| p.into_inner()).clone();
-        let windows = panel
-            .registry
-            .entries()
+        let windows = i
+            .entries
             .iter()
             .map(|e| {
                 let mut pid = 0u32;
@@ -1015,18 +1121,18 @@ mod imp {
                     width: e.saved.width,
                     height: e.saved.height,
                     backdrop: backdrops.iter().find(|(w, _)| *w == e.hwnd).map(|(_, v)| *v),
-                    hidden: !(panel.applied.visible && panel.applied.hwnd == Some(e.hwnd)),
+                    hidden: !(d.applied.visible && d.applied.hwnd == Some(e.hwnd)),
                 }
             })
             .collect();
         let file = RescueFile { owner_pid: std::process::id(), owner_started: app_panel_rescue::own_start_time(), windows };
-        if panel.rescue_last.as_ref() == Some(&file) {
+        if d.rescue_last.as_ref() == Some(&file) {
             return;
         }
         if app_panel_rescue::write_atomic(&path, &file).is_ok() {
-            panel.rescue_last = Some(file);
-            if !panel.watchdog {
-                panel.watchdog = spawn_watchdog(&path);
+            d.rescue_last = Some(file);
+            if !d.watchdog {
+                d.watchdog = spawn_watchdog(&path);
             }
         }
     }
@@ -1072,15 +1178,23 @@ mod imp {
         panel.following = true;
         std::thread::spawn(|| loop {
             std::thread::sleep(Duration::from_millis(FOLLOW_INTERVAL_MS));
-            let mut panel = lock_panel();
-            panel.registry.prune(window_exists);
-            if panel.registry.entries().is_empty() || !window_exists(panel.main) {
-                panel.following = false;
-                panel.applied = Applied::default();
-                sync_rescue(&mut panel);
+            let finished = {
+                let mut panel = lock_panel();
+                panel.registry.prune(window_exists);
+                let done = panel.registry.entries().is_empty() || !window_exists(panel.main);
+                if done {
+                    panel.following = false;
+                }
+                done
+            };
+            if finished {
+                run_pass(|i, d| {
+                    d.applied = Applied::default();
+                    sync_rescue(i, d);
+                });
                 return;
             }
-            apply(&mut panel);
+            apply_now();
         });
     }
 
@@ -1116,42 +1230,49 @@ mod imp {
 
     pub fn open(app: &AppHandle, id: &str, url: &str, hint: &str, rect: DockRect) -> Result<PanelState, String> {
         let (main, scale) = main_window(app)?;
-        {
+        let known = {
             let mut panel = lock_panel();
             remember_rescue_dir(&mut panel, app);
             (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
-            if panel.registry.activate(id) {
-                apply(&mut panel);
-                return Ok(panel.registry.state());
-            }
+            panel.registry.activate(id)
+        };
+        if known {
+            apply_now();
+            return Ok(lock_panel().registry.state());
         }
         let hwnd = obtain_window(url, hint)?;
         let saved = capture(hwnd);
-        let mut panel = lock_panel();
-        panel.shown = true;
-        remember_rescue_dir(&mut panel, app);
-        (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
-        panel.registry.add(Entry { id: id.to_owned(), hwnd, saved });
-        ensure_follower(&mut panel);
-        apply(&mut panel);
-        Ok(panel.registry.state())
+        {
+            let mut panel = lock_panel();
+            panel.shown = true;
+            remember_rescue_dir(&mut panel, app);
+            (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
+            panel.registry.add(Entry { id: id.to_owned(), hwnd, saved });
+            ensure_follower(&mut panel);
+        }
+        apply_now();
+        Ok(lock_panel().registry.state())
     }
 
     pub fn activate(app: &AppHandle, id: &str, rect: DockRect) -> Result<PanelState, String> {
         let (main, scale) = main_window(app)?;
-        let mut panel = lock_panel();
-        panel.registry.prune(window_exists);
-        panel.registry.activate(id);
-        (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
-        apply(&mut panel);
-        Ok(panel.registry.state())
+        {
+            let mut panel = lock_panel();
+            panel.registry.prune(window_exists);
+            panel.registry.activate(id);
+            (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
+        }
+        apply_now();
+        Ok(lock_panel().registry.state())
     }
 
     pub fn place(app: &AppHandle, rect: DockRect) -> Result<(), String> {
         let (main, scale) = main_window(app)?;
-        let mut panel = lock_panel();
-        (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
-        apply(&mut panel);
+        {
+            let mut panel = lock_panel();
+            (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
+        }
+        apply_now();
         Ok(())
     }
 
@@ -1172,10 +1293,12 @@ mod imp {
                 release(&entry);
             }
         }
-        let mut panel = lock_panel();
-        (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
-        apply(&mut panel);
-        Ok(panel.registry.state())
+        {
+            let mut panel = lock_panel();
+            (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
+        }
+        apply_now();
+        Ok(lock_panel().registry.state())
     }
 
     #[link(name = "user32")]
@@ -1273,9 +1396,8 @@ mod imp {
     }
 
     pub fn set_visible(visible: bool) -> Result<(), String> {
-        let mut panel = lock_panel();
-        panel.shown = visible;
-        apply(&mut panel);
+        lock_panel().shown = visible;
+        apply_now();
         Ok(())
     }
 
@@ -1285,26 +1407,39 @@ mod imp {
         panel.registry.state()
     }
 
+    /// How long the exit path waits for a lock or for the windows to answer. Longer than that and
+    /// yerminal exits anyway; the watchdog (rescue file left in place) finishes the job.
+    const EXIT_WAIT: Duration = Duration::from_millis(2000);
+
+    /// A release gave up waiting for a hung window: the rescue file must stay for the watchdog.
+    static RELEASE_ABANDONED: AtomicBool = AtomicBool::new(false);
+
     pub fn release_all(non_blocking: bool) {
-        let drained = if non_blocking {
-            match PANEL.try_lock() {
-                Ok(mut panel) => {
-                    panel.applied = Applied::default();
-                    let drained = panel.registry.drain();
-                    sync_rescue(&mut panel);
-                    drained
-                }
-                Err(_) => return,
-            }
+        let limit = if non_blocking { Duration::ZERO } else { EXIT_WAIT };
+        // The driver lock keeps a pass from placing a window again while it is given back; a pass
+        // stuck on a hung window must not hold the exit, so the wait is bounded.
+        let mut driver = try_lock_for(&DRIVER, limit);
+        let Some(mut panel) = try_lock_for(&PANEL, limit) else { return };
+        panel.applied = Applied::default();
+        let rescue_path = panel.rescue_dir.clone().map(|d| d.join(app_panel_rescue::rescue_file_name(std::process::id())));
+        let drained = panel.registry.drain();
+        drop(panel);
+        if let Some(d) = driver.as_mut() {
+            d.applied = Applied::default();
+            d.rescue_last = None;
+        }
+        let finished = if non_blocking {
+            drained.iter().for_each(release);
+            true
         } else {
-            let mut panel = lock_panel();
-            panel.applied = Applied::default();
-            let drained = panel.registry.drain();
-            sync_rescue(&mut panel);
-            drained
+            // Window calls can block on a hung browser: bounded, never an endless exit.
+            run_bounded(limit, move || drained.iter().for_each(release)).is_some()
         };
-        for entry in &drained {
-            release(entry);
+        let abandoned_before = if finished { RELEASE_ABANDONED.load(Ordering::SeqCst) } else { RELEASE_ABANDONED.swap(true, Ordering::SeqCst) };
+        if rescue_file_may_go(finished, abandoned_before) {
+            if let Some(path) = rescue_path {
+                let _ = std::fs::remove_file(path);
+            }
         }
     }
 }

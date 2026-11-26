@@ -602,3 +602,65 @@ fn snapshot_payload_starts_with_little_endian_size() {
     assert_eq!(&bytes[4..8], &2u32.to_le_bytes());
     assert_eq!(bytes.len(), 8 + 24);
 }
+
+// --- lock discipline (A-2): no foreign window call under the panel lock, bounded waits on exit ---
+
+use std::sync::mpsc;
+use std::time::Duration;
+
+#[test]
+fn bounded_lock_gives_up_while_another_thread_holds_the_lock() {
+    static HELD: Mutex<u8> = Mutex::new(0);
+    let (held_tx, held_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel::<()>();
+    let holder = std::thread::spawn(move || {
+        let _guard = HELD.lock().unwrap();
+        held_tx.send(()).unwrap();
+        release_rx.recv().unwrap();
+    });
+    held_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+    let started = std::time::Instant::now();
+    assert!(try_lock_for(&HELD, Duration::from_millis(100)).is_none());
+    assert!(started.elapsed() < Duration::from_secs(1), "the wait must be bounded");
+    release_tx.send(()).unwrap();
+    holder.join().unwrap();
+    assert!(try_lock_for(&HELD, Duration::from_millis(100)).is_some(), "free lock is taken at once");
+}
+
+#[test]
+fn bounded_run_reports_a_blocked_call_instead_of_waiting_for_it() {
+    let (release_tx, release_rx) = mpsc::channel::<()>();
+    let started = std::time::Instant::now();
+    let done = run_bounded(Duration::from_millis(100), move || {
+        let _ = release_rx.recv(); // a hung browser window: never returns on its own
+    });
+    assert!(done.is_none());
+    assert!(started.elapsed() < Duration::from_secs(1));
+    drop(release_tx);
+    assert_eq!(run_bounded(Duration::from_secs(2), || 7), Some(7));
+}
+
+#[test]
+fn panel_lock_is_free_while_a_pass_makes_window_calls() {
+    let (started_tx, started_rx) = mpsc::channel();
+    let (go_tx, go_rx) = mpsc::channel::<()>();
+    let pass = std::thread::spawn(move || {
+        run_pass(move |_inputs, _driver| {
+            started_tx.send(()).unwrap();
+            go_rx.recv().unwrap(); // stands in for a window call that takes long
+        });
+    });
+    started_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+    assert!(PANEL.try_lock().is_ok(), "window calls must run outside the panel lock");
+    go_tx.send(()).unwrap();
+    pass.join().unwrap();
+}
+
+#[test]
+fn rescue_file_stays_once_a_release_was_abandoned() {
+    // exit calls release_all twice (window destroyed, then app exit): the second, empty call must
+    // not delete the file the first (timed out) call left for the watchdog.
+    assert!(!rescue_file_may_go(false, false), "release did not finish");
+    assert!(rescue_file_may_go(true, false), "release finished");
+    assert!(!rescue_file_may_go(true, true), "an earlier release was abandoned");
+}
