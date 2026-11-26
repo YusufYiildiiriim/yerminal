@@ -22,6 +22,8 @@ const CAPTION_HEIGHT_AT_100: f64 = 31.0;
 /// Follow loop period: a few window queries per tick, placement only when something changed.
 #[cfg(windows)]
 const FOLLOW_INTERVAL_MS: u64 = 40;
+/// Shortest time between two repairs of a window that changed behind our back.
+const DRIFT_REPAIR_MIN_MS: u64 = 200;
 
 pub const CHROMIUM_WINDOW_CLASS: &str = "Chrome_WidgetWin_1";
 
@@ -237,6 +239,27 @@ pub struct Wanted {
     pub screen: Option<PhysicalRect>,
     /// The hosted window went full screen on its own (see `is_fullscreen`).
     pub fullscreen: bool,
+    /// The hosted window as it is right now (None when it could not be read).
+    pub live: Option<Live>,
+}
+
+/// What a hosted window looks like right now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Live {
+    /// Outer rectangle in screen pixels.
+    pub outer: PhysicalRect,
+    /// Bounding box of its clip region (relative to the window); None without a region.
+    pub clip: Option<PhysicalRect>,
+    /// The window is maximised (WS_MAXIMIZE); a placement cannot move such a window.
+    pub zoomed: bool,
+}
+
+/// The outer rectangle and clip box read back right after a placement; what the window is
+/// expected to look like until something changes it behind our back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Placed {
+    pub outer: PhysicalRect,
+    pub clip: PhysicalRect,
 }
 
 /// What was last applied to the screen.
@@ -247,6 +270,8 @@ pub struct Applied {
     pub rect: Option<PhysicalRect>,
     /// Placement, clipping and z-order are paused because the window is full screen.
     pub suspended: bool,
+    /// How the window looked right after the last placement.
+    pub placed: Option<Placed>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -264,15 +289,17 @@ const FULLSCREEN_SLACK: i32 = 16;
 
 /// True when `window` (outer rectangle, screen pixels) covers its whole `monitor`, which means
 /// the page went full screen (a video's full screen button). `target` is the dock box the window
-/// was asked to sit on: a dock that is itself monitor-sized never counts as full screen.
-pub fn is_fullscreen(window: PhysicalRect, monitor: PhysicalRect, target: Option<PhysicalRect>) -> bool {
+/// was asked to sit on: a dock that is itself monitor-sized never counts as full screen. A maximised
+/// window (`zoomed`) overshoots the monitor just like a full screen one but is not: Chromium leaves
+/// maximised state before it goes full screen.
+pub fn is_fullscreen(window: PhysicalRect, monitor: PhysicalRect, target: Option<PhysicalRect>, zoomed: bool) -> bool {
     let covers = |r: PhysicalRect| {
         r.x <= monitor.x + FULLSCREEN_SLACK
             && r.y <= monitor.y + FULLSCREEN_SLACK
             && r.x + r.width >= monitor.x + monitor.width - FULLSCREEN_SLACK
             && r.y + r.height >= monitor.y + monitor.height - FULLSCREEN_SLACK
     };
-    !target.is_some_and(covers) && covers(window)
+    !zoomed && !target.is_some_and(covers) && covers(window)
 }
 
 /// Decides the minimum work for one tick, so an idle loop costs a few cheap queries only.
@@ -287,11 +314,20 @@ pub fn plan_follow(applied: &Applied, wanted: &Wanted) -> Plan {
         let already = applied.suspended && !switched;
         return Plan { hide_others: switched, show: switched || !applied.visible, suspend: !already, ..Plan::default() };
     }
+    // The window (or its clip) changed behind our back: Chromium resets the region on its own
+    // resize handling and a maximised window ignores moves. A cached box must not hide that.
+    let drifted = !switched
+        && applied.visible
+        && !applied.suspended
+        && match (applied.placed, wanted.live) {
+            (Some(placed), Some(live)) => live.zoomed || live.outer != placed.outer || live.clip != Some(placed.clip),
+            _ => false,
+        };
     Plan {
         hide_others: switched,
         hide: false,
         suspend: false,
-        place: if switched || applied.rect != wanted.screen { wanted.screen } else { None },
+        place: if switched || drifted || applied.rect != wanted.screen { wanted.screen } else { None },
         show: switched || !applied.visible,
     }
 }
@@ -412,6 +448,8 @@ struct Panel {
     applied: Applied,
     /// Band above the page that the last placement clipped away (device pixels).
     band: i32,
+    /// When the last placement happened (drift repairs are rate limited).
+    placed_at: Option<std::time::Instant>,
     /// True while the follow thread runs (it stops when the last window is gone).
     following: bool,
 }
@@ -422,8 +460,9 @@ static PANEL: Mutex<Panel> = Mutex::new(Panel {
     dock: None,
     main: 0,
     scale: 1.0,
-    applied: Applied { hwnd: None, visible: false, rect: None, suspended: false },
+    applied: Applied { hwnd: None, visible: false, rect: None, suspended: false, placed: None },
     band: 0,
+    placed_at: None,
     following: false,
 });
 
@@ -508,13 +547,13 @@ mod imp {
     use tauri::{AppHandle, Manager};
     use windows_sys::Win32::Foundation::{HWND, LPARAM, RECT, TRUE};
     use windows_sys::Win32::Graphics::Gdi::{
-        CreateRectRgn, GetMonitorInfoW, MonitorFromWindow, SetWindowRgn, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+        CreateRectRgn, GetMonitorInfoW, GetWindowRgnBox, MonitorFromWindow, SetWindowRgn, MONITORINFO, MONITOR_DEFAULTTONEAREST,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         EnumChildWindows, EnumWindows, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowRect, GetWindowTextW,
-        GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, MoveWindow, PostMessageW,
+        GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, MoveWindow, PostMessageW,
         SetWindowPos, ShowWindow, GW_HWNDPREV, GW_OWNER, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-        SW_HIDE, SW_SHOWNOACTIVATE, WM_CLOSE,
+        SW_HIDE, SW_RESTORE, SW_SHOWNOACTIVATE, WM_CLOSE,
     };
 
     #[link(name = "dwmapi")]
@@ -635,8 +674,28 @@ mod imp {
         }
     }
 
+    /// Outer rectangle, clip box and maximised state of the window right now.
+    fn live_state(hwnd: isize) -> Option<Live> {
+        let h = hwnd_of(hwnd);
+        unsafe {
+            let mut w = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            if GetWindowRect(h, &mut w) == 0 {
+                return None;
+            }
+            let mut c = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            // 0 = error (no region), 1 = empty region, 2 and 3 = a region with a box.
+            let clip = (GetWindowRgnBox(h, &mut c) > 0)
+                .then_some(PhysicalRect { x: c.left, y: c.top, width: c.right - c.left, height: c.bottom - c.top });
+            Some(Live {
+                outer: PhysicalRect { x: w.left, y: w.top, width: w.right - w.left, height: w.bottom - w.top },
+                clip,
+                zoomed: IsZoomed(h) != 0,
+            })
+        }
+    }
+
     /// True while the hosted window covers its monitor (the page went full screen).
-    fn window_is_fullscreen(hwnd: isize, target: Option<PhysicalRect>) -> bool {
+    fn window_is_fullscreen(hwnd: isize, target: Option<PhysicalRect>, zoomed: bool) -> bool {
         let h = hwnd_of(hwnd);
         unsafe {
             let mut w = RECT { left: 0, top: 0, right: 0, bottom: 0 };
@@ -652,7 +711,7 @@ mod imp {
             let m = info.rcMonitor;
             let window = PhysicalRect { x: w.left, y: w.top, width: w.right - w.left, height: w.bottom - w.top };
             let monitor = PhysicalRect { x: m.left, y: m.top, width: m.right - m.left, height: m.bottom - m.top };
-            is_fullscreen(window, monitor, target)
+            is_fullscreen(window, monitor, target, zoomed)
         }
     }
 
@@ -707,9 +766,13 @@ mod imp {
     /// Places the hosted window so that its page area covers `dock` exactly. The insets and the
     /// band above the page are read from the live window; if resizing changed them (an infobar
     /// can wrap at another width), the window is placed once more. Returns the band used.
-    fn place_window(hwnd: isize, dock: PhysicalRect, scale: f64) -> i32 {
+    fn place_window(hwnd: isize, dock: PhysicalRect, scale: f64) -> (i32, Option<Placed>) {
         let h = hwnd_of(hwnd);
         flatten(hwnd);
+        // A maximised window ignores MoveWindow (it snaps back to the monitor): leave that state first.
+        if unsafe { IsZoomed(h) } != 0 {
+            unsafe { ShowWindow(h, SW_RESTORE) };
+        }
         let mut frame = measure_frame(hwnd, scale);
         let mut placed = hosted_frame(dock, frame.0, frame.1);
         unsafe { MoveWindow(h, placed.0.x, placed.0.y, placed.0.width, placed.0.height, TRUE) };
@@ -724,7 +787,10 @@ mod imp {
             let region = CreateRectRgn(v.x, v.y, v.x + v.width, v.y + v.height);
             SetWindowRgn(h, region, TRUE);
         }
-        frame.1
+        // Read back what the window really looks like (Chromium may clamp the size), so a later
+        // difference means somebody changed it and not that we asked for something unreachable.
+        let placed = live_state(hwnd).map(|live| Placed { outer: live.outer, clip: live.clip.unwrap_or(v) });
+        (frame.1, placed)
     }
 
     fn main_window(app: &AppHandle) -> Result<(isize, f64), String> {
@@ -757,14 +823,22 @@ mod imp {
             .and_then(|id| panel.registry.entries().iter().find(|e| e.id == id))
             .map(|e| e.hwnd);
         let screen = panel.dock.map(|d| to_screen(d, origin));
+        let live = active.and_then(live_state);
         let wanted = Wanted {
             hwnd: active,
             shown: panel.shown,
             main_minimized: unsafe { IsIconic(hwnd_of(panel.main)) } != 0,
             screen,
-            fullscreen: active.is_some_and(|hwnd| window_is_fullscreen(hwnd, screen)),
+            fullscreen: active.is_some_and(|hwnd| window_is_fullscreen(hwnd, screen, live.is_some_and(|l| l.zoomed))),
+            live,
         };
         let mut plan = plan_follow(&panel.applied, &wanted);
+        // A repair that only came from drift is rate limited: a window that keeps changing itself
+        // right after each placement must not be moved every tick.
+        let repair_only = plan.place.is_some() && panel.applied.hwnd == active && panel.applied.rect == screen;
+        if repair_only && panel.placed_at.is_some_and(|at| at.elapsed() < Duration::from_millis(DRIFT_REPAIR_MIN_MS)) {
+            plan.place = None;
+        }
         // Page content can move inside the window after it was placed (the first draw, an infobar
         // appearing or going away): re-place at the same box when the measured band changed.
         if let (Some(hwnd), None, false, true, false) =
@@ -790,8 +864,12 @@ mod imp {
         if let (Some(hwnd), true) = (active, plan.suspend) {
             unsafe { SetWindowRgn(hwnd_of(hwnd), std::ptr::null_mut(), TRUE) };
         }
+        let mut placed = panel.applied.placed;
         if let (Some(hwnd), Some(rect)) = (active, plan.place) {
-            panel.band = place_window(hwnd, rect, scale);
+            let (band, after) = place_window(hwnd, rect, scale);
+            panel.band = band;
+            panel.placed_at = Some(Instant::now());
+            placed = after;
         }
         if let (Some(hwnd), true) = (active, plan.show) {
             unsafe { ShowWindow(hwnd_of(hwnd), SW_SHOWNOACTIVATE) };
@@ -809,16 +887,17 @@ mod imp {
             }
         }
         panel.applied = if plan.hide {
-            Applied { hwnd: active, visible: false, rect: None, suspended: false }
+            Applied { hwnd: active, visible: false, rect: None, suspended: false, placed: None }
         } else if wanted.fullscreen && visible {
             // The next placement happens when the window is back to normal size.
-            Applied { hwnd: active, visible, rect: None, suspended: true }
+            Applied { hwnd: active, visible, rect: None, suspended: true, placed: None }
         } else {
             Applied {
                 hwnd: active,
                 visible,
                 rect: if plan.place.is_some() { plan.place } else { panel.applied.rect },
                 suspended: false,
+                placed,
             }
         };
     }
