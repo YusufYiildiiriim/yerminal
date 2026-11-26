@@ -18,7 +18,7 @@ fn entry(id: &str, hwnd: isize) -> Entry {
     Entry {
         id: id.to_owned(),
         hwnd,
-        saved: Saved { x: 10, y: 20, width: 800, height: 600, style: 0x16CF_0000 },
+        saved: Saved { x: 10, y: 20, width: 800, height: 600 },
     }
 }
 
@@ -231,7 +231,7 @@ fn drain_returns_every_entry_with_its_saved_geometry_so_all_can_be_released() {
     reg.add(entry("b", 2));
     let all = reg.drain();
     assert_eq!(all.iter().map(|e| e.hwnd).collect::<Vec<_>>(), vec![1, 2]);
-    assert_eq!(all[0].saved, Saved { x: 10, y: 20, width: 800, height: 600, style: 0x16CF_0000 });
+    assert_eq!(all[0].saved, Saved { x: 10, y: 20, width: 800, height: 600 });
     assert!(reg.state().apps.is_empty());
 }
 
@@ -244,17 +244,86 @@ fn prune_drops_entries_whose_window_is_gone() {
     assert_eq!(reg.state(), PanelState { apps: vec!["a".into()], active: Some("a".into()) });
 }
 
+// Follow mode: the window stays top-level, so the dock box (client relative) is moved to screen
+// pixels by the client origin, and a pure planner decides what to do on each tick.
+fn rect(x: i32, y: i32, width: i32, height: i32) -> PhysicalRect {
+    PhysicalRect { x, y, width, height }
+}
+
+fn wanted(hwnd: Option<isize>, shown: bool, minimized: bool, screen: Option<PhysicalRect>) -> Wanted {
+    Wanted { hwnd, shown, main_minimized: minimized, screen }
+}
+
 #[test]
-fn embedded_style_drops_the_frame_and_becomes_a_child_but_stays_visible() {
-    let framed = 0x16CF_0000_isize | 0x1000_0000; // caption, sysmenu, thickframe, min/max + visible
-    let child = embedded_style(framed);
-    assert_eq!(child & FRAME_STYLE_BITS, 0);
-    assert_ne!(child & STYLE_CHILD, 0);
-    assert_ne!(child & 0x1000_0000, 0);
+fn dock_box_moves_to_screen_pixels_by_the_client_origin() {
+    assert_eq!(to_screen(rect(985, 134, 455, 766), (100, 40)), rect(1085, 174, 455, 766));
+}
+
+#[test]
+fn first_tick_places_shows_and_raises_the_window() {
+    let screen = rect(10, 20, 300, 400);
+    let plan = plan_follow(&Applied::default(), &wanted(Some(7), true, false, Some(screen)));
+    assert_eq!(plan, Plan { hide_others: true, hide: false, place: Some(screen), show: true });
+}
+
+#[test]
+fn unchanged_state_does_nothing() {
+    let screen = rect(10, 20, 300, 400);
+    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(screen) };
+    assert_eq!(plan_follow(&applied, &wanted(Some(7), true, false, Some(screen))), Plan::default());
+}
+
+#[test]
+fn moving_the_main_window_replaces_the_window_without_reshowing() {
+    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(rect(10, 20, 300, 400)) };
+    let moved = rect(60, 20, 300, 400);
+    let plan = plan_follow(&applied, &wanted(Some(7), true, false, Some(moved)));
+    assert_eq!(plan, Plan { place: Some(moved), ..Plan::default() });
+}
+
+#[test]
+fn dock_resize_places_the_window_on_the_new_box() {
+    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(rect(10, 20, 300, 400)) };
+    let wider = rect(-70, 20, 380, 400);
+    assert_eq!(plan_follow(&applied, &wanted(Some(7), true, false, Some(wider))).place, Some(wider));
+}
+
+#[test]
+fn switching_tabs_hides_the_others_and_places_the_new_window() {
+    let screen = rect(10, 20, 300, 400);
+    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(screen) };
+    let plan = plan_follow(&applied, &wanted(Some(8), true, false, Some(screen)));
+    assert_eq!(plan, Plan { hide_others: true, hide: false, place: Some(screen), show: true });
+}
+
+#[test]
+fn minimised_main_window_hides_once() {
+    let screen = rect(10, 20, 300, 400);
+    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(screen) };
+    let plan = plan_follow(&applied, &wanted(Some(7), true, true, Some(screen)));
+    assert_eq!(plan, Plan { hide: true, ..Plan::default() });
+    let hidden = Applied { visible: false, ..applied };
+    assert_eq!(plan_follow(&hidden, &wanted(Some(7), true, true, Some(screen))), Plan::default());
+}
+
+#[test]
+fn restoring_the_main_window_shows_without_a_new_placement() {
+    let screen = rect(10, 20, 300, 400);
+    let hidden = Applied { hwnd: Some(7), visible: false, rect: Some(screen) };
+    let plan = plan_follow(&hidden, &wanted(Some(7), true, false, Some(screen)));
+    assert_eq!(plan, Plan { show: true, ..Plan::default() });
+}
+
+#[test]
+fn dock_hidden_by_a_dialog_hides_and_no_active_app_hides() {
+    let screen = rect(10, 20, 300, 400);
+    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(screen) };
+    assert!(plan_follow(&applied, &wanted(Some(7), false, false, Some(screen))).hide);
+    assert!(plan_follow(&applied, &wanted(None, true, false, Some(screen))).hide);
 }
 
 #[test]
 fn restore_target_is_the_saved_geometry() {
-    let saved = Saved { x: 10, y: 20, width: 800, height: 600, style: 0x16CF_0000 };
+    let saved = Saved { x: 10, y: 20, width: 800, height: 600 };
     assert_eq!(restore_geometry(&saved), PhysicalRect { x: 10, y: 20, width: 800, height: 600 });
 }

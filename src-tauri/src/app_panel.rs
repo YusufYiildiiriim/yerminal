@@ -3,9 +3,10 @@
 //! The window belongs to the user's own browser process (default profile, accounts
 //! signed in). Safety rules that everything below follows:
 //! - the browser process is never killed; a hosted window is closed with WM_CLOSE only;
-//! - every hosted window is released (`SetParent(NULL)`, original style, geometry and
-//!   region restored) when a tab is dropped, when the main window is destroyed, when the
-//!   app exits and from a panic hook, so the browser window survives yerminal.
+//! - every hosted window is released (clip region removed, original geometry restored) when a tab is dropped, when the main window is destroyed, when the app exits and from a panic hook;
+//! - follow mode: the browser window stays top-level (no parent, no owner, style untouched). A
+//!   40 ms loop keeps it on the dock box, hides it with the main window and keeps the main
+//!   window directly below it in z-order.
 //!
 //! Geometry, window selection and bookkeeping are portable and unit tested; the Win32
 //! work lives behind `#[cfg(windows)]` and other platforms get an error stub.
@@ -18,6 +19,10 @@ use std::sync::Mutex;
 const CAPTION_HEIGHT_AT_100: f64 = 31.0;
 
 /// Hosted window class of Chromium-based browsers (Chrome, Edge, Brave).
+/// Follow loop period: a few window queries per tick, placement only when something changed.
+#[cfg(windows)]
+const FOLLOW_INTERVAL_MS: u64 = 40;
+
 pub const CHROMIUM_WINDOW_CLASS: &str = "Chrome_WidgetWin_1";
 
 pub const NO_BROWSER_MESSAGE: &str = "No supported browser found. Install Brave or Microsoft Edge.";
@@ -205,22 +210,51 @@ pub fn pick_existing_app_window(
 // Styles and geometry that make a window embeddable and restorable
 // ---------------------------------------------------------------------------
 
-pub const STYLE_CHILD: isize = 0x4000_0000;
-const STYLE_POPUP: isize = 0x8000_0000_u32 as i32 as isize;
-const STYLE_CAPTION: isize = 0x00C0_0000;
-const STYLE_THICKFRAME: isize = 0x0004_0000;
-const STYLE_SYSMENU: isize = 0x0008_0000;
-const STYLE_MINIMIZEBOX: isize = 0x0002_0000;
-const STYLE_MAXIMIZEBOX: isize = 0x0001_0000;
-pub const FRAME_STYLE_BITS: isize = STYLE_CAPTION
-    | STYLE_THICKFRAME
-    | STYLE_SYSMENU
-    | STYLE_MINIMIZEBOX
-    | STYLE_MAXIMIZEBOX
-    | STYLE_POPUP;
+/// Dock box (relative to the main client area) in screen pixels.
+pub fn to_screen(dock: PhysicalRect, client_origin: (i32, i32)) -> PhysicalRect {
+    PhysicalRect { x: dock.x + client_origin.0, y: dock.y + client_origin.1, ..dock }
+}
 
-pub fn embedded_style(style: isize) -> isize {
-    (style & !FRAME_STYLE_BITS) | STYLE_CHILD
+/// What the follow loop wants right now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Wanted {
+    pub hwnd: Option<isize>,
+    /// False while an HTML dialog or menu needs the area, or the dock is collapsed.
+    pub shown: bool,
+    pub main_minimized: bool,
+    /// Dock box in screen pixels, when the page has reported one.
+    pub screen: Option<PhysicalRect>,
+}
+
+/// What was last applied to the screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Applied {
+    pub hwnd: Option<isize>,
+    pub visible: bool,
+    pub rect: Option<PhysicalRect>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Plan {
+    pub hide_others: bool,
+    pub hide: bool,
+    pub place: Option<PhysicalRect>,
+    pub show: bool,
+}
+
+/// Decides the minimum work for one tick, so an idle loop costs a few cheap queries only.
+pub fn plan_follow(applied: &Applied, wanted: &Wanted) -> Plan {
+    let visible = wanted.shown && !wanted.main_minimized && wanted.hwnd.is_some() && wanted.screen.is_some();
+    let switched = applied.hwnd != wanted.hwnd;
+    if !visible {
+        return Plan { hide: applied.visible || switched, ..Plan::default() };
+    }
+    Plan {
+        hide_others: switched,
+        hide: false,
+        place: if switched || applied.rect != wanted.screen { wanted.screen } else { None },
+        show: switched || !applied.visible,
+    }
 }
 
 /// What a window looked like before it was hosted; applied again on release.
@@ -230,7 +264,6 @@ pub struct Saved {
     pub y: i32,
     pub width: i32,
     pub height: i32,
-    pub style: isize,
 }
 
 pub fn restore_geometry(saved: &Saved) -> PhysicalRect {
@@ -333,11 +366,23 @@ struct Panel {
     registry: Registry,
     /// False while an HTML dialog or menu needs the area the native window covers.
     shown: bool,
+    /// Latest dock box from the page (client relative, device pixels): the follow loop's target.
+    dock: Option<PhysicalRect>,
+    main: isize,
+    scale: f64,
+    applied: Applied,
+    /// True while the follow thread runs (it stops when the last window is gone).
+    following: bool,
 }
 
 static PANEL: Mutex<Panel> = Mutex::new(Panel {
     registry: Registry { entries: Vec::new(), active: None },
     shown: true,
+    dock: None,
+    main: 0,
+    scale: 1.0,
+    applied: Applied { hwnd: None, visible: false, rect: None },
+    following: false,
 });
 
 fn lock_panel() -> std::sync::MutexGuard<'static, Panel> {
@@ -408,10 +453,6 @@ pub fn debug_autoopen(app: tauri::AppHandle) {
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(5));
         let rect = DockRect { x: 500.0, y: 150.0, width: 640.0, height: 420.0 };
-        if std::env::var("YERMINAL_APP_PANEL_FOLLOW").is_ok() {
-            eprintln!("[app-panel debug] follow -> {:?}", imp::follow(&app, &url, "Example Domain", rect));
-            return;
-        }
         let result = imp::open(&app, "debug", &url, "Example Domain", rect);
         eprintln!("[app-panel debug] open -> {:?}", result.map(|s| s.apps));
     });
@@ -426,10 +467,10 @@ mod imp {
     use windows_sys::Win32::Foundation::{HWND, LPARAM, RECT, TRUE};
     use windows_sys::Win32::Graphics::Gdi::{CreateRectRgn, SetWindowRgn};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetClassNameW, GetWindow, GetWindowLongPtrW, GetWindowRect, GetWindowTextW,
-        GetWindowThreadProcessId, IsWindow, IsWindowVisible, MoveWindow, PostMessageW, SetParent,
-        SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_STYLE, GW_OWNER, SWP_FRAMECHANGED,
-        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE, WM_CLOSE,
+        EnumWindows, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowRect, GetWindowTextW,
+        GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, MoveWindow, PostMessageW,
+        SetWindowPos, ShowWindow, GW_HWNDPREV, GW_OWNER, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        SW_HIDE, SW_SHOWNOACTIVATE, WM_CLOSE,
     };
 
     fn hwnd_of(raw: isize) -> HWND {
@@ -487,37 +528,15 @@ mod imp {
             .ok_or_else(|| NO_BROWSER_MESSAGE.to_owned())
     }
 
-    /// Captures the window's current state, then makes it a frameless child of `parent`.
-    fn embed(hwnd: isize, parent: isize) -> Saved {
-        let h = hwnd_of(hwnd);
-        unsafe {
-            let mut r = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-            GetWindowRect(h, &mut r);
-            let style = GetWindowLongPtrW(h, GWL_STYLE);
-            let saved = Saved {
-                x: r.left,
-                y: r.top,
-                width: r.right - r.left,
-                height: r.bottom - r.top,
-                style,
-            };
-            SetParent(h, hwnd_of(parent));
-            SetWindowLongPtrW(h, GWL_STYLE, embedded_style(style));
-            SetWindowPos(
-                h,
-                std::ptr::null_mut(),
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
-            );
-            saved
-        }
+    /// Remembers where the window was. Follow mode never reparents or restyles it.
+    fn capture(hwnd: isize) -> Saved {
+        let mut r = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        unsafe { GetWindowRect(hwnd_of(hwnd), &mut r) };
+        Saved { x: r.left, y: r.top, width: r.right - r.left, height: r.bottom - r.top }
     }
 
-    /// Gives the window back to the desktop: no clip region, no parent, original style and
-    /// geometry, visible. Does nothing when the window is already gone.
+    /// Gives the window back to the desktop: no clip region, original geometry, visible.
+    /// Does nothing when the window is already gone.
     fn release(entry: &Entry) {
         if !window_exists(entry.hwnd) {
             return;
@@ -526,18 +545,7 @@ mod imp {
         let g = restore_geometry(&entry.saved);
         unsafe {
             SetWindowRgn(h, std::ptr::null_mut(), TRUE);
-            SetParent(h, std::ptr::null_mut());
-            SetWindowLongPtrW(h, GWL_STYLE, entry.saved.style);
             MoveWindow(h, g.x, g.y, g.width, g.height, TRUE);
-            SetWindowPos(
-                h,
-                std::ptr::null_mut(),
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
-            );
             ShowWindow(h, SW_SHOWNOACTIVATE);
         }
     }
@@ -589,20 +597,90 @@ mod imp {
         Ok((hwnd, scale))
     }
 
-    /// Shows only the active window (when the dock is shown) and places it on the dock.
-    fn sync(panel: &Panel, scale: f64, rect: DockRect) {
-        let caption = caption_height(scale);
-        let dock = round_rect(rect);
-        for entry in panel.registry.entries() {
-            let is_active = panel.registry.active_id() == Some(entry.id.as_str());
-            let h = hwnd_of(entry.hwnd);
-            if is_active && panel.shown {
-                place_window(entry.hwnd, dock, caption);
-                unsafe { ShowWindow(h, SW_SHOWNOACTIVATE) };
-            } else {
-                unsafe { ShowWindow(h, SW_HIDE) };
+    fn client_origin(main: isize) -> Option<(i32, i32)> {
+        use windows_sys::Win32::Foundation::POINT;
+        use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
+        let mut origin = POINT { x: 0, y: 0 };
+        (unsafe { ClientToScreen(hwnd_of(main), &mut origin) } != 0).then_some((origin.x, origin.y))
+    }
+
+    /// Brings the screen in line with the panel state (called by the commands and by the follow
+    /// loop). The hosted window stays a top-level window with no owner or parent; it is moved
+    /// onto the dock box in screen pixels and the main window is kept directly below it.
+    fn apply(panel: &mut Panel) {
+        if !window_exists(panel.main) {
+            return;
+        }
+        let Some(origin) = client_origin(panel.main) else { return };
+        let active = panel
+            .registry
+            .active_id()
+            .and_then(|id| panel.registry.entries().iter().find(|e| e.id == id))
+            .map(|e| e.hwnd);
+        let wanted = Wanted {
+            hwnd: active,
+            shown: panel.shown,
+            main_minimized: unsafe { IsIconic(hwnd_of(panel.main)) } != 0,
+            screen: panel.dock.map(|d| to_screen(d, origin)),
+        };
+        let plan = plan_follow(&panel.applied, &wanted);
+        let caption = caption_height(panel.scale);
+        if plan.hide {
+            for entry in panel.registry.entries() {
+                unsafe { ShowWindow(hwnd_of(entry.hwnd), SW_HIDE) };
+            }
+        } else if plan.hide_others {
+            for entry in panel.registry.entries().iter().filter(|e| Some(e.hwnd) != active) {
+                unsafe { ShowWindow(hwnd_of(entry.hwnd), SW_HIDE) };
             }
         }
+        if let (Some(hwnd), Some(rect)) = (active, plan.place) {
+            place_window(hwnd, rect, caption);
+        }
+        if let (Some(hwnd), true) = (active, plan.show) {
+            unsafe { ShowWindow(hwnd_of(hwnd), SW_SHOWNOACTIVATE) };
+        }
+        let visible = !plan.hide && (plan.show || panel.applied.visible && wanted.hwnd == panel.applied.hwnd);
+        if let (Some(hwnd), true) = (active, visible) {
+            // Only reorder while yerminal or the app window is the one in use, and only when the
+            // main window is not already directly below the app window.
+            unsafe {
+                let (m, h) = (hwnd_of(panel.main), hwnd_of(hwnd));
+                let fg = GetForegroundWindow();
+                if (fg == m || fg == h) && GetWindow(m, GW_HWNDPREV) != h {
+                    SetWindowPos(m, h, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                }
+            }
+        }
+        panel.applied = if plan.hide {
+            Applied { hwnd: active, visible: false, rect: None }
+        } else {
+            Applied {
+                hwnd: active,
+                visible,
+                rect: if plan.place.is_some() { plan.place } else { panel.applied.rect },
+            }
+        };
+    }
+
+    /// Starts the follow loop (once). Light polling: a few window queries every 40 ms, no
+    /// placement unless something moved; it stops when the last hosted window is gone.
+    fn ensure_follower(panel: &mut Panel) {
+        if panel.following {
+            return;
+        }
+        panel.following = true;
+        std::thread::spawn(|| loop {
+            std::thread::sleep(Duration::from_millis(FOLLOW_INTERVAL_MS));
+            let mut panel = lock_panel();
+            panel.registry.prune(window_exists);
+            if panel.registry.entries().is_empty() || !window_exists(panel.main) {
+                panel.following = false;
+                panel.applied = Applied::default();
+                return;
+            }
+            apply(&mut panel);
+        });
     }
 
     /// Waits for the launched app window, or reuses an existing one for the same site.
@@ -640,89 +718,49 @@ mod imp {
         }
     }
 
-    /// SPIKE (debug only): "follow" mode. The browser window stays top-level (no parent, no
-    /// owner, original style) and a thread keeps it on the dock box and just above the main
-    /// window in z-order. Nothing ties its lifetime to yerminal.
-    #[cfg(debug_assertions)]
-    pub fn follow(app: &AppHandle, url: &str, hint: &str, rect: DockRect) -> Result<(), String> {
-        use windows_sys::Win32::Foundation::POINT;
-        use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
-        use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, IsIconic};
-        let (main, scale) = main_window(app)?;
-        let hwnd = obtain_window(url, hint, &[])?;
-        let dock = round_rect(rect);
-        let caption = caption_height(scale);
-        std::thread::spawn(move || {
-            let (m, h) = (hwnd_of(main), hwnd_of(hwnd));
-            let mut last = None;
-            while window_exists(hwnd) && window_exists(main) {
-                unsafe {
-                    if IsIconic(m) != 0 {
-                        ShowWindow(h, SW_HIDE);
-                        last = None;
-                    } else {
-                        let mut origin = POINT { x: 0, y: 0 };
-                        ClientToScreen(m, &mut origin);
-                        if last != Some((origin.x, origin.y)) {
-                            let screen = PhysicalRect { x: dock.x + origin.x, y: dock.y + origin.y, ..dock };
-                            place_window(hwnd, screen, caption);
-                            last = Some((origin.x, origin.y));
-                        }
-                        ShowWindow(h, SW_SHOWNOACTIVATE);
-                        let fg = GetForegroundWindow();
-                        if fg == m || fg == h {
-                            // main sits directly below the app window
-                            SetWindowPos(m, h, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-                        }
-                    }
-                }
-                std::thread::sleep(Duration::from_millis(40));
-            }
-            if window_exists(hwnd) {
-                unsafe { SetWindowRgn(hwnd_of(hwnd), std::ptr::null_mut(), TRUE) };
-            }
-        });
-        Ok(())
-    }
-
     pub fn open(app: &AppHandle, id: &str, url: &str, hint: &str, rect: DockRect) -> Result<PanelState, String> {
         let (main, scale) = main_window(app)?;
         {
             let mut panel = lock_panel();
+            (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
             if panel.registry.activate(id) {
-                sync(&panel, scale, rect);
+                apply(&mut panel);
                 return Ok(panel.registry.state());
             }
         }
         let hosted = lock_panel().registry.hwnds();
         let hwnd = obtain_window(url, hint, &hosted)?;
-        let saved = embed(hwnd, main);
+        let saved = capture(hwnd);
         let mut panel = lock_panel();
         panel.shown = true;
+        (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
         panel.registry.add(Entry { id: id.to_owned(), hwnd, saved });
-        sync(&panel, scale, rect);
+        ensure_follower(&mut panel);
+        apply(&mut panel);
         Ok(panel.registry.state())
     }
 
     pub fn activate(app: &AppHandle, id: &str, rect: DockRect) -> Result<PanelState, String> {
-        let (_, scale) = main_window(app)?;
+        let (main, scale) = main_window(app)?;
         let mut panel = lock_panel();
         panel.registry.prune(window_exists);
         panel.registry.activate(id);
-        sync(&panel, scale, rect);
+        (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
+        apply(&mut panel);
         Ok(panel.registry.state())
     }
 
     pub fn place(app: &AppHandle, rect: DockRect) -> Result<(), String> {
-        let (_, scale) = main_window(app)?;
-        let panel = lock_panel();
-        sync(&panel, scale, rect);
+        let (main, scale) = main_window(app)?;
+        let mut panel = lock_panel();
+        (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
+        apply(&mut panel);
         Ok(())
     }
 
     /// Closes one hosted window with WM_CLOSE. The browser process is not touched.
     pub fn close(app: &AppHandle, id: &str, rect: DockRect) -> Result<PanelState, String> {
-        let (_, scale) = main_window(app)?;
+        let (main, scale) = main_window(app)?;
         let removed = lock_panel().registry.remove(id);
         if let Some(entry) = removed {
             unsafe {
@@ -737,19 +775,16 @@ mod imp {
                 release(&entry);
             }
         }
-        let panel = lock_panel();
-        sync(&panel, scale, rect);
+        let mut panel = lock_panel();
+        (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
+        apply(&mut panel);
         Ok(panel.registry.state())
     }
 
     pub fn set_visible(visible: bool) -> Result<(), String> {
         let mut panel = lock_panel();
         panel.shown = visible;
-        for entry in panel.registry.entries() {
-            let is_active = panel.registry.active_id() == Some(entry.id.as_str());
-            let flag = if is_active && visible { SW_SHOWNOACTIVATE } else { SW_HIDE };
-            unsafe { ShowWindow(hwnd_of(entry.hwnd), flag) };
-        }
+        apply(&mut panel);
         Ok(())
     }
 
@@ -762,11 +797,16 @@ mod imp {
     pub fn release_all(non_blocking: bool) {
         let drained = if non_blocking {
             match PANEL.try_lock() {
-                Ok(mut panel) => panel.registry.drain(),
+                Ok(mut panel) => {
+                    panel.applied = Applied::default();
+                    panel.registry.drain()
+                }
                 Err(_) => return,
             }
         } else {
-            lock_panel().registry.drain()
+            let mut panel = lock_panel();
+            panel.applied = Applied::default();
+            panel.registry.drain()
         };
         for entry in &drained {
             release(entry);
@@ -786,11 +826,6 @@ mod imp {
     }
 
     pub fn activate(_app: &AppHandle, _id: &str, _rect: DockRect) -> Result<PanelState, String> {
-        Err(UNSUPPORTED.to_owned())
-    }
-
-    #[cfg(debug_assertions)]
-    pub fn follow(_app: &AppHandle, _url: &str, _hint: &str, _rect: DockRect) -> Result<(), String> {
         Err(UNSUPPORTED.to_owned())
     }
 
