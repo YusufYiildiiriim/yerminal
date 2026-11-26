@@ -346,6 +346,52 @@ pub fn restore_geometry(saved: &Saved) -> PhysicalRect {
 }
 
 // ---------------------------------------------------------------------------
+// Snapshot: a still image of the hosted window, shown while an HTML dialog needs the area
+// ---------------------------------------------------------------------------
+
+/// Crops a top-down BGRA image to `crop` (clamped to the image). None when nothing is left or
+/// the buffer does not match the stated size.
+pub fn crop_bgra(src: &[u8], src_w: i32, src_h: i32, crop: PhysicalRect) -> Option<(i32, i32, Vec<u8>)> {
+    if src_w <= 0 || src_h <= 0 || src.len() != (src_w as usize) * (src_h as usize) * 4 {
+        return None;
+    }
+    let x0 = crop.x.max(0);
+    let y0 = crop.y.max(0);
+    let x1 = crop.x.saturating_add(crop.width).min(src_w);
+    let y1 = crop.y.saturating_add(crop.height).min(src_h);
+    if x1 <= x0 || y1 <= y0 {
+        return None;
+    }
+    let (w, h) = (x1 - x0, y1 - y0);
+    let mut out = Vec::with_capacity((w as usize) * (h as usize) * 4);
+    for y in y0..y1 {
+        let start = ((y * src_w + x0) as usize) * 4;
+        out.extend_from_slice(&src[start..start + (w as usize) * 4]);
+    }
+    Some((w, h, out))
+}
+
+/// A failed capture (GPU surface not readable) comes back all black: sample the image and
+/// report it, so the panel shows its placeholder instead of a black rectangle.
+pub fn looks_blank(pixels: &[u8]) -> bool {
+    let count = pixels.len() / 4;
+    if count == 0 {
+        return true;
+    }
+    let step = (count / 4096).max(1);
+    !(0..count).step_by(step).any(|i| pixels[i * 4] != 0 || pixels[i * 4 + 1] != 0 || pixels[i * 4 + 2] != 0)
+}
+
+/// Payload for the page: width and height as little-endian u32, then raw BGRA rows.
+pub fn snapshot_bytes(width: u32, height: u32, pixels: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(8 + pixels.len());
+    out.extend_from_slice(&width.to_le_bytes());
+    out.extend_from_slice(&height.to_le_bytes());
+    out.extend_from_slice(pixels);
+    out
+}
+
+// ---------------------------------------------------------------------------
 // Hosted window bookkeeping
 // ---------------------------------------------------------------------------
 
@@ -506,6 +552,13 @@ pub fn app_panel_set_visible(visible: bool) -> Result<(), String> {
     imp::set_visible(visible)
 }
 
+/// One still frame of the active hosted window (the visible part only), taken just before the
+/// window is hidden for a dialog. Raw bytes (see `snapshot_bytes`); an error means "no image".
+#[tauri::command(async)]
+pub fn app_panel_snapshot() -> Result<tauri::ipc::Response, String> {
+    imp::snapshot().map(tauri::ipc::Response::new)
+}
+
 /// Live hosted apps and the active one; entries whose window vanished are dropped.
 #[tauri::command(async)]
 pub fn app_panel_state() -> Result<PanelState, String> {
@@ -536,6 +589,22 @@ pub fn debug_autoopen(app: tauri::AppHandle) {
         let rect = DockRect { x: 500.0, y: 150.0, width: 640.0, height: 420.0 };
         let result = imp::open(&app, "debug", &url, "Example Domain", rect);
         eprintln!("[app-panel debug] open -> {:?}", result.map(|s| s.apps));
+        // Capture measurement: three frames (cold, then warm) and the last one dumped as a raw file.
+        if let Ok(dump) = std::env::var("YERMINAL_APP_PANEL_SNAPSHOT_DUMP") {
+            std::thread::sleep(std::time::Duration::from_secs(4));
+            for round in 0..3 {
+                let started = std::time::Instant::now();
+                let frame = imp::snapshot();
+                eprintln!(
+                    "[app-panel debug] snapshot {round}: {:?} in {:?}",
+                    frame.as_ref().map(|b| b.len()),
+                    started.elapsed()
+                );
+                if let (Ok(bytes), 2) = (frame, round) {
+                    let _ = std::fs::write(&dump, bytes);
+                }
+            }
+        }
     });
 }
 
@@ -1014,6 +1083,100 @@ mod imp {
         Ok(panel.registry.state())
     }
 
+    #[link(name = "user32")]
+    extern "system" {
+        fn PrintWindow(hwnd: HWND, hdc: isize, flags: u32) -> i32;
+    }
+
+    /// PW_RENDERFULLCONTENT: asks DirectComposition/GPU based windows (Chromium) to render too.
+    const PW_RENDERFULLCONTENT: u32 = 2;
+
+    /// Renders the whole window into a top-down BGRA buffer (alpha forced opaque).
+    fn print_window(hwnd: isize, width: i32, height: i32) -> Option<Vec<u8>> {
+        use windows_sys::Win32::Graphics::Gdi::{
+            CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC, SelectObject,
+            BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+        };
+        if width <= 0 || height <= 0 {
+            return None;
+        }
+        let h = hwnd_of(hwnd);
+        unsafe {
+            let screen = GetDC(std::ptr::null_mut());
+            if screen.is_null() {
+                return None;
+            }
+            let dc = CreateCompatibleDC(screen);
+            let bitmap = CreateCompatibleBitmap(screen, width, height);
+            let mut result = None;
+            if !dc.is_null() && !bitmap.is_null() {
+                let old = SelectObject(dc, bitmap as _);
+                if PrintWindow(h, dc as isize, PW_RENDERFULLCONTENT) != 0 {
+                    let mut info: BITMAPINFO = std::mem::zeroed();
+                    info.bmiHeader = BITMAPINFOHEADER {
+                        biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                        biWidth: width,
+                        biHeight: -height, // negative: top-down rows
+                        biPlanes: 1,
+                        biBitCount: 32,
+                        biCompression: BI_RGB,
+                        biSizeImage: 0,
+                        biXPelsPerMeter: 0,
+                        biYPelsPerMeter: 0,
+                        biClrUsed: 0,
+                        biClrImportant: 0,
+                    };
+                    let mut buf = vec![0u8; (width as usize) * (height as usize) * 4];
+                    // The bitmap must not be selected into a DC while GetDIBits reads it.
+                    SelectObject(dc, old);
+                    let rows = GetDIBits(dc, bitmap, 0, height as u32, buf.as_mut_ptr() as *mut _, &mut info, DIB_RGB_COLORS);
+                    if rows == height {
+                        for px in buf.chunks_exact_mut(4) {
+                            px[3] = 255;
+                        }
+                        result = Some(buf);
+                    }
+                }
+            }
+            if !bitmap.is_null() {
+                DeleteObject(bitmap as _);
+            }
+            if !dc.is_null() {
+                DeleteDC(dc);
+            }
+            ReleaseDC(std::ptr::null_mut(), screen);
+            result
+        }
+    }
+
+    /// The visible part (clip box) of the active hosted window as a raw frame. Taken while the
+    /// window is still shown; the panel lock is not held during the capture.
+    pub fn snapshot() -> Result<Vec<u8>, String> {
+        let started = Instant::now();
+        let (hwnd, clip) = {
+            let panel = lock_panel();
+            let active = panel
+                .registry
+                .active_id()
+                .and_then(|id| panel.registry.entries().iter().find(|e| e.id == id))
+                .map(|e| e.hwnd);
+            match (active, panel.applied.visible, panel.applied.placed, panel.applied.suspended) {
+                (Some(hwnd), true, Some(placed), false) => (hwnd, placed.clip),
+                _ => return Err("No visible hosted window to capture".to_owned()),
+            }
+        };
+        let live = live_state(hwnd).ok_or("Hosted window is gone")?;
+        let full = print_window(hwnd, live.outer.width, live.outer.height).ok_or("Capture failed")?;
+        let (w, h, pixels) = crop_bgra(&full, live.outer.width, live.outer.height, clip).ok_or("Nothing to capture")?;
+        if looks_blank(&pixels) {
+            return Err("Capture was blank".to_owned());
+        }
+        if std::env::var_os("YERMINAL_APP_PANEL_SNAPSHOT_LOG").is_some() {
+            eprintln!("[app-panel snapshot] {w}x{h} {} bytes in {:?}", pixels.len(), started.elapsed());
+        }
+        Ok(snapshot_bytes(w as u32, h as u32, &pixels))
+    }
+
     pub fn set_visible(visible: bool) -> Result<(), String> {
         let mut panel = lock_panel();
         panel.shown = visible;
@@ -1072,6 +1235,10 @@ mod imp {
 
     pub fn set_visible(_visible: bool) -> Result<(), String> {
         Ok(())
+    }
+
+    pub fn snapshot() -> Result<Vec<u8>, String> {
+        Err(UNSUPPORTED.to_owned())
     }
 
     pub fn state() -> PanelState {

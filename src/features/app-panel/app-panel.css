@@ -57,6 +57,9 @@
 
 /* The native app window is laid over this box and nothing else. */
 .app-shell[data-theme] .app-panel-content { position: relative; flex: 1 1 auto; min-height: 0; background: var(--theme-terminal); }
+.app-shell[data-theme] .app-panel-snapshot { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.app-shell[data-theme] .app-panel-snapshot canvas { display: block; width: 100%; height: 100%; }
+.app-shell[data-theme] .app-panel-hidden-note { margin: 0; padding: 20px; color: var(--text-muted); font-size: var(--fs-xs); line-height: 1.6; text-align: center; }
 .app-shell[data-theme] .app-panel-empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px; text-align: center; }
 .app-shell[data-theme] .app-panel-empty p { max-width: 220px; margin: 0; color: var(--text-muted); font-size: var(--fs-xs); line-height: 1.6; }
 .app-shell[data-theme] .app-panel-empty-list { display: grid; width: min(220px, 100%); gap: 4px; }

@@ -3,7 +3,10 @@ import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerE
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { APP_CATALOG, findApp, type AppDef } from "./apps";
 import { isDockRectUsable, toDeviceRect, toDockRect, type DockRect } from "./dockRect";
-import { clampDockWidth, hasBlockingOverlay, readDockPrefs, writeDockPrefs } from "./dockPrefs";
+import { clampDockWidth, readDockPrefs, writeDockPrefs } from "./dockPrefs";
+import { overlapsContent, overlayBoxes } from "./overlayGeometry";
+import { SnapshotView } from "./SnapshotView";
+import { parseSnapshot, type SnapshotImage } from "./snapshotImage";
 
 interface PanelState {
   apps: string[];
@@ -31,6 +34,7 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
   const [opening, setOpening] = useState<AppDef | null>(null);
   const [message, setMessage] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [snapshot, setSnapshot] = useState<SnapshotImage | null>(null);
 
   const currentRect = useCallback((): DockRect | null => {
     const element = contentRef.current;
@@ -49,35 +53,57 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
     return () => { cancelled = true; };
   }, []);
 
-  // Dialogs and menus are HTML: the native window would cover them, so it is hidden meanwhile.
+  // Dialogs and menus are HTML: the native window would be drawn over them. It is hidden only
+  // while one of them actually reaches the content area, and a still frame stands in meanwhile.
   useEffect(() => {
     if (!open || typeof MutationObserver === "undefined") return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const check = () => {
       timer = undefined;
-      setOverlay(hasBlockingOverlay(document));
+      const element = contentRef.current;
+      setOverlay(element ? overlapsContent(overlayBoxes(document), toDockRect(element.getBoundingClientRect()), window.devicePixelRatio) : false);
     };
-    const observer = new MutationObserver(() => {
+    const schedule = () => {
       if (timer === undefined) timer = setTimeout(check, OVERLAY_CHECK_DELAY_MS);
-    });
+    };
+    const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener("resize", schedule);
     check();
     return () => {
       observer.disconnect();
+      window.removeEventListener("resize", schedule);
       if (timer !== undefined) clearTimeout(timer);
     };
-  }, [open]);
+  }, [open, width]);
 
-  const shown = open && !overlay && !menuOpen;
+  const shown = open && !overlay;
   useEffect(() => {
     if (!isTauri()) return;
-    invoke("app_panel_set_visible", { visible: shown })
-      .then(() => {
-        const rect = shown ? currentRect() : null;
-        return rect ? invoke("app_panel_place", { rect }) : undefined;
-      })
-      .catch(() => undefined);
-  }, [shown, currentRect]);
+    let cancelled = false;
+    const sync = async () => {
+      if (!shown) {
+        let image: SnapshotImage | null = null;
+        if (open) {
+          try {
+            image = parseSnapshot(await invoke<unknown>("app_panel_snapshot"));
+          } catch {
+            image = null;
+          }
+          if (cancelled) return;
+        }
+        setSnapshot(image);
+        await invoke("app_panel_set_visible", { visible: false });
+        return;
+      }
+      await invoke("app_panel_set_visible", { visible: true });
+      const rect = currentRect();
+      if (rect) await invoke("app_panel_place", { rect });
+      if (!cancelled) setSnapshot(null);
+    };
+    sync().catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [shown, open, currentRect]);
 
   // Keep the hosted window on the content area when the dock or the main window changes.
   useEffect(() => {
@@ -217,6 +243,9 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
       </div>
       {message && <p className="app-panel-message" role="status">{message}</p>}
       <div ref={contentRef} className="app-panel-content" aria-label="App content">
+        {open && overlay && state.apps.length > 0 && (snapshot
+          ? <SnapshotView image={snapshot} />
+          : <p className="app-panel-hidden-note">Hidden while a dialog is open</p>)}
         {state.apps.length === 0 && !opening && (
           <div className="app-panel-empty">
             <p>Pick an app to keep next to your work.</p>

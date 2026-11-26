@@ -426,6 +426,7 @@ pub fn run() {
             app_panel::app_panel_close,
             app_panel::app_panel_activate,
             app_panel::app_panel_set_visible,
+            app_panel::app_panel_snapshot,
             app_panel::app_panel_state,
             terminal_output_snapshot,
             git_repository_info,

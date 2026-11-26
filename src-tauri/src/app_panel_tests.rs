@@ -545,3 +545,60 @@ fn maximising_and_restoring_the_main_window_replaces_and_clips_on_every_size() {
         assert_eq!(plan_follow(&applied, &seen(screen, after)), Plan::default());
     }
 }
+
+// --- snapshot (still image shown while a dialog needs the area) ---
+
+/// `w` x `h` BGRA image whose pixel (x, y) is [x, y, 7, 255].
+fn gradient(w: i32, h: i32) -> Vec<u8> {
+    let mut v = Vec::new();
+    for y in 0..h {
+        for x in 0..w {
+            v.extend_from_slice(&[x as u8, y as u8, 7, 255]);
+        }
+    }
+    v
+}
+
+#[test]
+fn crop_keeps_only_the_requested_pixels() {
+    let src = gradient(6, 4);
+    let (w, h, out) = crop_bgra(&src, 6, 4, PhysicalRect { x: 2, y: 1, width: 3, height: 2 }).unwrap();
+    assert_eq!((w, h), (3, 2));
+    assert_eq!(out.len(), 3 * 2 * 4);
+    assert_eq!(&out[0..4], &[2, 1, 7, 255]);
+    assert_eq!(&out[out.len() - 4..], &[4, 2, 7, 255]);
+}
+
+#[test]
+fn crop_is_clamped_to_the_source() {
+    let src = gradient(6, 4);
+    let (w, h, out) = crop_bgra(&src, 6, 4, PhysicalRect { x: -2, y: 3, width: 20, height: 20 }).unwrap();
+    assert_eq!((w, h), (6, 1));
+    assert_eq!(&out[0..4], &[0, 3, 7, 255]);
+}
+
+#[test]
+fn crop_rejects_empty_or_mismatched_input() {
+    let src = gradient(6, 4);
+    assert!(crop_bgra(&src, 6, 4, PhysicalRect { x: 10, y: 0, width: 3, height: 3 }).is_none());
+    assert!(crop_bgra(&src, 6, 4, PhysicalRect { x: 0, y: 0, width: 0, height: 3 }).is_none());
+    assert!(crop_bgra(&src[..10], 6, 4, PhysicalRect { x: 0, y: 0, width: 3, height: 3 }).is_none());
+}
+
+#[test]
+fn an_all_black_capture_counts_as_failed() {
+    assert!(looks_blank(&vec![0u8; 64 * 64 * 4]));
+    assert!(looks_blank(&[]));
+    let mut img = vec![0u8; 64 * 64 * 4];
+    img[(30 * 64 + 31) * 4 + 1] = 90;
+    assert!(!looks_blank(&img));
+    assert!(!looks_blank(&gradient(32, 32)));
+}
+
+#[test]
+fn snapshot_payload_starts_with_little_endian_size() {
+    let bytes = snapshot_bytes(3, 2, &[9u8; 24]);
+    assert_eq!(&bytes[0..4], &3u32.to_le_bytes());
+    assert_eq!(&bytes[4..8], &2u32.to_le_bytes());
+    assert_eq!(bytes.len(), 8 + 24);
+}

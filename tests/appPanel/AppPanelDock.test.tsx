@@ -12,12 +12,31 @@ import { AppPanelDock } from "../../src/features/app-panel/AppPanelDock";
 const RECT = { x: 1000, y: 112, width: 380, height: 700 };
 const empty = { apps: [], active: null };
 
+/** Every element sits on the dock rect unless it carries its own box in data-box ("x,y,w,h"). */
 function mockLayout() {
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
-    left: RECT.x, top: RECT.y, width: RECT.width, height: RECT.height,
-    right: RECT.x + RECT.width, bottom: RECT.y + RECT.height, x: RECT.x, y: RECT.y, toJSON: () => ({}),
-  } as DOMRect);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const own = this.getAttribute("data-box")?.split(",").map(Number);
+    const [x, y, width, height] = own ?? [RECT.x, RECT.y, RECT.width, RECT.height];
+    return { left: x, top: y, width, height, right: x + width, bottom: y + height, x, y, toJSON: () => ({}) } as DOMRect;
+  });
 }
+
+function frame(width: number, height: number): ArrayBuffer {
+  const bytes = new Uint8Array(8 + width * height * 4).fill(120);
+  new DataView(bytes.buffer).setUint32(0, width, true);
+  new DataView(bytes.buffer).setUint32(4, height, true);
+  return bytes.buffer;
+}
+
+function dialogAt(box: string) {
+  const dialog = document.createElement("section");
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  dialog.setAttribute("data-box", box);
+  return dialog;
+}
+
+const settle = () => new Promise((r) => setTimeout(r, 120));
 
 function setup(props: Partial<{ open: boolean; onClose: () => void }> = {}) {
   const onClose = props.onClose ?? vi.fn();
@@ -185,5 +204,83 @@ describe("AppPanelDock", () => {
     localStorage.setItem("yerminal.app-panel", JSON.stringify({ open: true, width: 450 }));
     setup();
     expect(screen.getByLabelText("App panel").style.flexBasis).toBe("450px");
+  });
+
+  describe("dialog over the hosted window", () => {
+    const hosted = async (extra: Record<string, unknown> = {}) => {
+      const draws = vi.fn();
+      vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+        createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }),
+        putImageData: draws,
+      } as unknown as CanvasRenderingContext2D);
+      tauri.invoke.mockImplementation(async (command: string) => {
+        if (command === "app_panel_state") return { apps: ["x"], active: "x" };
+        if (command in extra) return extra[command];
+        return undefined;
+      });
+      setup();
+      await screen.findByRole("tab", { name: "X" });
+      tauri.invoke.mockClear();
+      return draws;
+    };
+    const calls = (name: string) => tauri.invoke.mock.calls.filter(([command]) => command === name);
+    const hides = () => calls("app_panel_set_visible").filter(([, args]) => (args as { visible: boolean }).visible === false);
+
+    it("keeps the window when the dialog does not reach the dock content", async () => {
+      await hosted({ app_panel_snapshot: frame(4, 4) });
+      await act(async () => { document.body.appendChild(dialogAt("200,100,600,500")); await settle(); });
+      expect(hides()).toHaveLength(0);
+      expect(calls("app_panel_snapshot")).toHaveLength(0);
+      expect(document.querySelector("[data-app-snapshot]")).toBeNull();
+    });
+
+    it("takes one frame before hiding when the dialog overlaps, shows it in the dock and drops it afterwards", async () => {
+      const draws = await hosted({ app_panel_snapshot: frame(4, 4) });
+      const dialog = dialogAt("800,100,600,500");
+      await act(async () => { document.body.appendChild(dialog); await settle(); });
+
+      expect(calls("app_panel_snapshot")).toHaveLength(1);
+      const order = tauri.invoke.mock.calls.map(([command]) => command);
+      expect(order.indexOf("app_panel_snapshot")).toBeLessThan(order.indexOf("app_panel_set_visible"));
+      const canvas = document.querySelector<HTMLCanvasElement>("[data-app-snapshot] canvas");
+      expect(canvas).not.toBeNull();
+      expect(canvas?.closest(".app-panel-content")).not.toBeNull();
+      expect(draws).toHaveBeenCalledTimes(1);
+
+      await act(async () => { dialog.remove(); await settle(); });
+      expect(calls("app_panel_set_visible").some(([, args]) => (args as { visible: boolean }).visible === true)).toBe(true);
+      expect(document.querySelector("[data-app-snapshot]")).toBeNull();
+      expect(calls("app_panel_snapshot")).toHaveLength(1);
+    });
+
+    it("falls back to a plain note when the frame could not be taken", async () => {
+      await hosted();
+      await act(async () => { document.body.appendChild(dialogAt("800,100,600,500")); await settle(); });
+      expect(hides()).toHaveLength(1);
+      expect(screen.getByText("Hidden while a dialog is open")).toBeTruthy();
+      expect(document.querySelector("canvas")).toBeNull();
+    });
+
+    it("does not take a frame when the dock is collapsed", async () => {
+      tauri.invoke.mockImplementation(async (command: string) =>
+        command === "app_panel_state" ? { apps: ["x"], active: "x" } : command === "app_panel_snapshot" ? frame(4, 4) : undefined);
+      const view = render(<AppPanelDock open onClose={() => {}} />);
+      await screen.findByRole("tab", { name: "X" });
+      await settle();
+      tauri.invoke.mockClear();
+      view.rerender(<AppPanelDock open={false} onClose={() => {}} />);
+      await settle();
+      expect(calls("app_panel_snapshot")).toHaveLength(0);
+      expect(hides()).toHaveLength(1);
+    });
+
+    it("does not hide for a menu that stays outside the content", async () => {
+      await hosted({ app_panel_snapshot: frame(4, 4) });
+      const menu = document.createElement("div");
+      menu.setAttribute("role", "menu");
+      menu.setAttribute("data-box", "10,10,200,300");
+      await act(async () => { document.body.appendChild(menu); await settle(); });
+      expect(hides()).toHaveLength(0);
+    });
   });
 });
