@@ -115,6 +115,27 @@ pub fn caption_height(scale: f64) -> i32 {
     (CAPTION_HEIGHT_AT_100 * scale).round() as i32
 }
 
+/// Height of everything Chromium draws above the page inside its client area (caption, plus
+/// infobars such as the first-run analytics notice). `content_offset` is where the page widget
+/// (`Chrome_RenderWidgetHostHWND`) starts, relative to the top of the outer window rectangle;
+/// without a plausible measurement the scaled caption height is used.
+pub fn top_band(content_offset: Option<i32>, top_inset: i32, scale: f64) -> i32 {
+    match content_offset.map(|offset| offset - top_inset) {
+        Some(band) if band > 0 => band,
+        _ => caption_height(scale),
+    }
+}
+
+/// DWMWA_SYSTEMBACKDROP_TYPE value for "none".
+pub const BACKDROP_NONE: i32 = 1;
+
+/// The Windows 11 system backdrop is painted over the whole window rectangle and ignores the
+/// clip region, so it has to be off while a window is hosted. `current` is the live value;
+/// returns the value to set, or `None` when nothing needs to change.
+pub fn backdrop_change(current: i32) -> Option<i32> {
+    (current != BACKDROP_NONE).then_some(BACKDROP_NONE)
+}
+
 // ---------------------------------------------------------------------------
 // Browser choice and launch
 // ---------------------------------------------------------------------------
@@ -371,6 +392,8 @@ struct Panel {
     main: isize,
     scale: f64,
     applied: Applied,
+    /// Band above the page that the last placement clipped away (device pixels).
+    band: i32,
     /// True while the follow thread runs (it stops when the last window is gone).
     following: bool,
 }
@@ -382,6 +405,7 @@ static PANEL: Mutex<Panel> = Mutex::new(Panel {
     main: 0,
     scale: 1.0,
     applied: Applied { hwnd: None, visible: false, rect: None },
+    band: 0,
     following: false,
 });
 
@@ -467,11 +491,51 @@ mod imp {
     use windows_sys::Win32::Foundation::{HWND, LPARAM, RECT, TRUE};
     use windows_sys::Win32::Graphics::Gdi::{CreateRectRgn, SetWindowRgn};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowRect, GetWindowTextW,
+        EnumChildWindows, EnumWindows, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowRect, GetWindowTextW,
         GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, MoveWindow, PostMessageW,
         SetWindowPos, ShowWindow, GW_HWNDPREV, GW_OWNER, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
         SW_HIDE, SW_SHOWNOACTIVATE, WM_CLOSE,
     };
+
+    #[link(name = "dwmapi")]
+    extern "system" {
+        fn DwmSetWindowAttribute(hwnd: HWND, attr: u32, value: *const i32, size: u32) -> i32;
+        fn DwmGetWindowAttribute(hwnd: HWND, attr: u32, value: *mut i32, size: u32) -> i32;
+    }
+
+    const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
+
+    /// Backdrop values of windows we switched off, restored on release.
+    static BACKDROPS: Mutex<Vec<(isize, i32)>> = Mutex::new(Vec::new());
+
+    /// Switches the system backdrop off (remembering the original), re-checked on every
+    /// placement because the browser may set it again.
+    fn flatten(hwnd: isize) {
+        let h = hwnd_of(hwnd);
+        let mut current = -1i32;
+        let hr = unsafe { DwmGetWindowAttribute(h, DWMWA_SYSTEMBACKDROP_TYPE, &mut current, 4) };
+        if hr != 0 {
+            return;
+        }
+        if let Some(value) = backdrop_change(current) {
+            let mut saved = BACKDROPS.lock().unwrap_or_else(|p| p.into_inner());
+            if !saved.iter().any(|(w, _)| *w == hwnd) {
+                saved.push((hwnd, current));
+            }
+            drop(saved);
+            unsafe { DwmSetWindowAttribute(h, DWMWA_SYSTEMBACKDROP_TYPE, &value, 4) };
+        }
+    }
+
+    fn restore_backdrop(hwnd: isize) {
+        let original = {
+            let mut saved = BACKDROPS.lock().unwrap_or_else(|p| p.into_inner());
+            saved.iter().position(|(w, _)| *w == hwnd).map(|i| saved.remove(i).1)
+        };
+        if let Some(value) = original {
+            unsafe { DwmSetWindowAttribute(hwnd_of(hwnd), DWMWA_SYSTEMBACKDROP_TYPE, &value, 4) };
+        }
+    }
 
     fn hwnd_of(raw: isize) -> HWND {
         raw as HWND
@@ -545,6 +609,7 @@ mod imp {
         let g = restore_geometry(&entry.saved);
         unsafe {
             SetWindowRgn(h, std::ptr::null_mut(), TRUE);
+            restore_backdrop(entry.hwnd);
             MoveWindow(h, g.x, g.y, g.width, g.height, TRUE);
             ShowWindow(h, SW_SHOWNOACTIVATE);
         }
@@ -567,25 +632,58 @@ mod imp {
         }
     }
 
-    /// Places the hosted window so that its page area covers `dock` exactly. The insets are
-    /// read from the live window; if resizing changed them, the window is placed once more.
-    fn place_window(hwnd: isize, dock: PhysicalRect, caption: i32) {
+    unsafe extern "system" fn find_content(hwnd: HWND, lparam: LPARAM) -> i32 {
+        let found = &mut *(lparam as *mut Option<HWND>);
+        if class_name(hwnd) == "Chrome_RenderWidgetHostHWND" {
+            *found = Some(hwnd);
+            return 0;
+        }
+        TRUE
+    }
+
+    /// Top of the page widget relative to the top of the outer window, in device pixels.
+    fn content_offset(hwnd: isize) -> Option<i32> {
         let h = hwnd_of(hwnd);
-        let mut insets = measure(hwnd).unwrap_or_default();
-        let mut placed = hosted_frame(dock, insets, caption);
-        unsafe { MoveWindow(h, placed.0.x, placed.0.y, placed.0.width, placed.0.height, TRUE) };
-        if let Some(after) = measure(hwnd) {
-            if after != insets {
-                insets = after;
-                placed = hosted_frame(dock, insets, caption);
-                unsafe { MoveWindow(h, placed.0.x, placed.0.y, placed.0.width, placed.0.height, TRUE) };
+        let mut found: Option<HWND> = None;
+        let mut w = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        let mut c = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        unsafe {
+            EnumChildWindows(h, Some(find_content), &mut found as *mut Option<HWND> as LPARAM);
+            let content = found?;
+            if GetWindowRect(h, &mut w) == 0 || GetWindowRect(content, &mut c) == 0 || c.bottom <= c.top {
+                return None;
             }
+        }
+        Some(c.top - w.top)
+    }
+
+    /// Insets and the live height of the band above the page.
+    fn measure_frame(hwnd: isize, scale: f64) -> (Insets, i32) {
+        let insets = measure(hwnd).unwrap_or_default();
+        (insets, top_band(content_offset(hwnd), insets.top, scale))
+    }
+
+    /// Places the hosted window so that its page area covers `dock` exactly. The insets and the
+    /// band above the page are read from the live window; if resizing changed them (an infobar
+    /// can wrap at another width), the window is placed once more. Returns the band used.
+    fn place_window(hwnd: isize, dock: PhysicalRect, scale: f64) -> i32 {
+        let h = hwnd_of(hwnd);
+        flatten(hwnd);
+        let mut frame = measure_frame(hwnd, scale);
+        let mut placed = hosted_frame(dock, frame.0, frame.1);
+        unsafe { MoveWindow(h, placed.0.x, placed.0.y, placed.0.width, placed.0.height, TRUE) };
+        let after = measure_frame(hwnd, scale);
+        if after != frame {
+            frame = after;
+            placed = hosted_frame(dock, frame.0, frame.1);
+            unsafe { MoveWindow(h, placed.0.x, placed.0.y, placed.0.width, placed.0.height, TRUE) };
         }
         let v = placed.1;
         unsafe {
             let region = CreateRectRgn(v.x, v.y, v.x + v.width, v.y + v.height);
             SetWindowRgn(h, region, TRUE);
         }
+        frame.1
     }
 
     fn main_window(app: &AppHandle) -> Result<(isize, f64), String> {
@@ -623,8 +721,18 @@ mod imp {
             main_minimized: unsafe { IsIconic(hwnd_of(panel.main)) } != 0,
             screen: panel.dock.map(|d| to_screen(d, origin)),
         };
-        let plan = plan_follow(&panel.applied, &wanted);
-        let caption = caption_height(panel.scale);
+        let mut plan = plan_follow(&panel.applied, &wanted);
+        // Page content can move inside the window after it was placed (the first draw, an infobar
+        // appearing or going away): re-place at the same box when the measured band changed.
+        if let (Some(hwnd), None, false, true) = (active, plan.place, plan.hide, panel.applied.visible) {
+            if panel.applied.hwnd == active && panel.applied.rect.is_some() {
+                flatten(hwnd);
+                if measure_frame(hwnd, panel.scale).1 != panel.band {
+                    plan.place = panel.applied.rect;
+                }
+            }
+        }
+        let scale = panel.scale;
         if plan.hide {
             for entry in panel.registry.entries() {
                 unsafe { ShowWindow(hwnd_of(entry.hwnd), SW_HIDE) };
@@ -635,7 +743,7 @@ mod imp {
             }
         }
         if let (Some(hwnd), Some(rect)) = (active, plan.place) {
-            place_window(hwnd, rect, caption);
+            panel.band = place_window(hwnd, rect, scale);
         }
         if let (Some(hwnd), true) = (active, plan.show) {
             unsafe { ShowWindow(hwnd_of(hwnd), SW_SHOWNOACTIVATE) };

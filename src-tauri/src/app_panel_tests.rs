@@ -73,6 +73,37 @@ fn caption_height_scales_with_the_display() {
     assert_eq!(caption_height(1.5), 47);
 }
 
+// Measured 2026-11-26, isolated Brave --app window at scale 1.2: window top 240, content
+// (Chrome_RenderWidgetHostHWND) 102 px below it on example.com and youtube.com alike. 37 px
+// is the caption, the other 65 px a first-run infobar; a fixed caption left the infobar visible.
+#[test]
+fn top_band_is_the_measured_content_offset_minus_the_top_inset() {
+    assert_eq!(top_band(Some(102), 0, 1.2), 102);
+    assert_eq!(top_band(Some(102), 1, 1.2), 101);
+}
+
+#[test]
+fn top_band_without_infobar_equals_the_caption() {
+    assert_eq!(top_band(Some(37), 0, 1.2), 37);
+}
+
+#[test]
+fn top_band_falls_back_to_the_scaled_caption_when_nothing_was_measured() {
+    assert_eq!(top_band(None, 0, 1.0), 31);
+    assert_eq!(top_band(None, 0, 1.5), 47);
+    assert_eq!(top_band(Some(0), 2, 1.0), 31);
+}
+
+// Measured 2026-11-26: Windows 11 paints the system backdrop (Mica, DWMWA_SYSTEMBACKDROP_TYPE 2)
+// over the whole window rectangle and ignores SetWindowRgn, which left a dark band where the
+// region cuts the caption. With backdrop type 1 (none) the region clips everything.
+#[test]
+fn backdrop_is_switched_off_only_when_something_is_drawn() {
+    assert_eq!(backdrop_change(2), Some(1));
+    assert_eq!(backdrop_change(0), Some(1));
+    assert_eq!(backdrop_change(1), None);
+}
+
 #[test]
 fn launch_args_use_only_the_app_flag_and_never_an_isolated_profile() {
     assert_eq!(
