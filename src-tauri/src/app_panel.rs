@@ -245,6 +245,8 @@ pub struct Wanted {
     pub main_minimized: bool,
     /// Dock box in screen pixels, when the page has reported one.
     pub screen: Option<PhysicalRect>,
+    /// The hosted window went full screen on its own (see `is_fullscreen`).
+    pub fullscreen: bool,
 }
 
 /// What was last applied to the screen.
@@ -253,6 +255,8 @@ pub struct Applied {
     pub hwnd: Option<isize>,
     pub visible: bool,
     pub rect: Option<PhysicalRect>,
+    /// Placement, clipping and z-order are paused because the window is full screen.
+    pub suspended: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -261,6 +265,24 @@ pub struct Plan {
     pub hide: bool,
     pub place: Option<PhysicalRect>,
     pub show: bool,
+    /// Remove the clip region and leave the window exactly as it is (full screen).
+    pub suspend: bool,
+}
+
+/// Tolerance for Chromium's invisible frame bands and rounding.
+const FULLSCREEN_SLACK: i32 = 16;
+
+/// True when `window` (outer rectangle, screen pixels) covers its whole `monitor`, which means
+/// the page went full screen (a video's full screen button). `target` is the dock box the window
+/// was asked to sit on: a dock that is itself monitor-sized never counts as full screen.
+pub fn is_fullscreen(window: PhysicalRect, monitor: PhysicalRect, target: Option<PhysicalRect>) -> bool {
+    let covers = |r: PhysicalRect| {
+        r.x <= monitor.x + FULLSCREEN_SLACK
+            && r.y <= monitor.y + FULLSCREEN_SLACK
+            && r.x + r.width >= monitor.x + monitor.width - FULLSCREEN_SLACK
+            && r.y + r.height >= monitor.y + monitor.height - FULLSCREEN_SLACK
+    };
+    !target.is_some_and(covers) && covers(window)
 }
 
 /// Decides the minimum work for one tick, so an idle loop costs a few cheap queries only.
@@ -270,9 +292,15 @@ pub fn plan_follow(applied: &Applied, wanted: &Wanted) -> Plan {
     if !visible {
         return Plan { hide: applied.visible || switched, ..Plan::default() };
     }
+    if wanted.fullscreen {
+        // Leave the window exactly as the page made it; clear our clip once.
+        let already = applied.suspended && !switched;
+        return Plan { hide_others: switched, show: switched || !applied.visible, suspend: !already, ..Plan::default() };
+    }
     Plan {
         hide_others: switched,
         hide: false,
+        suspend: false,
         place: if switched || applied.rect != wanted.screen { wanted.screen } else { None },
         show: switched || !applied.visible,
     }
@@ -404,7 +432,7 @@ static PANEL: Mutex<Panel> = Mutex::new(Panel {
     dock: None,
     main: 0,
     scale: 1.0,
-    applied: Applied { hwnd: None, visible: false, rect: None },
+    applied: Applied { hwnd: None, visible: false, rect: None, suspended: false },
     band: 0,
     following: false,
 });
@@ -489,7 +517,9 @@ mod imp {
     use std::time::{Duration, Instant};
     use tauri::{AppHandle, Manager};
     use windows_sys::Win32::Foundation::{HWND, LPARAM, RECT, TRUE};
-    use windows_sys::Win32::Graphics::Gdi::{CreateRectRgn, SetWindowRgn};
+    use windows_sys::Win32::Graphics::Gdi::{
+        CreateRectRgn, GetMonitorInfoW, MonitorFromWindow, SetWindowRgn, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         EnumChildWindows, EnumWindows, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowRect, GetWindowTextW,
         GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, MoveWindow, PostMessageW,
@@ -615,6 +645,27 @@ mod imp {
         }
     }
 
+    /// True while the hosted window covers its monitor (the page went full screen).
+    fn window_is_fullscreen(hwnd: isize, target: Option<PhysicalRect>) -> bool {
+        let h = hwnd_of(hwnd);
+        unsafe {
+            let mut w = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            if GetWindowRect(h, &mut w) == 0 {
+                return false;
+            }
+            let monitor = MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST);
+            let mut info: MONITORINFO = std::mem::zeroed();
+            info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+            if GetMonitorInfoW(monitor, &mut info) == 0 {
+                return false;
+            }
+            let m = info.rcMonitor;
+            let window = PhysicalRect { x: w.left, y: w.top, width: w.right - w.left, height: w.bottom - w.top };
+            let monitor = PhysicalRect { x: m.left, y: m.top, width: m.right - m.left, height: m.bottom - m.top };
+            is_fullscreen(window, monitor, target)
+        }
+    }
+
     fn measure(hwnd: isize) -> Option<Insets> {
         use windows_sys::Win32::Foundation::POINT;
         use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
@@ -715,16 +766,20 @@ mod imp {
             .active_id()
             .and_then(|id| panel.registry.entries().iter().find(|e| e.id == id))
             .map(|e| e.hwnd);
+        let screen = panel.dock.map(|d| to_screen(d, origin));
         let wanted = Wanted {
             hwnd: active,
             shown: panel.shown,
             main_minimized: unsafe { IsIconic(hwnd_of(panel.main)) } != 0,
-            screen: panel.dock.map(|d| to_screen(d, origin)),
+            screen,
+            fullscreen: active.is_some_and(|hwnd| window_is_fullscreen(hwnd, screen)),
         };
         let mut plan = plan_follow(&panel.applied, &wanted);
         // Page content can move inside the window after it was placed (the first draw, an infobar
         // appearing or going away): re-place at the same box when the measured band changed.
-        if let (Some(hwnd), None, false, true) = (active, plan.place, plan.hide, panel.applied.visible) {
+        if let (Some(hwnd), None, false, true, false) =
+            (active, plan.place, plan.hide, panel.applied.visible, wanted.fullscreen)
+        {
             if panel.applied.hwnd == active && panel.applied.rect.is_some() {
                 flatten(hwnd);
                 if measure_frame(hwnd, panel.scale).1 != panel.band {
@@ -742,6 +797,9 @@ mod imp {
                 unsafe { ShowWindow(hwnd_of(entry.hwnd), SW_HIDE) };
             }
         }
+        if let (Some(hwnd), true) = (active, plan.suspend) {
+            unsafe { SetWindowRgn(hwnd_of(hwnd), std::ptr::null_mut(), TRUE) };
+        }
         if let (Some(hwnd), Some(rect)) = (active, plan.place) {
             panel.band = place_window(hwnd, rect, scale);
         }
@@ -749,7 +807,7 @@ mod imp {
             unsafe { ShowWindow(hwnd_of(hwnd), SW_SHOWNOACTIVATE) };
         }
         let visible = !plan.hide && (plan.show || panel.applied.visible && wanted.hwnd == panel.applied.hwnd);
-        if let (Some(hwnd), true) = (active, visible) {
+        if let (Some(hwnd), true, false) = (active, visible, wanted.fullscreen) {
             // Only reorder while yerminal or the app window is the one in use, and only when the
             // main window is not already directly below the app window.
             unsafe {
@@ -761,12 +819,16 @@ mod imp {
             }
         }
         panel.applied = if plan.hide {
-            Applied { hwnd: active, visible: false, rect: None }
+            Applied { hwnd: active, visible: false, rect: None, suspended: false }
+        } else if wanted.fullscreen && visible {
+            // The next placement happens when the window is back to normal size.
+            Applied { hwnd: active, visible, rect: None, suspended: true }
         } else {
             Applied {
                 hwnd: active,
                 visible,
                 rect: if plan.place.is_some() { plan.place } else { panel.applied.rect },
+                suspended: false,
             }
         };
     }

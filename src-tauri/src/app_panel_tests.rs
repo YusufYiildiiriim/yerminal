@@ -282,7 +282,7 @@ fn rect(x: i32, y: i32, width: i32, height: i32) -> PhysicalRect {
 }
 
 fn wanted(hwnd: Option<isize>, shown: bool, minimized: bool, screen: Option<PhysicalRect>) -> Wanted {
-    Wanted { hwnd, shown, main_minimized: minimized, screen }
+    Wanted { hwnd, shown, main_minimized: minimized, screen, fullscreen: false }
 }
 
 #[test]
@@ -294,19 +294,19 @@ fn dock_box_moves_to_screen_pixels_by_the_client_origin() {
 fn first_tick_places_shows_and_raises_the_window() {
     let screen = rect(10, 20, 300, 400);
     let plan = plan_follow(&Applied::default(), &wanted(Some(7), true, false, Some(screen)));
-    assert_eq!(plan, Plan { hide_others: true, hide: false, place: Some(screen), show: true });
+    assert_eq!(plan, Plan { hide_others: true, hide: false, place: Some(screen), show: true, ..Plan::default() });
 }
 
 #[test]
 fn unchanged_state_does_nothing() {
     let screen = rect(10, 20, 300, 400);
-    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(screen) };
+    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(screen), ..Applied::default() };
     assert_eq!(plan_follow(&applied, &wanted(Some(7), true, false, Some(screen))), Plan::default());
 }
 
 #[test]
 fn moving_the_main_window_replaces_the_window_without_reshowing() {
-    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(rect(10, 20, 300, 400)) };
+    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(rect(10, 20, 300, 400)), ..Applied::default() };
     let moved = rect(60, 20, 300, 400);
     let plan = plan_follow(&applied, &wanted(Some(7), true, false, Some(moved)));
     assert_eq!(plan, Plan { place: Some(moved), ..Plan::default() });
@@ -314,7 +314,7 @@ fn moving_the_main_window_replaces_the_window_without_reshowing() {
 
 #[test]
 fn dock_resize_places_the_window_on_the_new_box() {
-    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(rect(10, 20, 300, 400)) };
+    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(rect(10, 20, 300, 400)), ..Applied::default() };
     let wider = rect(-70, 20, 380, 400);
     assert_eq!(plan_follow(&applied, &wanted(Some(7), true, false, Some(wider))).place, Some(wider));
 }
@@ -322,15 +322,15 @@ fn dock_resize_places_the_window_on_the_new_box() {
 #[test]
 fn switching_tabs_hides_the_others_and_places_the_new_window() {
     let screen = rect(10, 20, 300, 400);
-    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(screen) };
+    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(screen), ..Applied::default() };
     let plan = plan_follow(&applied, &wanted(Some(8), true, false, Some(screen)));
-    assert_eq!(plan, Plan { hide_others: true, hide: false, place: Some(screen), show: true });
+    assert_eq!(plan, Plan { hide_others: true, hide: false, place: Some(screen), show: true, ..Plan::default() });
 }
 
 #[test]
 fn minimised_main_window_hides_once() {
     let screen = rect(10, 20, 300, 400);
-    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(screen) };
+    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(screen), ..Applied::default() };
     let plan = plan_follow(&applied, &wanted(Some(7), true, true, Some(screen)));
     assert_eq!(plan, Plan { hide: true, ..Plan::default() });
     let hidden = Applied { visible: false, ..applied };
@@ -340,7 +340,7 @@ fn minimised_main_window_hides_once() {
 #[test]
 fn restoring_the_main_window_shows_without_a_new_placement() {
     let screen = rect(10, 20, 300, 400);
-    let hidden = Applied { hwnd: Some(7), visible: false, rect: Some(screen) };
+    let hidden = Applied { hwnd: Some(7), visible: false, rect: Some(screen), ..Applied::default() };
     let plan = plan_follow(&hidden, &wanted(Some(7), true, false, Some(screen)));
     assert_eq!(plan, Plan { show: true, ..Plan::default() });
 }
@@ -348,7 +348,7 @@ fn restoring_the_main_window_shows_without_a_new_placement() {
 #[test]
 fn dock_hidden_by_a_dialog_hides_and_no_active_app_hides() {
     let screen = rect(10, 20, 300, 400);
-    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(screen) };
+    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(screen), ..Applied::default() };
     assert!(plan_follow(&applied, &wanted(Some(7), false, false, Some(screen))).hide);
     assert!(plan_follow(&applied, &wanted(None, true, false, Some(screen))).hide);
 }
@@ -357,4 +357,79 @@ fn dock_hidden_by_a_dialog_hides_and_no_active_app_hides() {
 fn restore_target_is_the_saved_geometry() {
     let saved = Saved { x: 10, y: 20, width: 800, height: 600 };
     assert_eq!(restore_geometry(&saved), PhysicalRect { x: 10, y: 20, width: 800, height: 600 });
+}
+
+// ---------------------------------------------------------------------------
+// Full screen (an app that went full screen on its own, e.g. a video)
+// ---------------------------------------------------------------------------
+
+const MONITOR: PhysicalRect = PhysicalRect { x: 0, y: 0, width: 1920, height: 1080 };
+
+#[test]
+fn a_window_covering_the_monitor_is_full_screen() {
+    assert!(is_fullscreen(MONITOR, MONITOR, Some(rect(1400, 100, 500, 800))));
+    // Chromium's full screen rectangle can overshoot by the invisible frame.
+    assert!(is_fullscreen(rect(-7, 0, 1934, 1087), MONITOR, None));
+}
+
+#[test]
+fn a_window_on_the_dock_is_not_full_screen() {
+    assert!(!is_fullscreen(rect(1393, 69, 514, 835), MONITOR, Some(rect(1400, 100, 500, 800))));
+    // Maximised-looking but short of the monitor height (taskbar): not full screen.
+    assert!(!is_fullscreen(rect(0, 0, 1920, 1040), MONITOR, None));
+}
+
+#[test]
+fn a_dock_as_big_as_the_monitor_does_not_count_as_full_screen() {
+    assert!(!is_fullscreen(MONITOR, MONITOR, Some(MONITOR)));
+}
+
+fn fullscreen_wanted(hwnd: isize, screen: PhysicalRect) -> Wanted {
+    Wanted { fullscreen: true, ..wanted(Some(hwnd), true, false, Some(screen)) }
+}
+
+#[test]
+fn going_full_screen_suspends_once_and_never_places() {
+    let screen = rect(10, 20, 300, 400);
+    let applied = Applied { hwnd: Some(7), visible: true, rect: Some(screen), ..Applied::default() };
+    let plan = plan_follow(&applied, &fullscreen_wanted(7, screen));
+    assert_eq!(plan, Plan { suspend: true, ..Plan::default() });
+    assert_eq!(plan.place, None);
+}
+
+#[test]
+fn while_full_screen_the_loop_leaves_the_window_alone_even_when_the_dock_moves() {
+    let suspended = Applied { hwnd: Some(7), visible: true, rect: None, suspended: true };
+    let moved = rect(60, 20, 300, 400);
+    assert_eq!(plan_follow(&suspended, &fullscreen_wanted(7, moved)), Plan::default());
+}
+
+#[test]
+fn leaving_full_screen_places_the_window_on_the_dock_again() {
+    let suspended = Applied { hwnd: Some(7), visible: true, rect: None, suspended: true };
+    let screen = rect(10, 20, 300, 400);
+    let plan = plan_follow(&suspended, &wanted(Some(7), true, false, Some(screen)));
+    assert_eq!(plan, Plan { place: Some(screen), ..Plan::default() });
+}
+
+#[test]
+fn full_screen_window_that_was_hidden_is_shown_without_placement() {
+    let hidden = Applied { hwnd: Some(7), visible: false, rect: None, suspended: false };
+    let plan = plan_follow(&hidden, &fullscreen_wanted(7, rect(10, 20, 300, 400)));
+    assert_eq!(plan, Plan { suspend: true, show: true, ..Plan::default() });
+}
+
+#[test]
+fn switching_to_another_tab_while_the_old_one_is_full_screen_places_the_new_one() {
+    let suspended = Applied { hwnd: Some(7), visible: true, rect: None, suspended: true };
+    let screen = rect(10, 20, 300, 400);
+    let plan = plan_follow(&suspended, &wanted(Some(8), true, false, Some(screen)));
+    assert_eq!(plan, Plan { hide_others: true, place: Some(screen), show: true, ..Plan::default() });
+}
+
+#[test]
+fn hiding_wins_over_full_screen() {
+    let suspended = Applied { hwnd: Some(7), visible: true, rect: None, suspended: true };
+    let wanted = Wanted { fullscreen: true, ..wanted(Some(7), true, true, Some(rect(10, 20, 300, 400))) };
+    assert!(plan_follow(&suspended, &wanted).hide);
 }
