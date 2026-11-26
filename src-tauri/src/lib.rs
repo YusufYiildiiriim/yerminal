@@ -466,6 +466,11 @@ pub fn run() {
             create_workspace_directory,
             watch_workspace_roots
         ])
+        .setup(|_app| {
+            #[cfg(debug_assertions)]
+            app_panel::debug_autoopen(_app.handle().clone());
+            Ok(())
+        })
         .on_window_event(|window, event| {
             if should_close_sessions(event) {
                 // The main window is being destroyed: give hosted app windows back before their parent goes.

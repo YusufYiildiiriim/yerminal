@@ -400,6 +400,19 @@ pub fn install_panic_release() {
     }));
 }
 
+/// Debug builds only (experiment): opens `YERMINAL_APP_PANEL_DEBUG_OPEN=<url>` in the dock a few
+/// seconds after start, on a fixed dock box, so the lifecycle can be measured without clicking.
+#[cfg(debug_assertions)]
+pub fn debug_autoopen(app: tauri::AppHandle) {
+    let Ok(url) = std::env::var("YERMINAL_APP_PANEL_DEBUG_OPEN") else { return };
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        let rect = DockRect { x: 500.0, y: 150.0, width: 640.0, height: 420.0 };
+        let result = imp::open(&app, "debug", &url, "Example Domain", rect);
+        eprintln!("[app-panel debug] open -> {:?}", result.map(|s| s.apps));
+    });
+}
+
 #[cfg(windows)]
 mod imp {
     use super::*;
@@ -598,8 +611,15 @@ mod imp {
         let before: Vec<isize> = existing.iter().map(|w| w.hwnd).collect();
         // The child handle is dropped on purpose: the launcher is either the user's browser
         // itself or a stub that hands over and exits. Neither is ever killed from here.
+        #[allow(unused_mut)]
+        let mut args = app_launch_args(url);
+        // Debug builds only: lets an experiment use a throwaway profile (never set in production).
+        #[cfg(debug_assertions)]
+        if let Ok(dir) = std::env::var("YERMINAL_APP_PANEL_PROFILE_DIR") {
+            args.insert(0, format!("--user-data-dir={dir}"));
+        }
         Command::new(&browser.exe)
-            .args(app_launch_args(url))
+            .args(args)
             .spawn()
             .map_err(|e| format!("Cannot start {}: {e}", browser.name))?;
         let deadline = Instant::now() + Duration::from_secs(15);
