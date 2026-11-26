@@ -11,6 +11,7 @@
 //! Geometry, window selection and bookkeeping are portable and unit tested; the Win32
 //! work lives behind `#[cfg(windows)]` and other platforms get an error stub.
 
+use crate::app_panel_apps::{self, Launch};
 use crate::app_panel_rescue::{self, RescueFile, RescueWindow};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -716,14 +717,10 @@ pub fn run_bounded<T: Send + 'static>(limit: std::time::Duration, work: impl FnO
 // ---------------------------------------------------------------------------
 
 #[tauri::command(async)]
-pub fn app_panel_open(
-    app: tauri::AppHandle,
-    id: String,
-    url: String,
-    title_hint: String,
-    rect: DockRect,
-) -> Result<PanelState, String> {
-    imp::open(&app, &id, &url, &title_hint, rect)
+pub fn app_panel_open(app: tauri::AppHandle, id: String, rect: DockRect) -> Result<PanelState, String> {
+    // Registered ids only: the registry decides what is launched, never the page.
+    let launch = app_panel_apps::resolve(&id, &app_panel_apps::load_for(&app)?)?;
+    imp::open(&app, &id, launch, rect)
 }
 
 #[tauri::command(async)]
@@ -787,7 +784,7 @@ pub fn debug_autoopen(app: tauri::AppHandle) {
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(5));
         let rect = DockRect { x: 500.0, y: 150.0, width: 640.0, height: 420.0 };
-        let result = imp::open(&app, "debug", &url, "Example Domain", rect);
+        let result = imp::open_url(&app, "debug", &url, "Example Domain", rect);
         eprintln!("[app-panel debug] open -> {:?}", result.map(|s| s.apps));
         // Capture measurement: three frames (cold, then warm) and the last one dumped as a raw file.
         if let Ok(dump) = std::env::var("YERMINAL_APP_PANEL_SNAPSHOT_DUMP") {
@@ -1378,7 +1375,15 @@ mod imp {
     /// Held for the whole of an open (launch and wait for the window).
     static OPEN_LOCK: Mutex<()> = Mutex::new(());
 
-    pub fn open(app: &AppHandle, id: &str, url: &str, hint: &str, rect: DockRect) -> Result<PanelState, String> {
+    pub fn open(app: &AppHandle, id: &str, launch: Launch, rect: DockRect) -> Result<PanelState, String> {
+        match launch {
+            Launch::Browser(ready) => open_url(app, id, ready.url, ready.title_hint, rect),
+            Launch::Custom(_) => Err("Your own apps cannot be opened yet".to_owned()),
+        }
+    }
+
+    /// Opens a site as a browser `--app` window (the url comes from the catalog; debug builds use it directly).
+    pub fn open_url(app: &AppHandle, id: &str, url: &str, hint: &str, rect: DockRect) -> Result<PanelState, String> {
         let (main, scale) = main_window(app)?;
         // Opens run one at a time: two launches at once would see each other's new window.
         let _one_at_a_time = OPEN_LOCK.lock().unwrap_or_else(|p| p.into_inner());
@@ -1610,7 +1615,12 @@ mod imp {
 
     const UNSUPPORTED: &str = "App panel is available on Windows only";
 
-    pub fn open(_app: &AppHandle, _id: &str, _url: &str, _hint: &str, _rect: DockRect) -> Result<PanelState, String> {
+    pub fn open(_app: &AppHandle, _id: &str, _launch: Launch, _rect: DockRect) -> Result<PanelState, String> {
+        Err(UNSUPPORTED.to_owned())
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn open_url(_app: &AppHandle, _id: &str, _url: &str, _hint: &str, _rect: DockRect) -> Result<PanelState, String> {
         Err(UNSUPPORTED.to_owned())
     }
 

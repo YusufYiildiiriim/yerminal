@@ -1,5 +1,6 @@
 pub mod agent_usage;
 pub mod app_panel;
+pub mod app_panel_apps;
 pub mod app_panel_rescue;
 pub mod git;
 pub mod git_gate;
@@ -423,6 +424,11 @@ pub fn run() {
             terminal_resource_usage,
             agent_usage_snapshot,
             app_panel::app_panel_open,
+            app_panel_apps::app_panel_apps_list,
+            app_panel_apps::app_panel_app_pick,
+            app_panel_apps::app_panel_app_register,
+            app_panel_apps::app_panel_app_rename,
+            app_panel_apps::app_panel_app_remove,
             app_panel::app_panel_place,
             app_panel::app_panel_close,
             app_panel::app_panel_activate,
