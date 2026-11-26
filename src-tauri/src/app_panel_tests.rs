@@ -664,3 +664,43 @@ fn rescue_file_stays_once_a_release_was_abandoned() {
     assert!(rescue_file_may_go(true, false), "release finished");
     assert!(!rescue_file_may_go(true, true), "an earlier release was abandoned");
 }
+
+// --- z-order (A-3): the app window goes above yerminal, yerminal is never pushed down ---
+
+const MAIN: isize = 100;
+const APP: isize = 200;
+const OTHER: isize = 300;
+
+#[test]
+fn nothing_to_do_while_the_app_window_is_already_directly_above_yerminal() {
+    assert_eq!(z_action(MAIN, MAIN, APP, Some(APP)), ZAction::Keep);
+    assert_eq!(z_action(APP, MAIN, APP, Some(APP)), ZAction::Keep);
+}
+
+#[test]
+fn clicked_yerminal_stays_on_top_and_the_app_window_is_lifted_above_it() {
+    // z-order: yerminal (clicked, on top) > other window > app window. Yerminal has no window
+    // above it, so the app window goes to the very top; yerminal itself is not moved.
+    assert_eq!(z_action(MAIN, MAIN, APP, None), ZAction::AppAboveMain { after: None });
+    // A topmost window (taskbar) above yerminal: the app window goes right under it, still above yerminal.
+    assert_eq!(z_action(MAIN, MAIN, APP, Some(OTHER)), ZAction::AppAboveMain { after: Some(OTHER) });
+}
+
+#[test]
+fn clicked_app_window_pulls_yerminal_up_to_just_below_it() {
+    assert_eq!(z_action(APP, MAIN, APP, Some(OTHER)), ZAction::MainBelowApp);
+    assert_eq!(z_action(APP, MAIN, APP, None), ZAction::MainBelowApp);
+}
+
+#[test]
+fn another_application_in_front_is_left_alone() {
+    assert_eq!(z_action(OTHER, MAIN, APP, Some(OTHER)), ZAction::Keep);
+    assert_eq!(z_action(0, MAIN, APP, None), ZAction::Keep, "no foreground window at all");
+}
+
+#[test]
+fn yerminal_is_never_the_window_that_moves_when_it_is_in_front() {
+    for prev in [None, Some(OTHER), Some(APP)] {
+        assert!(!matches!(z_action(MAIN, MAIN, APP, prev), ZAction::MainBelowApp));
+    }
+}

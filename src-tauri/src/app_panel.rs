@@ -333,6 +333,33 @@ pub fn plan_follow(applied: &Applied, wanted: &Wanted) -> Plan {
     }
 }
 
+/// What to do about the stacking order of yerminal and the hosted app window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ZAction {
+    Keep,
+    /// Put yerminal directly below the app window (the app window is in front, yerminal is behind it).
+    MainBelowApp,
+    /// Put the app window directly above yerminal: it goes under `after` (the window that is
+    /// above yerminal, if any), or to the top when there is none. Yerminal does not move.
+    AppAboveMain { after: Option<isize> },
+}
+
+/// Keeps the app window glued above yerminal without ever pushing yerminal behind another window.
+/// Only reorders while yerminal or the app window is the one in use; with another application in
+/// front, both stay under it. `main_prev` is the window directly above yerminal (None: on top).
+pub fn z_action(foreground: isize, main: isize, app: isize, main_prev: Option<isize>) -> ZAction {
+    if main_prev == Some(app) {
+        return ZAction::Keep;
+    }
+    if foreground == app {
+        ZAction::MainBelowApp
+    } else if foreground == main {
+        ZAction::AppAboveMain { after: main_prev }
+    } else {
+        ZAction::Keep
+    }
+}
+
 /// What a window looked like before it was hosted; applied again on release.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Saved {
@@ -732,7 +759,7 @@ mod imp {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         EnumChildWindows, EnumWindows, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowRect, GetWindowTextW,
         GetWindowThreadProcessId, IsHungAppWindow, IsIconic, IsWindow, IsWindowVisible, IsZoomed, MoveWindow, PostMessageW,
-        SetWindowPos, ShowWindow, GW_HWNDPREV, GW_OWNER, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        SetWindowPos, ShowWindow, GW_HWNDPREV, GW_OWNER, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
         SW_HIDE, SW_RESTORE, SW_SHOWNOACTIVATE, WM_CLOSE,
     };
 
@@ -1059,11 +1086,21 @@ mod imp {
         if let (Some(hwnd), true, false) = (active, visible, wanted.fullscreen) {
             // Only reorder while yerminal or the app window is the one in use, and only when the
             // main window is not already directly below the app window.
+            // Asynchronous: the app window belongs to another process, and a call that waits for
+            // it would hang with it.
+            const FLAGS: u32 = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS;
             unsafe {
                 let (m, h) = (hwnd_of(i.main), hwnd_of(hwnd));
-                let fg = GetForegroundWindow();
-                if (fg == m || fg == h) && GetWindow(m, GW_HWNDPREV) != h {
-                    SetWindowPos(m, h, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                let above = GetWindow(m, GW_HWNDPREV);
+                let main_prev = (!above.is_null()).then_some(above as isize);
+                match z_action(GetForegroundWindow() as isize, i.main, hwnd, main_prev) {
+                    ZAction::Keep => {}
+                    ZAction::MainBelowApp => {
+                        SetWindowPos(m, h, 0, 0, 0, 0, FLAGS);
+                    }
+                    ZAction::AppAboveMain { after } => {
+                        SetWindowPos(h, after.map_or(std::ptr::null_mut(), hwnd_of), 0, 0, 0, 0, FLAGS);
+                    }
                 }
             }
         }
