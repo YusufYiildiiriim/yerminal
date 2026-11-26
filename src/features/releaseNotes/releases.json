@@ -7,7 +7,8 @@
       "issues": [
         { "number": 62, "title": "Custom title bar with bolder brand mark and name" },
         { "number": 63, "title": "Version notes page listing closed issues per release" },
-        { "number": 64, "title": "Title bar logo renders broken and bar is too tall" }
+        { "number": 64, "title": "Title bar logo renders broken and bar is too tall" },
+        { "number": 65, "title": "App panel: host an external app window in a right dock" }
       ]
     },
     {
