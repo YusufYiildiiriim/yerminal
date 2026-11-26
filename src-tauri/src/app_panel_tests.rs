@@ -301,7 +301,7 @@ fn rect(x: i32, y: i32, width: i32, height: i32) -> PhysicalRect {
 }
 
 fn wanted(hwnd: Option<isize>, shown: bool, minimized: bool, screen: Option<PhysicalRect>) -> Wanted {
-    Wanted { hwnd, shown, main_minimized: minimized, screen, fullscreen: false, live: None }
+    Wanted { hwnd, shown, main_minimized: minimized, screen, fullscreen: false, app_minimized: false, live: None }
 }
 
 #[test]
@@ -745,4 +745,28 @@ fn browser_windows_that_are_not_app_windows_are_never_taken() {
     let tool = other(window(5, "Some page"), |w| w.ex_style = 0x0020_0180); // WS_EX_TOOLWINDOW
     let unknown_owner = other(window(6, "Some page"), |w| w.exe = String::new());
     assert_eq!(pick_new_window(&[], &[devtools, popup, tool, unknown_owner], CLASS, "X", BROWSER), None);
+}
+
+#[test]
+fn a_minimised_app_window_is_not_repaired_and_is_placed_again_when_it_returns() {
+    let (screen, outer, clip) = (rect(10, 20, 300, 400), rect(2, -80, 316, 508), rect(8, 102, 300, 400));
+    // Windows reports (-32000, -32000) for a minimised window: that is no drift.
+    let gone = Live { outer: rect(-32000, -32000, 160, 28), clip: Some(clip), zoomed: false };
+    let wanted = Wanted { app_minimized: true, ..seen(screen, gone) };
+    let plan = plan_follow(&settled(screen, outer, clip), &wanted);
+    assert_eq!((plan.place, plan.show, plan.hide), (None, false, false));
+    assert!(plan.forget_placement);
+    // Back again: the forgotten placement means one placement at the same box.
+    let after = Applied { rect: None, placed: None, ..settled(screen, outer, clip) };
+    let back = Live { outer, clip: Some(clip), zoomed: false };
+    assert_eq!(plan_follow(&after, &seen(screen, back)).place, Some(screen));
+}
+
+#[test]
+fn registry_refuses_an_id_that_is_already_hosted() {
+    let mut reg = Registry::default();
+    assert!(reg.add(entry("music", 1)));
+    assert!(!reg.add(entry("music", 2)));
+    assert_eq!(reg.state(), PanelState { apps: vec!["music".into()], active: Some("music".into()) });
+    assert_eq!(reg.hwnds(), vec![1]);
 }

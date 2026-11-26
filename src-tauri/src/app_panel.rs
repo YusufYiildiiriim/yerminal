@@ -265,6 +265,8 @@ pub struct Wanted {
     pub screen: Option<PhysicalRect>,
     /// The hosted window went full screen on its own (see `is_fullscreen`).
     pub fullscreen: bool,
+    /// The user minimised the hosted window (it reports a parked position, not a real one).
+    pub app_minimized: bool,
     /// The hosted window as it is right now (None when it could not be read).
     pub live: Option<Live>,
 }
@@ -308,6 +310,8 @@ pub struct Plan {
     pub show: bool,
     /// Remove the clip region and leave the window exactly as it is (full screen).
     pub suspend: bool,
+    /// Forget where the window was placed, so the placement is redone when it comes back.
+    pub forget_placement: bool,
 }
 
 /// Tolerance for Chromium's invisible frame bands and rounding.
@@ -335,6 +339,10 @@ pub fn plan_follow(applied: &Applied, wanted: &Wanted) -> Plan {
     if !visible {
         return Plan { hide: applied.visible || switched, ..Plan::default() };
     }
+    if wanted.app_minimized && !switched && applied.visible {
+        // Nothing to repair on a minimised window; it is placed again once it returns.
+        return Plan { forget_placement: true, ..Plan::default() };
+    }
     if wanted.fullscreen {
         // Leave the window exactly as the page made it; clear our clip once.
         let already = applied.suspended && !switched;
@@ -353,6 +361,7 @@ pub fn plan_follow(applied: &Applied, wanted: &Wanted) -> Plan {
         hide_others: switched,
         hide: false,
         suspend: false,
+        forget_placement: false,
         place: if switched || drifted || applied.rect != wanted.screen { wanted.screen } else { None },
         show: switched || !applied.visible,
     }
@@ -468,9 +477,15 @@ pub struct Registry {
 }
 
 impl Registry {
-    pub fn add(&mut self, entry: Entry) {
+    /// Adds a hosted window and makes it active. An id that is already hosted is refused
+    /// (returns false, nothing changes): one id never owns two windows.
+    pub fn add(&mut self, entry: Entry) -> bool {
+        if self.contains(&entry.id) {
+            return false;
+        }
         self.active = Some(entry.id.clone());
         self.entries.push(entry);
+        true
     }
 
     pub fn contains(&self, id: &str) -> bool {
@@ -1088,6 +1103,7 @@ mod imp {
             shown: i.shown,
             main_minimized: unsafe { IsIconic(hwnd_of(i.main)) } != 0,
             screen,
+            app_minimized: active.is_some_and(|hwnd| unsafe { IsIconic(hwnd_of(hwnd)) } != 0),
             fullscreen: active.is_some_and(|hwnd| window_is_fullscreen(hwnd, screen, live.is_some_and(|l| l.zoomed))),
             live,
         };
@@ -1103,7 +1119,7 @@ mod imp {
         if let (Some(hwnd), None, false, true, false) =
             (active, plan.place, plan.hide, d.applied.visible, wanted.fullscreen)
         {
-            if d.applied.hwnd == active && d.applied.rect.is_some() {
+            if d.applied.hwnd == active && d.applied.rect.is_some() && !wanted.app_minimized {
                 flatten(hwnd);
                 if measure_frame(hwnd, i.scale).1 != d.band {
                     plan.place = d.applied.rect;
@@ -1155,7 +1171,9 @@ mod imp {
                 }
             }
         }
-        d.applied = if plan.hide {
+        d.applied = if plan.forget_placement {
+            Applied { rect: None, placed: None, ..d.applied }
+        } else if plan.hide {
             Applied { hwnd: active, visible: false, rect: None, suspended: false, placed: None }
         } else if wanted.fullscreen && visible {
             // The next placement happens when the window is back to normal size.
@@ -1316,8 +1334,13 @@ mod imp {
         }
     }
 
+    /// Held for the whole of an open (launch and wait for the window).
+    static OPEN_LOCK: Mutex<()> = Mutex::new(());
+
     pub fn open(app: &AppHandle, id: &str, url: &str, hint: &str, rect: DockRect) -> Result<PanelState, String> {
         let (main, scale) = main_window(app)?;
+        // Opens run one at a time: two launches at once would see each other's new window.
+        let _one_at_a_time = OPEN_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let known = {
             let mut panel = lock_panel();
             remember_rescue_dir(&mut panel, app);
@@ -1335,7 +1358,9 @@ mod imp {
             panel.shown = true;
             remember_rescue_dir(&mut panel, app);
             (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
-            panel.registry.add(Entry { id: id.to_owned(), hwnd, saved });
+            if !panel.registry.add(Entry { id: id.to_owned(), hwnd, saved }) {
+                return Err("This app is already open".to_owned());
+            }
             ensure_follower(&mut panel);
         }
         apply_now();
