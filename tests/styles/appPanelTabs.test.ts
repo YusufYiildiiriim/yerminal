@@ -34,15 +34,23 @@ describe("app panel single row uses the editor tab language", () => {
     expect(tabs).toMatch(/overflow-x:\s*auto/);
   });
 
-  it("shrinks tabs to 88 px (active 104 px) with an ellipsis, then scrolls on a thin 3 px bar", () => {
+  it("sizes every tab to its content (no min-width gap, active included), caps long names with an ellipsis, then scrolls on a thin 3 px bar", () => {
     const tab = body(".app-panel-tab");
-    expect(tab).toMatch(/flex:\s*0 1 auto/);
-    expect(tab).toMatch(/min-width:\s*88px/);
-    expect(body('.app-panel-tab[data-active="true"]')).toMatch(/min-width:\s*104px/);
+    expect(tab).toMatch(/flex:\s*0 0 auto/);
+    expect(tab).not.toMatch(/min-width:\s*[1-9]/);
+    expect(tab).toMatch(/max-width:\s*200px/);
+    expect(body('.app-panel-tab[data-active="true"]')).not.toMatch(/min-width/);
     expect(body(".app-panel-tab-select")).toMatch(/text-overflow:\s*ellipsis/);
     expect(body(".app-panel-tab-select")).toMatch(/min-width:\s*0/);
     expect(body(".app-panel-tabs")).toMatch(/scrollbar-width:\s*thin/);
     expect(body(".app-panel-tabs::-webkit-scrollbar")).toMatch(/height:\s*3px/);
+  });
+
+  it("draws exactly one 1 px divider between neighbours: right border on every tab, left border only on the first", () => {
+    const tab = body(".app-panel-tab");
+    expect(tab).toContain("border-right: 1px solid var(--theme-border)");
+    expect(tab).not.toMatch(/border-left/);
+    expect(body(".app-panel-tab:first-child")).toMatch(/^\s*border-left: 1px solid var\(--theme-border\);?\s*$/);
   });
 
   it("tabs are not rounded boxes and mark the active one with the accent line", () => {
