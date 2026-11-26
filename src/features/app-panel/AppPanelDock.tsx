@@ -146,8 +146,15 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
 
   const launch = (app: AppDef) => {
     setMenuOpen(false);
+    // One launch at a time (a second would see the first one's new window), and an app that is
+    // already open is brought forward instead of started again.
+    if (opening) return;
     const rect = currentRect();
     if (!rect) return;
+    if (state.apps.includes(app.id)) {
+      void run("app_panel_activate", { id: app.id, rect });
+      return;
+    }
     void run("app_panel_open", { id: app.id, url: app.url, titleHint: app.titleHint, rect }, app);
   };
 
@@ -235,7 +242,7 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
           {menuOpen && (
             <div className="app-panel-menu" role="menu" aria-label="Apps" onKeyDown={(event) => { if (event.key === "Escape") setMenuOpen(false); }}>
               {APP_CATALOG.map((app) => (
-                <button key={app.id} className="app-panel-menu-item" type="button" role="menuitem" onClick={() => launch(app)}>{app.name}</button>
+                <button key={app.id} className="app-panel-menu-item" type="button" role="menuitem" disabled={opening !== null} onClick={() => launch(app)}>{app.name}</button>
               ))}
             </div>
           )}

@@ -140,6 +140,35 @@ describe("AppPanelDock", () => {
     })));
   });
 
+  it("ignores a second launch while one is still opening", async () => {
+    let finish: (value: unknown) => void = () => undefined;
+    tauri.invoke.mockImplementation((command: string) =>
+      command === "app_panel_open" ? new Promise((resolve) => { finish = resolve; }) : Promise.resolve(command === "app_panel_state" ? empty : undefined));
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: "Open X" }));
+    await waitFor(() => expect(tauri.invoke).toHaveBeenCalledWith("app_panel_open", expect.anything()));
+    fireEvent.click(screen.getByRole("button", { name: "Add app" }));
+    const item = screen.getByRole("menuitem", { name: "YouTube" });
+    fireEvent.click(item);
+    fireEvent.click(item);
+    expect(tauri.invoke.mock.calls.filter(([command]) => command === "app_panel_open")).toHaveLength(1);
+    await act(async () => { finish({ apps: ["x"], active: "x" }); });
+  });
+
+  it("activates the tab instead of opening an app that is already open", async () => {
+    tauri.invoke.mockImplementation(async (command: string) => {
+      if (command === "app_panel_state") return { apps: ["x"], active: "x" };
+      if (command === "app_panel_activate") return { apps: ["x"], active: "x" };
+      return undefined;
+    });
+    setup();
+    await screen.findByRole("tab", { name: "X" });
+    fireEvent.click(screen.getByRole("button", { name: "Add app" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "X" }));
+    await waitFor(() => expect(tauri.invoke).toHaveBeenCalledWith("app_panel_activate", { id: "x", rect: RECT }));
+    expect(tauri.invoke.mock.calls.filter(([command]) => command === "app_panel_open")).toHaveLength(0);
+  });
+
   it("shows the start error in the panel instead of failing silently", async () => {
     tauri.invoke.mockImplementation(async (command: string) => {
       if (command === "app_panel_open") throw "No supported browser found. Install Brave or Microsoft Edge.";
