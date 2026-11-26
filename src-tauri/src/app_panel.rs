@@ -1036,6 +1036,24 @@ mod imp {
         (insets, top_band(content_offset(hwnd), insets.top, scale))
     }
 
+    /// Leaves the maximised state without activating the window (`SW_RESTORE` would take the
+    /// focus away from whatever the user is typing into). The restored size is set at the same time.
+    pub(super) fn restore_without_focus(hwnd: isize, bounds: PhysicalRect) {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GetWindowPlacement, SetWindowPlacement, WINDOWPLACEMENT};
+        let h = hwnd_of(hwnd);
+        unsafe {
+            let mut wp: WINDOWPLACEMENT = std::mem::zeroed();
+            wp.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
+            if GetWindowPlacement(h, &mut wp) == 0 {
+                ShowWindow(h, SW_RESTORE);
+                return;
+            }
+            wp.rcNormalPosition = RECT { left: bounds.x, top: bounds.y, right: bounds.x + bounds.width, bottom: bounds.y + bounds.height };
+            wp.showCmd = SW_SHOWNOACTIVATE as u32;
+            SetWindowPlacement(h, &wp);
+        }
+    }
+
     /// Places the hosted window so that its page area covers `dock` exactly. The insets and the
     /// band above the page are read from the live window; if resizing changed them (an infobar
     /// can wrap at another width), the window is placed once more. Returns the band used.
@@ -1044,7 +1062,7 @@ mod imp {
         flatten(hwnd);
         // A maximised window ignores MoveWindow (it snaps back to the monitor): leave that state first.
         if unsafe { IsZoomed(h) } != 0 {
-            unsafe { ShowWindow(h, SW_RESTORE) };
+            restore_without_focus(hwnd, dock);
         }
         let mut frame = measure_frame(hwnd, scale);
         let mut placed = hosted_frame(dock, frame.0, frame.1);

@@ -770,3 +770,43 @@ fn registry_refuses_an_id_that_is_already_hosted() {
     assert_eq!(reg.state(), PanelState { apps: vec!["music".into()], active: Some("music".into()) });
     assert_eq!(reg.hwnds(), vec![1]);
 }
+
+/// Measurement (real windows, run by hand): restoring a maximised window must not take the focus.
+/// `cargo test restore_keeps_the_foreground -- --ignored --nocapture`
+#[cfg(windows)]
+#[test]
+#[ignore]
+fn restore_keeps_the_foreground_window() {
+    use windows_sys::w;
+    use windows_sys::Win32::UI::WindowsAndMessaging::*;
+    unsafe fn make(title: windows_sys::core::PCWSTR) -> isize {
+        let h = CreateWindowExW(0, w!("STATIC"), title, WS_OVERLAPPEDWINDOW | WS_VISIBLE, 100, 100, 400, 300, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null());
+        h as isize
+    }
+    let pause = || std::thread::sleep(std::time::Duration::from_millis(300));
+    unsafe {
+        let (hosted, other) = (make(w!("hosted")), make(w!("other")));
+        for restore in [0, 1] {
+            ShowWindow(hosted as _, SW_MAXIMIZE);
+            pause();
+            SetForegroundWindow(other as _);
+            pause();
+            let before = GetForegroundWindow() as isize;
+            let bounds = PhysicalRect { x: 120, y: 120, width: 500, height: 400 };
+            if restore == 0 {
+                ShowWindow(hosted as _, SW_RESTORE);
+            } else {
+                imp::restore_without_focus(hosted, bounds);
+            }
+            pause();
+            let after = GetForegroundWindow() as isize;
+            println!("variant {restore}: zoomed={} foreground kept={} (other={other}, hosted={hosted}, now={after})", IsZoomed(hosted as _) != 0, before == after);
+            if restore == 1 {
+                assert!(before == after, "restore took the focus");
+                assert!(IsZoomed(hosted as _) == 0, "window is still maximised");
+            }
+        }
+        DestroyWindow(hosted as _);
+        DestroyWindow(other as _);
+    }
+}
