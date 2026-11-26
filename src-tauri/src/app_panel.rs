@@ -571,6 +571,8 @@ struct Panel {
     following: bool,
     /// App data folder that holds the rescue file (see `app_panel_rescue`).
     rescue_dir: Option<PathBuf>,
+    /// Number of the newest placement request applied (see `accept_place_seq`).
+    place_seq: u64,
 }
 
 static PANEL: Mutex<Panel> = Mutex::new(Panel {
@@ -582,7 +584,19 @@ static PANEL: Mutex<Panel> = Mutex::new(Panel {
     applied: Applied { hwnd: None, visible: false, rect: None, suspended: false, placed: None },
     following: false,
     rescue_dir: None,
+    place_seq: 0,
 });
+
+/// Placement requests run on separate threads and can arrive out of order; only a request newer
+/// than the last applied one counts (the page numbers them upward).
+pub fn accept_place_seq(last: &mut u64, seq: u64) -> bool {
+    if seq > *last {
+        *last = seq;
+        true
+    } else {
+        false
+    }
+}
 
 fn lock_panel() -> std::sync::MutexGuard<'static, Panel> {
     PANEL.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -709,8 +723,8 @@ pub fn app_panel_activate(app: tauri::AppHandle, id: String, rect: DockRect) -> 
 }
 
 #[tauri::command(async)]
-pub fn app_panel_place(app: tauri::AppHandle, rect: DockRect) -> Result<(), String> {
-    imp::place(&app, rect)
+pub fn app_panel_place(app: tauri::AppHandle, rect: DockRect, seq: u64) -> Result<(), String> {
+    imp::place(&app, rect, seq)
 }
 
 #[tauri::command(async)]
@@ -1397,10 +1411,13 @@ mod imp {
         Ok(lock_panel().registry.state())
     }
 
-    pub fn place(app: &AppHandle, rect: DockRect) -> Result<(), String> {
+    pub fn place(app: &AppHandle, rect: DockRect, seq: u64) -> Result<(), String> {
         let (main, scale) = main_window(app)?;
         {
             let mut panel = lock_panel();
+            if !accept_place_seq(&mut panel.place_seq, seq) {
+                return Ok(());
+            }
             (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
         }
         apply_now();
@@ -1590,7 +1607,7 @@ mod imp {
         Err(UNSUPPORTED.to_owned())
     }
 
-    pub fn place(_app: &AppHandle, _rect: DockRect) -> Result<(), String> {
+    pub fn place(_app: &AppHandle, _rect: DockRect, _seq: u64) -> Result<(), String> {
         Ok(())
     }
 

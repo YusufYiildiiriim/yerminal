@@ -169,6 +169,33 @@ describe("AppPanelDock", () => {
     expect(tauri.invoke.mock.calls.filter(([command]) => command === "app_panel_open")).toHaveLength(0);
   });
 
+  it("merges placement requests into one per frame and numbers them upward", async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => frames.push(cb));
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    tauri.invoke.mockImplementation(async (command: string) =>
+      command === "app_panel_state" ? { apps: ["x"], active: "x" } : undefined);
+    setup();
+    await screen.findByRole("tab", { name: "X" });
+    await settle();
+    const places = () => tauri.invoke.mock.calls.filter(([command]) => command === "app_panel_place");
+    const flush = () => { frames.splice(0).forEach((cb) => cb(0)); };
+    flush();
+    tauri.invoke.mockClear();
+
+    for (let i = 0; i < 5; i += 1) window.dispatchEvent(new Event("resize"));
+    expect(places()).toHaveLength(0);
+    flush();
+    expect(places()).toHaveLength(1);
+
+    window.dispatchEvent(new Event("resize"));
+    window.dispatchEvent(new Event("resize"));
+    flush();
+    expect(places()).toHaveLength(2);
+    const seqs = places().map(([, args]) => (args as { seq: number }).seq);
+    expect(seqs[1]).toBeGreaterThan(seqs[0]);
+  });
+
   it("shows the start error in the panel instead of failing silently", async () => {
     tauri.invoke.mockImplementation(async (command: string) => {
       if (command === "app_panel_open") throw "No supported browser found. Install Brave or Microsoft Edge.";

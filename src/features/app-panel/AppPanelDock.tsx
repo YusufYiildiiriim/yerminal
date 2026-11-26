@@ -18,6 +18,13 @@ const KEY_STEP = 16;
 /** Dialogs open and close in bursts; this keeps the overlay check off the hot path of terminal output. */
 const OVERLAY_CHECK_DELAY_MS = 50;
 
+/**
+ * Numbers placement requests upward so the backend can drop one that arrives late. Starts at the
+ * clock so a reloaded page still counts higher than the numbers the backend saw before.
+ */
+let placeSeq = Date.now();
+const placeRequest = (rect: DockRect) => invoke("app_panel_place", { rect, seq: ++placeSeq });
+
 const iconProps = { viewBox: "0 0 24 24", "aria-hidden": true, focusable: false } as const;
 
 /**
@@ -98,7 +105,7 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
       }
       await invoke("app_panel_set_visible", { visible: true });
       const rect = currentRect();
-      if (rect) await invoke("app_panel_place", { rect });
+      if (rect) await placeRequest(rect);
       if (!cancelled) setSnapshot(null);
     };
     sync().catch(() => undefined);
@@ -109,9 +116,15 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
   useEffect(() => {
     const element = contentRef.current;
     if (!open || !element || !isTauri()) return;
+    // At most one request per frame, measured when the frame comes (a drag fires far more often).
+    let frame: number | null = null;
     const place = () => {
-      const rect = currentRect();
-      if (rect) invoke("app_panel_place", { rect }).catch(() => undefined);
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        const rect = currentRect();
+        if (rect) placeRequest(rect).catch(() => undefined);
+      });
     };
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
     observer?.observe(element);
@@ -119,6 +132,7 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
     return () => {
       observer?.disconnect();
       window.removeEventListener("resize", place);
+      if (frame !== null) window.cancelAnimationFrame(frame);
     };
   }, [open, currentRect]);
 

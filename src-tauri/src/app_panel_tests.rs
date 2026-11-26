@@ -810,3 +810,13 @@ fn restore_keeps_the_foreground_window() {
         DestroyWindow(other as _);
     }
 }
+
+#[test]
+fn a_placement_request_older_than_the_last_applied_one_is_ignored() {
+    let mut last = 0u64;
+    assert!(accept_place_seq(&mut last, 5));
+    assert!(!accept_place_seq(&mut last, 4), "late arrival of an older rectangle");
+    assert!(!accept_place_seq(&mut last, 5), "the same request twice");
+    assert!(accept_place_seq(&mut last, 6));
+    assert_eq!(last, 6);
+}
