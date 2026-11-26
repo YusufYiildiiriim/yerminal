@@ -408,6 +408,10 @@ pub fn debug_autoopen(app: tauri::AppHandle) {
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(5));
         let rect = DockRect { x: 500.0, y: 150.0, width: 640.0, height: 420.0 };
+        if std::env::var("YERMINAL_APP_PANEL_FOLLOW").is_ok() {
+            eprintln!("[app-panel debug] follow -> {:?}", imp::follow(&app, &url, "Example Domain", rect));
+            return;
+        }
         let result = imp::open(&app, "debug", &url, "Example Domain", rect);
         eprintln!("[app-panel debug] open -> {:?}", result.map(|s| s.apps));
     });
@@ -636,6 +640,51 @@ mod imp {
         }
     }
 
+    /// SPIKE (debug only): "follow" mode. The browser window stays top-level (no parent, no
+    /// owner, original style) and a thread keeps it on the dock box and just above the main
+    /// window in z-order. Nothing ties its lifetime to yerminal.
+    #[cfg(debug_assertions)]
+    pub fn follow(app: &AppHandle, url: &str, hint: &str, rect: DockRect) -> Result<(), String> {
+        use windows_sys::Win32::Foundation::POINT;
+        use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, IsIconic};
+        let (main, scale) = main_window(app)?;
+        let hwnd = obtain_window(url, hint, &[])?;
+        let dock = round_rect(rect);
+        let caption = caption_height(scale);
+        std::thread::spawn(move || {
+            let (m, h) = (hwnd_of(main), hwnd_of(hwnd));
+            let mut last = None;
+            while window_exists(hwnd) && window_exists(main) {
+                unsafe {
+                    if IsIconic(m) != 0 {
+                        ShowWindow(h, SW_HIDE);
+                        last = None;
+                    } else {
+                        let mut origin = POINT { x: 0, y: 0 };
+                        ClientToScreen(m, &mut origin);
+                        if last != Some((origin.x, origin.y)) {
+                            let screen = PhysicalRect { x: dock.x + origin.x, y: dock.y + origin.y, ..dock };
+                            place_window(hwnd, screen, caption);
+                            last = Some((origin.x, origin.y));
+                        }
+                        ShowWindow(h, SW_SHOWNOACTIVATE);
+                        let fg = GetForegroundWindow();
+                        if fg == m || fg == h {
+                            // main sits directly below the app window
+                            SetWindowPos(m, h, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                        }
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(40));
+            }
+            if window_exists(hwnd) {
+                unsafe { SetWindowRgn(hwnd_of(hwnd), std::ptr::null_mut(), TRUE) };
+            }
+        });
+        Ok(())
+    }
+
     pub fn open(app: &AppHandle, id: &str, url: &str, hint: &str, rect: DockRect) -> Result<PanelState, String> {
         let (main, scale) = main_window(app)?;
         {
@@ -737,6 +786,11 @@ mod imp {
     }
 
     pub fn activate(_app: &AppHandle, _id: &str, _rect: DockRect) -> Result<PanelState, String> {
+        Err(UNSUPPORTED.to_owned())
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn follow(_app: &AppHandle, _url: &str, _hint: &str, _rect: DockRect) -> Result<(), String> {
         Err(UNSUPPORTED.to_owned())
     }
 
