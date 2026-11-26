@@ -13,10 +13,10 @@
 .app-shell[data-theme] .app-panel-resize:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }
 
 .app-shell[data-theme] .app-panel-header {
-  display: flex; flex: 0 0 36px; align-items: center; justify-content: space-between; gap: 8px; height: 36px; padding: 0 4px 0 12px;
+  display: flex; flex: 0 0 36px; align-items: stretch; justify-content: flex-start; gap: 0; height: 36px; padding: 0 4px 0 12px;
   border-bottom: 1px solid var(--theme-border); background: var(--theme-chrome);
 }
-.app-shell[data-theme] .app-panel-header h2 { margin: 0; color: var(--theme-text); font-size: var(--fs-sm); font-weight: 650; letter-spacing: 0; }
+.app-shell[data-theme] .app-panel-header h2 { flex: none; align-self: center; margin: 0 8px 0 0; color: var(--theme-text); font-size: var(--fs-sm); font-weight: 650; letter-spacing: 0; }
 
 .app-shell[data-theme] .app-panel-icon-button {
   width: var(--hit-icon); height: var(--hit-icon); flex: none; padding: 0; display: grid; place-items: center;
@@ -31,18 +31,21 @@
 .app-shell[data-theme] .app-panel-menu-item:focus-visible,
 .app-shell[data-theme] .app-panel-empty-item:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }
 
-/* Tab strip: same language as the editor file tabs (36 px, chrome, hairline between tabs, accent line on the active one). */
-.app-shell[data-theme] .app-panel-tabs-row { position: relative; display: flex; flex: 0 0 36px; align-items: stretch; height: 36px; padding: 0; border-bottom: 1px solid var(--theme-border); background: var(--theme-chrome); }
-.app-shell[data-theme] .app-panel-tabs { display: flex; flex: 1 1 auto; align-items: stretch; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
-.app-shell[data-theme] .app-panel-tabs::-webkit-scrollbar { display: none; }
-.app-shell[data-theme] .app-panel-tab { display: flex; flex: 0 0 auto; align-items: center; max-width: 200px; border-right: 1px solid var(--theme-border); color: var(--text-muted); font-size: var(--fs-md); transition: color .15s ease, background-color .15s ease; }
-.app-shell[data-theme] .app-panel-tab[data-active="true"] { background: var(--theme-terminal); color: var(--theme-text); box-shadow: inset 0 2px 0 var(--theme-accent); }
+/* Tabs share the 36 px header row: editor file tab language (hairline between tabs, accent line on the active one). They shrink to 88 px (active 104 px), then the strip scrolls on a thin bar; title, add and collapse stay fixed. */
+.app-shell[data-theme] .app-panel-tabs { display: flex; flex: 1 1 auto; align-items: stretch; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: var(--theme-border) transparent; }
+.app-shell[data-theme] .app-panel-tabs::-webkit-scrollbar { display: block; height: 3px; }
+.app-shell[data-theme] .app-panel-tabs::-webkit-scrollbar-thumb { background: var(--theme-border); border-radius: 2px; }
+.app-shell[data-theme] .app-panel-tabs::-webkit-scrollbar-track { background: transparent; }
+.app-shell[data-theme] .app-panel-tab:first-child { border-left: 1px solid var(--theme-border); }
+.app-shell[data-theme] .app-panel-tab { display: flex; flex: 0 1 auto; align-items: center; min-width: 88px; max-width: 200px; border-right: 1px solid var(--theme-border); color: var(--text-muted); font-size: var(--fs-md); transition: color .15s ease, background-color .15s ease; }
+.app-shell[data-theme] .app-panel-tab[data-active="true"] { min-width: 104px; background: var(--theme-terminal); color: var(--theme-text); box-shadow: inset 0 2px 0 var(--theme-accent); }
 .app-shell[data-theme] .app-panel-tab:hover:not([data-active="true"]) { background: var(--shell-hover, var(--hover)); color: var(--theme-text); }
 .app-shell[data-theme] .app-panel-tab-select { align-self: stretch; min-width: 0; padding: 0 0 0 12px; overflow: hidden; border: 0; background: transparent; color: inherit; font-size: inherit; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell[data-theme] .app-panel-tab-close { width: var(--hit-icon); height: var(--hit-icon); flex: 0 0 var(--hit-icon); padding: 0; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; }
 .app-shell[data-theme] .app-panel-tab-close svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 .app-shell[data-theme] .app-panel-tab-close:hover { background: var(--shell-hover, var(--hover)); color: var(--theme-text); }
-.app-shell[data-theme] .app-panel-tabs-row > .app-panel-add { display: flex; align-items: center; padding: 0 2px; }
+.app-shell[data-theme] .app-panel-header > .app-panel-add { display: flex; align-items: center; align-self: center; padding: 0 0 0 2px; }
+.app-shell[data-theme] .app-panel-header > .app-panel-icon-button { align-self: center; }
 .app-shell[data-theme] .app-panel-opening { display: flex; align-items: center; padding: 0 12px; color: var(--text-muted); font-size: var(--fs-sm); white-space: nowrap; }
 
 .app-shell[data-theme] .app-panel-add { position: relative; flex: none; }

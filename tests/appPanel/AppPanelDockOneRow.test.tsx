@@ -22,8 +22,10 @@ describe("AppPanelDock single row (title, tabs, add, collapse)", () => {
     document.body.innerHTML = "";
     tauri.invoke.mockReset();
     scrolled.length = 0;
-    // jsdom has no scrollIntoView; record which element asked to be kept in view.
-    Element.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+    // A usable dock box, otherwise the dock does not ask the backend to activate anything.
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ left: 1000, top: 112, width: 380, height: 700, right: 1380, bottom: 812, x: 1000, y: 112, toJSON: () => ({}) } as DOMRect);
+    // The test setup stubs scrollIntoView on HTMLElement; record which element asked to be kept in view.
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(function (this: HTMLElement, options?: boolean | ScrollIntoViewOptions) {
       expect(options).toMatchObject({ inline: "nearest" });
       scrolled.push(this);
     });

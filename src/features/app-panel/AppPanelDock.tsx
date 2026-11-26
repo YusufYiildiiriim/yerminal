@@ -35,11 +35,12 @@ const iconProps = { viewBox: "0 0 24 24", "aria-hidden": true, focusable: false 
 
 /**
  * Right dock. The hosted app window (the user's own browser, default profile) is placed
- * over `.app-panel-content` only; header, tabs and menus sit in their own strips above it.
+ * over `.app-panel-content` only; the header row (title, tabs, add, collapse) and menus sit above it.
  */
 export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => void }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(() => readDockPrefs().width);
   const [state, setState] = useState<PanelState>(EMPTY_STATE);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -173,6 +174,11 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
     document.addEventListener("pointerdown", onPointerDown, true);
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
   }, [menuOpen]);
+
+  // The tabs share one row with the title and the buttons, so the strip scrolls: keep the active tab in view.
+  useEffect(() => {
+    tabsRef.current?.querySelector<HTMLElement>('.app-panel-tab[data-active="true"]')?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+  }, [state.active, state.apps.length, open]);
 
   const run = async (command: string, args: Record<string, unknown>, busy?: AppInfo) => {
     setMessage("");
@@ -323,12 +329,7 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
       />
       <header className="app-panel-header">
         <h2>Apps</h2>
-        <button className="app-panel-icon-button" type="button" aria-label="Collapse app panel" title="Collapse" onClick={onClose}>
-          <svg {...iconProps}><path d="M9 6l6 6-6 6" /></svg>
-        </button>
-      </header>
-      <div className="app-panel-tabs-row">
-        <div className="app-panel-tabs" role="tablist" aria-label="Open apps">
+        <div className="app-panel-tabs" ref={tabsRef} role="tablist" aria-label="Open apps">
           {state.apps.map((id) => {
             const name = nameOf(id, apps, seenNames.current);
             const active = state.active === id;
@@ -369,7 +370,10 @@ export function AppPanelDock({ open, onClose }: { open: boolean; onClose: () => 
             </div>
           )}
         </div>
-      </div>
+        <button className="app-panel-icon-button" type="button" aria-label="Collapse app panel" title="Collapse" onClick={onClose}>
+          <svg {...iconProps}><path d="M9 6l6 6-6 6" /></svg>
+        </button>
+      </header>
       {editor && (
         <form
           className="app-panel-name-form"
