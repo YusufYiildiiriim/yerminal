@@ -12,17 +12,37 @@ function body(selector: string): string {
   return found.join(";");
 }
 
-// The tab strip follows the editor file tabs: one flat strip with a single 1px divider, tabs
-// separated by a hairline, a 2px accent line on the active tab, no rounded boxes inside the strip.
-describe("app panel tab strip uses the editor tab language", () => {
-  it("is a single flat strip: 36 px, chrome background, one bottom divider, no frame", () => {
-    const row = body(".app-panel-tabs-row");
+// One 36 px row: title, tabs, add, collapse. The tabs follow the editor file tabs: hairline
+// between tabs, a 2px accent line on the active one, no rounded boxes.
+describe("app panel single row uses the editor tab language", () => {
+  it("is one flat 36 px row: chrome background, one bottom divider, no frame, no second strip", () => {
+    const row = body(".app-panel-header");
     expect(row).toMatch(/height:\s*36px/);
     expect(row).toContain("background: var(--theme-chrome)");
     expect(row).toContain("border-bottom: 1px solid var(--theme-border)");
     expect(row).not.toMatch(/border-radius/);
-    expect(row).not.toMatch(/(^|[;\s])border:/);
-    expect(body(".app-panel-header")).toContain("border-bottom: 1px solid var(--theme-border)");
+    expect(() => body(".app-panel-tabs-row")).toThrow();
+  });
+
+  it("keeps the title, the add button and the collapse button fixed while the tabs take the space", () => {
+    expect(body(".app-panel-header h2")).toMatch(/flex:\s*none/);
+    expect(body(".app-panel-add")).toMatch(/flex:\s*none/);
+    expect(body(".app-panel-icon-button")).toMatch(/flex:\s*none/);
+    const tabs = body(".app-panel-tabs");
+    expect(tabs).toMatch(/flex:\s*1 1 auto/);
+    expect(tabs).toMatch(/min-width:\s*0/);
+    expect(tabs).toMatch(/overflow-x:\s*auto/);
+  });
+
+  it("shrinks tabs to 88 px (active 104 px) with an ellipsis, then scrolls on a thin 3 px bar", () => {
+    const tab = body(".app-panel-tab");
+    expect(tab).toMatch(/flex:\s*0 1 auto/);
+    expect(tab).toMatch(/min-width:\s*88px/);
+    expect(body('.app-panel-tab[data-active="true"]')).toMatch(/min-width:\s*104px/);
+    expect(body(".app-panel-tab-select")).toMatch(/text-overflow:\s*ellipsis/);
+    expect(body(".app-panel-tab-select")).toMatch(/min-width:\s*0/);
+    expect(body(".app-panel-tabs")).toMatch(/scrollbar-width:\s*thin/);
+    expect(body(".app-panel-tabs::-webkit-scrollbar")).toMatch(/height:\s*3px/);
   });
 
   it("tabs are not rounded boxes and mark the active one with the accent line", () => {
