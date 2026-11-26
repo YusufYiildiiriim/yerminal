@@ -69,7 +69,6 @@
 .app-shell[data-theme] .terminal-tabs > .terminal-tab { flex: 0 0 auto; white-space: nowrap; padding-inline: 14px; }
 
 /* Match the approved terminal-first layout. */
-.app-shell[data-theme] .titlebar { height: 48px; flex: 0 0 48px; gap: 14px; padding: 0 16px; }
 .app-shell[data-theme] .brand-name { font-size: var(--fs-lg); font-weight: 600; }
 .app-shell[data-theme] .terminal-tab-move:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 1px; }
 .app-shell[data-theme] .titlebar-new-terminal {
@@ -150,7 +149,7 @@
 .app-shell[data-theme] .terminal-tab-item.editing .terminal-name-editor input { min-width: 0; }
 
 /* Keep the view switcher in the title bar like the Stitch workbench. */
-.app-shell[data-theme] .titlebar { position: relative; height: 44px; flex-basis: 44px; background: var(--theme-background); }
+.app-shell[data-theme] .titlebar { position: relative; background: var(--theme-background); }
 .app-shell[data-theme] .terminal-toolbar.editor-mode { display: none; }
 .app-shell[data-theme] .terminal-toolbar.floating-mode:not(.editor-mode) { display: none; }
 .app-shell[data-theme] .terminal-toolbar:not(.editor-mode) {

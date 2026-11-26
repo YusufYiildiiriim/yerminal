@@ -91,4 +91,15 @@ describe("window title bar", () => {
     expect(await screen.findByRole("button", { name: "Restore window" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Maximize window" })).toBeNull();
   });
+
+  it("shows an Apps toggle only when a handler is given and reflects the open state", () => {
+    const { rerender } = render(<WindowTitleBar breadcrumb="Terminal" />);
+    expect(screen.queryByRole("button", { name: "Toggle app panel" })).toBeNull();
+    const onToggle = vi.fn();
+    rerender(<WindowTitleBar breadcrumb="Terminal" appsOpen={true} onToggleApps={onToggle} />);
+    const toggle = screen.getByRole("button", { name: "Toggle app panel" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(toggle);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
 });

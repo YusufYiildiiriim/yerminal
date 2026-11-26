@@ -5,7 +5,7 @@ import { BrandMark } from "../brand/BrandMark";
 
 // The native title bar is off (decorations: false), so this row draws the brand, the location text and the window buttons.
 // Close goes through window.close(), which fires close-requested; App's guard still asks before unsaved or running work is lost.
-export function WindowTitleBar({ breadcrumb }: { breadcrumb: string }) {
+export function WindowTitleBar({ breadcrumb, appsOpen = false, onToggleApps }: { breadcrumb: string; appsOpen?: boolean; onToggleApps?: () => void }) {
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
@@ -47,6 +47,11 @@ export function WindowTitleBar({ breadcrumb }: { breadcrumb: string }) {
       </div>
       <span className="titlebar-breadcrumb" data-tauri-drag-region>{breadcrumb}</span>
       <div className="window-controls">
+        {onToggleApps && (
+          <button className="window-control" type="button" aria-label="Toggle app panel" aria-pressed={appsOpen} title={appsOpen ? "Hide apps" : "Show apps"} onClick={onToggleApps}>
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"><rect x="2.5" y="3" width="11" height="10" rx="1.5" /><path d="M9.5 3v10" />{appsOpen && <path d="M9.5 3h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-2z" fill="currentColor" stroke="none" opacity="0.35" />}</svg>
+          </button>
+        )}
         <button className="window-control" type="button" aria-label="Minimize window" title="Minimize" onClick={() => runWindowAction((appWindow) => appWindow.minimize())}>
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"><path d="M3 8h10" /></svg>
         </button>

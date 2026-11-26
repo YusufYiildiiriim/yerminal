@@ -1,4 +1,7 @@
 pub mod agent_usage;
+pub mod app_panel;
+pub mod app_panel_apps;
+pub mod app_panel_rescue;
 pub mod git;
 pub mod git_gate;
 pub mod git_remote;
@@ -402,6 +405,7 @@ fn watch_workspace_roots(
 }
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    app_panel::install_panic_release();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -419,6 +423,18 @@ pub fn run() {
             close_terminal,
             terminal_resource_usage,
             agent_usage_snapshot,
+            app_panel::app_panel_open,
+            app_panel_apps::app_panel_apps_list,
+            app_panel_apps::app_panel_app_pick,
+            app_panel_apps::app_panel_app_register,
+            app_panel_apps::app_panel_app_rename,
+            app_panel_apps::app_panel_app_remove,
+            app_panel::app_panel_place,
+            app_panel::app_panel_close,
+            app_panel::app_panel_activate,
+            app_panel::app_panel_set_visible,
+            app_panel::app_panel_snapshot,
+            app_panel::app_panel_state,
             terminal_output_snapshot,
             git_repository_info,
             git_status,
@@ -458,8 +474,18 @@ pub fn run() {
             create_workspace_directory,
             watch_workspace_roots
         ])
+        .setup(|_app| {
+            // Windows a dead yerminal left hidden or clipped are given back (own thread: a hung browser must not delay start).
+            let handle = _app.handle().clone();
+            std::thread::spawn(move || app_panel::rescue_orphans(&handle));
+            #[cfg(debug_assertions)]
+            app_panel::debug_autoopen(_app.handle().clone());
+            Ok(())
+        })
         .on_window_event(|window, event| {
             if should_close_sessions(event) {
+                // The main window is being destroyed: give hosted app windows back to the desktop (they stay open).
+                app_panel::release_all();
                 close_all_sessions(window.app_handle());
             }
         })
@@ -468,6 +494,7 @@ pub fn run() {
         .run(|app, event| {
             // Safety net for exits that do not destroy the window first.
             if let tauri::RunEvent::Exit = event {
+                app_panel::release_all();
                 close_all_sessions(app);
             }
         });
