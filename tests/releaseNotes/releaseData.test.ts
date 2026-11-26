@@ -12,7 +12,7 @@ describe("release notes data", () => {
     expect(current?.issues.find((issue) => issue.number === 59)?.title).toBe("Editor tabs of a removed workspace folder stay open");
   });
 
-  it("lists 0.1.4 as an unreleased version with no date, holding issues 62, 63, 64, 65 and 66", () => {
+  it("lists 0.1.4 as an unreleased version with no date, holding issues 62, 63, 64, 65, 66 and 67", () => {
     const upcoming = RELEASES.releases.find((release) => release.version === "0.1.4");
     expect(upcoming?.date).toBeNull();
     expect(upcoming?.issues).toEqual([
@@ -21,6 +21,7 @@ describe("release notes data", () => {
       { number: 64, title: "Title bar logo renders broken and bar is too tall" },
       { number: 65, title: "App panel: host an external app window in a right dock" },
       { number: 66, title: "App panel: merge the dock title row and the tab strip into one row" },
+      { number: 67, title: "App panel: stray vertical line and empty gap around the active tab in the one-row dock" },
     ]);
   });
 

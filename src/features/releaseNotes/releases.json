@@ -9,7 +9,8 @@
         { "number": 63, "title": "Version notes page listing closed issues per release" },
         { "number": 64, "title": "Title bar logo renders broken and bar is too tall" },
         { "number": 65, "title": "App panel: host an external app window in a right dock" },
-        { "number": 66, "title": "App panel: merge the dock title row and the tab strip into one row" }
+        { "number": 66, "title": "App panel: merge the dock title row and the tab strip into one row" },
+        { "number": 67, "title": "App panel: stray vertical line and empty gap around the active tab in the one-row dock" }
       ]
     },
     {
