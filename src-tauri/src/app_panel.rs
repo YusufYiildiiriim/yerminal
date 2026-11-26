@@ -241,6 +241,61 @@ pub fn pick_new_window(before: &[isize], after: &[TopWindow], class: &str, hint:
     Some(matching.unwrap_or(first).hwnd)
 }
 
+/// Shown when the launch of one of the user's own apps produced no new window.
+pub const NO_OWN_WINDOW_MESSAGE: &str =
+    "No new window appeared. The app may already be open: close it and try again.";
+
+const WS_THICKFRAME: u32 = 0x0004_0000;
+
+/// A window one of the user's own apps could have opened: visible, no owner, framed and not a
+/// tool window, titled, not DevTools. Framed means a full caption (classic dialog-style main
+/// windows are WS_POPUP plus caption) or, without WS_POPUP, a resize frame (frameless Electron
+/// windows). A popup without a caption is a splash screen or a menu.
+fn is_own_candidate(w: &TopWindow) -> bool {
+    let framed = w.style & WS_CAPTION == WS_CAPTION || (w.style & WS_THICKFRAME != 0 && w.style & WS_POPUP == 0);
+    w.visible
+        && !w.has_owner
+        && framed
+        && w.ex_style & WS_EX_TOOLWINDOW == 0
+        && !w.title.is_empty()
+        && !w.title.starts_with("DevTools")
+}
+
+/// True when `pid` is `root` or has it among its ancestors (`parent_of` gives the parent process).
+/// Bounded, so a parent cycle ends the walk.
+pub fn descends_from(pid: u32, root: u32, parent_of: &dyn Fn(u32) -> Option<u32>) -> bool {
+    let mut current = pid;
+    for _ in 0..32 {
+        if current == root {
+            return true;
+        }
+        match parent_of(current) {
+            Some(parent) if parent != current => current = parent,
+            _ => return false,
+        }
+    }
+    false
+}
+
+/// The window an own app's launch caused: new (absent before), top-level and framed, and owned by
+/// the started executable (`exe`) or, when the started program only hands over to another
+/// process (`in_tree`: the window's process descends from the launched one), by that process.
+/// A window of the started executable wins over one found through the process tree. Windows of
+/// any other program (the user's own) are never taken, whatever their class or title.
+pub fn pick_custom_window(before: &[isize], after: &[TopWindow], exe: &str, in_tree: &mut dyn FnMut(u32) -> bool) -> Option<isize> {
+    let fresh: Vec<&TopWindow> = after.iter().filter(|w| !before.contains(&w.hwnd) && is_own_candidate(w)).collect();
+    let by_exe = fresh.iter().find(|w| same_path(&w.exe, exe));
+    by_exe.or_else(|| fresh.iter().find(|w| in_tree(w.pid))).map(|w| w.hwnd)
+}
+
+/// Height of what an own app draws above its page inside the client area. Native windows keep
+/// title bar and frame outside the client area (already in the insets), so the band is zero; a
+/// Chromium based app reports where its page widget starts, and only what lies below the
+/// frame counts.
+pub fn own_band(content_offset: Option<i32>, top_inset: i32) -> i32 {
+    content_offset.map_or(0, |offset| (offset - top_inset).max(0))
+}
+
 fn title_matches_hint(title: &str, hint: &str) -> bool {
     title == hint
         || title.ends_with(&format!(" - {hint}"))
@@ -464,6 +519,9 @@ pub struct Entry {
     pub id: String,
     pub hwnd: isize,
     pub saved: Saved,
+    /// One of the user's own apps (any program) and not a browser `--app` window: framed and
+    /// clipped by its client area.
+    pub custom: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -884,7 +942,7 @@ mod imp {
     }
 
     /// Full path of the executable of a process; empty when it cannot be read.
-    fn process_image(pid: u32) -> String {
+    pub(super) fn process_image(pid: u32) -> String {
         use windows_sys::Win32::Foundation::CloseHandle;
         use windows_sys::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION};
         unsafe {
@@ -903,13 +961,19 @@ mod imp {
         }
     }
 
+    /// Enumeration state: the windows and the executable path of each process (looked up once per process).
+    struct Collected {
+        list: Vec<TopWindow>,
+        images: std::collections::HashMap<u32, String>,
+    }
+
     unsafe extern "system" fn collect(hwnd: HWND, lparam: LPARAM) -> i32 {
-        let list = &mut *(lparam as *mut Vec<TopWindow>);
+        let found = &mut *(lparam as *mut Collected);
         let mut pid = 0u32;
         GetWindowThreadProcessId(hwnd, &mut pid);
         let class = class_name(hwnd);
-        // The owner's image path is only looked up for windows that could be a browser window.
-        let exe = if class == CHROMIUM_WINDOW_CLASS { process_image(pid) } else { String::new() };
+        let exe = found.images.entry(pid).or_insert_with(|| process_image(pid)).clone();
+        let list = &mut found.list;
         list.push(TopWindow {
             hwnd: hwnd as isize,
             pid,
@@ -925,11 +989,28 @@ mod imp {
     }
 
     fn top_windows() -> Vec<TopWindow> {
-        let mut list: Vec<TopWindow> = Vec::new();
+        let mut found = Collected { list: Vec::new(), images: std::collections::HashMap::new() };
         unsafe {
-            EnumWindows(Some(collect), &mut list as *mut Vec<TopWindow> as LPARAM);
+            EnumWindows(Some(collect), &mut found as *mut Collected as LPARAM);
         }
-        list
+        found.list
+    }
+
+    /// Parent process of every running process (a parent that started after its child is a reused
+    /// process id and does not count). Taken only while an own app's window is being looked for.
+    fn process_parents() -> std::collections::HashMap<u32, u32> {
+        use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
+        let Ok(mut system) = System::new() else { return Default::default() };
+        system.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
+        system
+            .processes()
+            .iter()
+            .filter_map(|(pid, process)| {
+                let parent = process.parent()?;
+                let reused = system.process(parent).is_some_and(|p| p.start_time() > process.start_time());
+                (!reused).then(|| (pid.as_u32(), parent.as_u32()))
+            })
+            .collect()
     }
 
     fn find_browser() -> Result<Browser, String> {
@@ -945,7 +1026,7 @@ mod imp {
     }
 
     /// Remembers where the window was. Follow mode never reparents or restyles it.
-    fn capture(hwnd: isize) -> Saved {
+    pub(super) fn capture(hwnd: isize) -> Saved {
         let mut r = RECT { left: 0, top: 0, right: 0, bottom: 0 };
         unsafe { GetWindowRect(hwnd_of(hwnd), &mut r) };
         Saved { x: r.left, y: r.top, width: r.right - r.left, height: r.bottom - r.top }
@@ -953,7 +1034,7 @@ mod imp {
 
     /// Gives the window back to the desktop: no clip region, original geometry, visible.
     /// Does nothing when the window is already gone.
-    fn release(entry: &Entry) {
+    pub(super) fn release(entry: &Entry) {
         if !window_exists(entry.hwnd) {
             return;
         }
@@ -968,7 +1049,7 @@ mod imp {
     }
 
     /// Outer rectangle, clip box and maximised state of the window right now.
-    fn live_state(hwnd: isize) -> Option<Live> {
+    pub(super) fn live_state(hwnd: isize) -> Option<Live> {
         let h = hwnd_of(hwnd);
         unsafe {
             let mut w = RECT { left: 0, top: 0, right: 0, bottom: 0 };
@@ -1051,9 +1132,14 @@ mod imp {
     }
 
     /// Insets and the live height of the band above the page.
-    fn measure_frame(hwnd: isize, scale: f64) -> (Insets, i32) {
+    /// `custom`: one of the user's own apps, whose frame type is detected from the live window
+    /// (client rectangle, and the page widget when it is Chromium based); a browser `--app`
+    /// window keeps the caption band Chromium draws inside its client area.
+    fn measure_frame(hwnd: isize, scale: f64, custom: bool) -> (Insets, i32) {
         let insets = measure(hwnd).unwrap_or_default();
-        (insets, top_band(content_offset(hwnd), insets.top, scale))
+        let offset = content_offset(hwnd);
+        let band = if custom { own_band(offset, insets.top) } else { top_band(offset, insets.top, scale) };
+        (insets, band)
     }
 
     /// Leaves the maximised state without activating the window (`SW_RESTORE` would take the
@@ -1077,17 +1163,17 @@ mod imp {
     /// Places the hosted window so that its page area covers `dock` exactly. The insets and the
     /// band above the page are read from the live window; if resizing changed them (an infobar
     /// can wrap at another width), the window is placed once more. Returns the band used.
-    fn place_window(hwnd: isize, dock: PhysicalRect, scale: f64) -> (i32, Option<Placed>) {
+    pub(super) fn place_window(hwnd: isize, dock: PhysicalRect, scale: f64, custom: bool) -> (i32, Option<Placed>) {
         let h = hwnd_of(hwnd);
         flatten(hwnd);
         // A maximised window ignores MoveWindow (it snaps back to the monitor): leave that state first.
         if unsafe { IsZoomed(h) } != 0 {
             restore_without_focus(hwnd, dock);
         }
-        let mut frame = measure_frame(hwnd, scale);
+        let mut frame = measure_frame(hwnd, scale, custom);
         let mut placed = hosted_frame(dock, frame.0, frame.1);
         unsafe { MoveWindow(h, placed.0.x, placed.0.y, placed.0.width, placed.0.height, TRUE) };
-        let after = measure_frame(hwnd, scale);
+        let after = measure_frame(hwnd, scale, custom);
         if after != frame {
             frame = after;
             placed = hosted_frame(dock, frame.0, frame.1);
@@ -1159,12 +1245,14 @@ mod imp {
         {
             if d.applied.hwnd == active && d.applied.rect.is_some() && !wanted.app_minimized {
                 flatten(hwnd);
-                if measure_frame(hwnd, i.scale).1 != d.band {
+                let custom = i.entries.iter().any(|e| e.hwnd == hwnd && e.custom);
+                if measure_frame(hwnd, i.scale, custom).1 != d.band {
                     plan.place = d.applied.rect;
                 }
             }
         }
         let scale = i.scale;
+        let custom = i.entries.iter().any(|e| Some(e.hwnd) == active && e.custom);
         if plan.hide {
             for entry in &i.entries {
                 unsafe { ShowWindow(hwnd_of(entry.hwnd), SW_HIDE) };
@@ -1179,7 +1267,7 @@ mod imp {
         }
         let mut placed = d.applied.placed;
         if let (Some(hwnd), Some(rect)) = (active, plan.place) {
-            let (band, after) = place_window(hwnd, rect, scale);
+            let (band, after) = place_window(hwnd, rect, scale, custom);
             d.band = band;
             d.placed_at = Some(Instant::now());
             placed = after;
@@ -1372,18 +1460,61 @@ mod imp {
         }
     }
 
+    /// Starts one of the user's own apps (the stored path, no argument, its own folder as the
+    /// working directory, no inherited streams) and waits for the window it opens: owned by the
+    /// started exe or by a process below it. If none appears the user is told; the process that
+    /// was started is never killed from here.
+    pub(super) fn obtain_own_window(exe: &Path) -> Result<isize, String> {
+        use std::process::Stdio;
+        let before: Vec<isize> = top_windows().iter().map(|w| w.hwnd).collect();
+        let mut command = Command::new(exe);
+        command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        if let Some(dir) = exe.parent() {
+            command.current_dir(dir);
+        }
+        let child = command.spawn().map_err(|e| format!("Cannot start the app: {e}"))?;
+        let launched = child.id();
+        let exe_text = exe.to_string_lossy().into_owned();
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            let windows = top_windows();
+            // The process table is read at most once per round, and only when a new window of an
+            // unknown program needs to be checked against the process tree.
+            let mut parents: Option<std::collections::HashMap<u32, u32>> = None;
+            let mut in_tree = |pid: u32| {
+                let map = parents.get_or_insert_with(process_parents);
+                descends_from(pid, launched, &|p| map.get(&p).copied())
+            };
+            if let Some(found) = pick_custom_window(&before, &windows, &exe_text, &mut in_tree) {
+                return Ok(found);
+            }
+            if Instant::now() >= deadline {
+                return Err(NO_OWN_WINDOW_MESSAGE.to_owned());
+            }
+            std::thread::sleep(Duration::from_millis(150));
+        }
+    }
+
     /// Held for the whole of an open (launch and wait for the window).
     static OPEN_LOCK: Mutex<()> = Mutex::new(());
 
     pub fn open(app: &AppHandle, id: &str, launch: Launch, rect: DockRect) -> Result<PanelState, String> {
         match launch {
             Launch::Browser(ready) => open_url(app, id, ready.url, ready.title_hint, rect),
-            Launch::Custom(_) => Err("Your own apps cannot be opened yet".to_owned()),
+            Launch::Custom(own) => {
+                // The stored path is checked again: the file may have gone or been replaced since it was saved.
+                let exe = app_panel_apps::revalidate(&own.exe_path)?;
+                open_with(app, id, true, rect, || obtain_own_window(&exe))
+            }
         }
     }
 
     /// Opens a site as a browser `--app` window (the url comes from the catalog; debug builds use it directly).
     pub fn open_url(app: &AppHandle, id: &str, url: &str, hint: &str, rect: DockRect) -> Result<PanelState, String> {
+        open_with(app, id, false, rect, || obtain_window(url, hint))
+    }
+
+    fn open_with(app: &AppHandle, id: &str, custom: bool, rect: DockRect, obtain: impl FnOnce() -> Result<isize, String>) -> Result<PanelState, String> {
         let (main, scale) = main_window(app)?;
         // Opens run one at a time: two launches at once would see each other's new window.
         let _one_at_a_time = OPEN_LOCK.lock().unwrap_or_else(|p| p.into_inner());
@@ -1397,14 +1528,14 @@ mod imp {
             apply_now();
             return Ok(lock_panel().registry.state());
         }
-        let hwnd = obtain_window(url, hint)?;
+        let hwnd = obtain()?;
         let saved = capture(hwnd);
         {
             let mut panel = lock_panel();
             panel.shown = true;
             remember_rescue_dir(&mut panel, app);
             (panel.main, panel.scale, panel.dock) = (main, scale, Some(round_rect(rect)));
-            if !panel.registry.add(Entry { id: id.to_owned(), hwnd, saved }) {
+            if !panel.registry.add(Entry { id: id.to_owned(), hwnd, saved, custom }) {
                 return Err("This app is already open".to_owned());
             }
             ensure_follower(&mut panel);

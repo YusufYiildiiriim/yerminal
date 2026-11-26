@@ -122,6 +122,11 @@ pub fn validate_exe(raw: &str, exists: &dyn Fn(&Path) -> bool, is_remote: &dyn F
     Ok(path)
 }
 
+/// Check of a stored path right before it is started.
+pub fn revalidate(raw: &str) -> Result<PathBuf, String> {
+    validate_exe(raw, &|p| p.is_file(), &is_remote_drive)
+}
+
 /// Suggested display name: the file name without `.exe`.
 pub fn default_name(exe_path: &str) -> String {
     Path::new(exe_path).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()

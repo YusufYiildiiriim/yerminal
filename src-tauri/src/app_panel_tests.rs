@@ -25,6 +25,7 @@ fn entry(id: &str, hwnd: isize) -> Entry {
         id: id.to_owned(),
         hwnd,
         saved: Saved { x: 10, y: 20, width: 800, height: 600 },
+        custom: false,
     }
 }
 
@@ -819,4 +820,235 @@ fn a_placement_request_older_than_the_last_applied_one_is_ignored() {
     assert!(!accept_place_seq(&mut last, 5), "the same request twice");
     assert!(accept_place_seq(&mut last, 6));
     assert_eq!(last, 6);
+}
+
+// ---------------------------------------------------------------------------
+// Own apps: window selection by the launched executable, process tree, native framing
+// ---------------------------------------------------------------------------
+
+const OWN_EXE: &str = r"C:\Windows\System32\charmap.exe";
+
+fn own(hwnd: isize, title: &str) -> TopWindow {
+    TopWindow {
+        hwnd,
+        pid: 500,
+        class: "MyAppFrame".to_owned(),
+        title: title.to_owned(),
+        visible: true,
+        has_owner: false,
+        exe: OWN_EXE.to_owned(),
+        style: 0x14CF_0000, // WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN
+        ex_style: 0x0004_0100,
+    }
+}
+
+fn nobody(_: u32) -> bool {
+    false
+}
+
+#[test]
+fn an_own_app_window_is_the_new_window_of_the_launched_exe_whatever_its_class() {
+    let after = [own(1, "Old"), own(9, "Character Map")];
+    assert_eq!(pick_custom_window(&[1], &after, OWN_EXE, &mut nobody), Some(9));
+}
+
+#[test]
+fn an_own_app_never_takes_a_window_of_another_executable() {
+    let mut code = own(9, "main.rs - Visual Studio Code");
+    code.exe = r"C:\Users\x\AppData\Local\Programs\Microsoft VS Code\Code.exe".to_owned();
+    code.class = CLASS.to_owned();
+    assert_eq!(pick_custom_window(&[], &[code], OWN_EXE, &mut nobody), None);
+}
+
+#[test]
+fn an_own_app_ignores_windows_that_were_open_before_the_launch() {
+    assert_eq!(pick_custom_window(&[9], &[own(9, "Character Map")], OWN_EXE, &mut nobody), None);
+}
+
+#[test]
+fn an_own_app_skips_hidden_owned_untitled_tool_popup_and_devtools_windows() {
+    let mut hidden = own(2, "A");
+    hidden.visible = false;
+    let mut owned = own(3, "A");
+    owned.has_owner = true;
+    let mut tool = own(4, "A");
+    tool.ex_style |= WS_EX_TOOLWINDOW;
+    let mut splash = own(5, "Splash");
+    splash.style = WS_POPUP; // no caption, no frame
+    let devtools = own(6, "DevTools - localhost");
+    let after = [hidden, owned, own(7, ""), tool, splash, devtools];
+    assert_eq!(pick_custom_window(&[], &after, OWN_EXE, &mut nobody), None);
+    // The real window behind the splash screen is found.
+    let with_main = [own(5, "Splash"), own(8, "Main window")];
+    let mut splash_window = with_main.clone();
+    splash_window[0].style = WS_POPUP;
+    assert_eq!(pick_custom_window(&[], &splash_window, OWN_EXE, &mut nobody), Some(8));
+}
+
+#[test]
+fn a_window_of_a_child_process_counts_when_the_launcher_hands_over() {
+    // The started exe is only a stub; the window belongs to a process below it.
+    let mut app = own(9, "Postman");
+    app.exe = r"C:\Users\x\AppData\Local\Postman\app-11\Postman.exe".to_owned();
+    app.pid = 77;
+    assert_eq!(pick_custom_window(&[], &[app.clone()], OWN_EXE, &mut |pid| pid == 77), Some(9));
+    assert_eq!(pick_custom_window(&[], &[app], OWN_EXE, &mut nobody), None);
+}
+
+#[test]
+fn a_window_of_the_launched_exe_wins_over_one_found_by_the_process_tree() {
+    let mut child = own(4, "Child");
+    child.exe = r"C:\Other\child.exe".to_owned();
+    child.pid = 77;
+    let after = [child, own(9, "Main")];
+    assert_eq!(pick_custom_window(&[], &after, OWN_EXE, &mut |pid| pid == 77), Some(9));
+}
+
+#[test]
+fn ancestry_follows_parents_up_to_the_launched_process() {
+    let parents = |pid: u32| match pid {
+        30 => Some(20),
+        20 => Some(10),
+        _ => None,
+    };
+    assert!(descends_from(30, 10, &parents));
+    assert!(descends_from(10, 10, &parents));
+    assert!(!descends_from(30, 99, &parents));
+    assert!(!descends_from(5, 10, &parents));
+}
+
+#[test]
+fn ancestry_stops_on_a_parent_cycle() {
+    let cyclic = |pid: u32| Some(if pid == 1 { 2 } else { 1 });
+    assert!(!descends_from(1, 99, &cyclic));
+}
+
+#[test]
+fn a_native_window_has_no_band_above_its_client_area() {
+    // Title bar and frame are non-client: the insets already hold them and no extra band is cut.
+    assert_eq!(own_band(None, 31), 0);
+    // A Chromium based app with a normal frame: the page widget starts at the client top.
+    assert_eq!(own_band(Some(38), 38), 0);
+    // An app that draws its own bar inside the client area keeps what the widget measures.
+    assert_eq!(own_band(Some(38 + 40), 38), 40);
+    assert_eq!(own_band(Some(10), 38), 0);
+}
+
+#[test]
+fn a_native_window_is_placed_so_that_its_client_area_covers_the_dock() {
+    // Outer 816x639 with an 8 px frame, 31 px title bar: insets from the live window.
+    let insets = measure_insets(rect(100, 100, 816, 639), (108, 131), (800, 600));
+    let dock = rect(1000, 112, 380, 700);
+    let (outer, visible) = hosted_frame(dock, insets, own_band(None, insets.top));
+    assert_eq!((visible.x, visible.y, visible.width, visible.height), (8, 31, 380, 700));
+    // The clip region starts at the client area, so the title bar and frame are cut away.
+    assert_eq!((outer.x + visible.x, outer.y + visible.y), (dock.x, dock.y));
+}
+
+#[test]
+fn own_apps_have_their_own_messages_and_flag_on_the_entry() {
+    assert!(NO_OWN_WINDOW_MESSAGE.contains("already be open"));
+    let mut e = entry("custom-1", 5);
+    e.custom = true;
+    assert!(e.custom && !entry("x", 6).custom);
+}
+
+/// Measurement (a real classic Win32 app, run by hand):
+/// `cargo test own_app_measurement -- --ignored --nocapture`
+/// Starts charmap.exe, places it on a dock box by its client area, reads the numbers back, lets the
+/// rescue code (what the watchdog runs) give the window back and closes the one it started.
+#[cfg(windows)]
+#[test]
+#[ignore]
+fn own_app_measurement_on_a_classic_window() {
+    use windows_sys::Win32::Foundation::{POINT, RECT};
+    use windows_sys::Win32::Graphics::Gdi::{ClientToScreen, GetWindowRgnBox};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetClientRect, GetWindowRect, GetWindowThreadProcessId, IsWindow, IsWindowVisible, PostMessageW, WM_CLOSE};
+    let exe = PathBuf::from(r"C:\Windows\System32\charmap.exe");
+    let started = std::time::Instant::now();
+    let hwnd = imp::obtain_own_window(&exe).expect("window found");
+    println!("window found in {:?}: hwnd={hwnd}", started.elapsed());
+    let mut pid = 0u32;
+    unsafe { GetWindowThreadProcessId(hwnd as _, &mut pid) };
+    let image = imp::process_image(pid);
+    println!("pid={pid} image={image}");
+    assert!(same_path(&image, &exe.to_string_lossy()), "found window must belong to charmap");
+
+    let saved = imp::capture(hwnd);
+    println!("saved outer: {saved:?}");
+    let dock = rect(900, 150, 640, 520);
+    let (band, placed) = imp::place_window(hwnd, dock, 1.0, true);
+    let live = imp::live_state(hwnd).unwrap();
+    let (mut client, mut origin) = (RECT { left: 0, top: 0, right: 0, bottom: 0 }, POINT { x: 0, y: 0 });
+    unsafe {
+        GetClientRect(hwnd as _, &mut client);
+        ClientToScreen(hwnd as _, &mut origin);
+    }
+    println!("band={band} placed={placed:?}");
+    println!("outer={:?} clip={:?}", live.outer, live.clip);
+    println!("client origin=({}, {}) size={}x{} (dock {:?})", origin.x, origin.y, client.right, client.bottom, dock);
+    let clip = live.clip.expect("region set");
+    println!("visible area on screen = ({}, {}) {}x{}", live.outer.x + clip.x, live.outer.y + clip.y, clip.width, clip.height);
+    assert_eq!(band, 0, "a native window has no band inside its client area");
+    assert_eq!((live.outer.x + clip.x, live.outer.y + clip.y), (origin.x, origin.y), "region starts at the client area");
+    assert_eq!((clip.width, clip.height), (client.right, client.bottom), "region is the client area");
+    println!("title bar hidden: client top {} > outer top {}", origin.y, live.outer.y);
+
+    // What the watchdog does after yerminal died: give the window back from the state file.
+    let dir = std::env::temp_dir().join(format!("yerminal-own-measure-{pid}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("rescue.json");
+    let record = app_panel_rescue::RescueWindow {
+        hwnd,
+        pid,
+        class: "(read live)".to_owned(),
+        x: saved.x,
+        y: saved.y,
+        width: saved.width,
+        height: saved.height,
+        backdrop: None,
+        hidden: false,
+    };
+    let mut class_buf = [0u16; 256];
+    let len = unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetClassNameW(hwnd as _, class_buf.as_mut_ptr(), 256) } as usize;
+    let class = String::from_utf16_lossy(&class_buf[..len]);
+    println!("class={class}");
+    let record = app_panel_rescue::RescueWindow { class, ..record };
+    app_panel_rescue::write_atomic(&file, &app_panel_rescue::RescueFile { owner_pid: 1, owner_started: 0, windows: vec![record] }).unwrap();
+    app_panel_rescue::rescue_file(&file);
+    std::thread::sleep(Duration::from_millis(300));
+    let after = imp::live_state(hwnd).unwrap();
+    println!("after rescue: outer={:?} clip={:?} (saved {saved:?})", after.outer, after.clip);
+    assert!(after.clip.is_none(), "region removed");
+    assert_eq!((after.outer.x, after.outer.y, after.outer.width, after.outer.height), (saved.x, saved.y, saved.width, saved.height));
+    assert!(unsafe { IsWindowVisible(hwnd as _) } != 0);
+
+    // Place again and release the normal way (what closing the dock tab or exiting yerminal does).
+    imp::place_window(hwnd, dock, 1.0, true);
+    imp::release(&Entry { id: "custom-test".to_owned(), hwnd, saved, custom: true });
+    let released = imp::live_state(hwnd).unwrap();
+    println!("after release: outer={:?} clip={:?}", released.outer, released.clip);
+    assert!(released.clip.is_none());
+    assert_eq!((released.outer.x, released.outer.y), (saved.x, saved.y));
+
+    // Close only the window this test started (identity checked above).
+    unsafe { PostMessageW(hwnd as _, WM_CLOSE, 0, 0) };
+    std::thread::sleep(Duration::from_millis(600));
+    println!("window gone: {}", unsafe { IsWindow(hwnd as _) } == 0);
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = (GetWindowRect as unsafe extern "system" fn(_, _) -> _, GetWindowRgnBox as unsafe extern "system" fn(_, _) -> _);
+}
+
+// Measured on charmap.exe (2026-11-27): a classic dialog-style main window has WS_POPUP together with
+// the full caption (style 0x94CA004C, class #32770); only popups without a caption are splash screens or menus.
+#[test]
+fn a_dialog_style_main_window_with_a_caption_is_an_own_app_window() {
+    let mut dialog = own(9, "Character Map");
+    dialog.class = "#32770".to_owned();
+    dialog.style = 0x94CA_004C;
+    dialog.ex_style = 0x0001_0100;
+    assert_eq!(pick_custom_window(&[], &[dialog], OWN_EXE, &mut nobody), Some(9));
+    let mut popup_without_caption = own(8, "Menu");
+    popup_without_caption.style = WS_POPUP | WS_THICKFRAME;
+    assert_eq!(pick_custom_window(&[], &[popup_without_caption], OWN_EXE, &mut nobody), None);
 }
